@@ -1,75 +1,39 @@
-# React + TypeScript + Vite
+# SG Restock Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React + TypeScript + Vite. Đăng nhập username/password, tự chuyển trang theo role từ backend.
 
-Currently, two official plugins are available:
+## Chạy local
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. Chạy backend theo README của EXE201_BE, mặc định cổng 5000.
+2. Chạy `npm ci`, rồi `npm run dev` trong thư mục FE.
+3. Mở http://localhost:5173/login.
 
-## React Compiler
+Vite chuyển `/api` đến `http://localhost:5000`. Dùng hostname `localhost` để khớp FRONTEND_URL phía backend. Giữ cổng 5173; nếu cần thay đổi, sửa cả vite.config.ts và FRONTEND_URL.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Luồng đăng nhập
 
-## Expanding the ESLint configuration
+`LoginPage` gọi `services/auth.api.ts` qua Axios. Backend xác thực, gửi JWT bằng HttpOnly cookie và trả user có role. Không lưu token trong localStorage.
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- STORE_OWNER vào `/store`.
+- SUPPLIER vào `/supplier`.
+- ADMIN vào `/admin`.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+App gọi `/auth/me` khi tải lại để khôi phục phiên. Backend kiểm tra quyền độc lập; sửa URL hay dữ liệu phía frontend không cấp thêm quyền. Đăng xuất thu hồi session trên server và đưa về trang đăng nhập.
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## Tổ chức
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- `src/pages/login/LoginPage.tsx`: giao diện và kiểm tra form.
+- `src/pages/WorkspacePage.tsx`: trang chào sau đăng nhập theo role.
+- `src/services`: Axios và hàm gọi API.
+- `src/types/auth.ts`: kiểu dữ liệu và ánh xạ role.
+- `src/components`: logo, icon dùng chung.
+- `src/index.css`: bố cục responsive, màu sắc, các trạng thái UI.
 
-```
+Các module nghiệp vụ trên trang chào được ghi rõ sắp có, chưa phải chức năng đã triển khai. Chưa có đăng ký công khai, quên mật khẩu hay Google OAuth. Nút hỗ trợ hướng dẫn liên hệ quản trị viên.
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+## Kiểm tra và triển khai
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- `npm run build`: kiểm tra TypeScript và build production.
+- `npm run lint`: ESLint.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+Production cần SPA fallback về index.html và proxy `/api` sang backend, hoặc cấu hình VITE_API_URL trước khi build. Dùng HTTPS và FE/API cùng site. API phải cấu hình FRONTEND_URL khớp origin frontend.
