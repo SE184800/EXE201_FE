@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Brand from '../components/Brand';
 import Icon from '../components/Icon';
+import StoreInventory from './StoreInventory';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import { logout } from '../services/auth.api';
 import { ROLE_DETAILS, type AuthUser } from '../types/auth';
@@ -102,7 +103,8 @@ export default function WorkspacePage({
             </div>
           </div>
         )}
-        {verified && !error && (
+        {verified && !error && user.role === 'STORE_OWNER' && <StoreInventory onLogout={onLogout} />}
+        {verified && !error && user.role !== 'STORE_OWNER' && (
           <>
             <div className="workspace-section-title">
               <h2>Khu vực làm việc</h2>

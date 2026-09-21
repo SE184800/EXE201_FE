@@ -1,0 +1,61 @@
+.inventory-area { margin-top: 32px; }
+.inventory-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:24px; padding:6px; border-radius:14px; background:#eaf0e6; width:fit-content; }
+.inventory-tabs button { border:0; background:transparent; color:#4e6556; font-weight:650; padding:12px 18px; border-radius:10px; }
+.inventory-tabs button[aria-selected="true"] { background:#214e39; color:#fff; box-shadow:0 2px 5px #173f331a; }
+.inventory-tabs button:hover:not([aria-selected="true"]) { background:#dbe7d7; }
+.inventory-activity-panel > .stock-activity { margin-top:0; padding-top:0; border-top:0; }
+.inventory-summary,.inventory-heading,.inventory-actions { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.inventory-summary { margin-bottom:24px; }
+.inventory-summary h2 { font-size:26px; margin:8px 0; letter-spacing:-.7px; }
+.inventory-summary p,.inventory-chat-note { color:#68796f; font-size:14px; }
+.inventory-summary > div > span { font-size:11px; letter-spacing:1.4px; font-weight:700; }
+.inventory-count { background:#e9f2e9; border-radius:16px; padding:16px 24px; display:grid; text-align:center; flex-shrink:0; }
+.inventory-count strong { font-size:30px; }
+.inventory-layout { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(320px,1fr); gap:24px; align-items:start; }
+.inventory-panel,.inventory-chat { background:white; border:1px solid #dfe7df; border-radius:20px; overflow:hidden; }
+.inventory-panel { padding:24px; }
+.inventory-heading { margin-bottom:18px; }
+.inventory-heading h3 { margin:0; font-size:18px; }
+.inventory-heading > span { font-size:12px; color:#906020; }
+.inventory-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; margin-bottom:28px; }
+.inventory-refresh { border:1px solid #245b43; background:#e5f1e7; color:#17452e; font-weight:750; font-size:14px; padding:10px 14px; border-radius:10px; white-space:nowrap; }
+.inventory-refresh:hover:not(:disabled) { background:#cee4d3; }
+.stock-activity { margin-top:30px; padding-top:24px; border-top:1px solid #dde7dc; }
+.stock-help { font-size:13px; color:#637569; line-height:1.6; }
+.stock-activity select { width:100%; min-width:0; padding:11px 12px; background:#fcfdfb; border:1px solid #cdd9cf; border-radius:10px; font:inherit; color:#223c33; }
+.stock-pagination { display:flex; justify-content:flex-end; align-items:center; gap:12px; margin-top:18px; font-size:13px; }
+.stock-out { color:#a03e2c; white-space:nowrap; }
+.stock-in { color:#286344; white-space:nowrap; }
+.inventory-form label > small { font-weight:400; color:#69776c; line-height:1.5; }
+.inventory-form label { display:grid; gap:7px; font-size:13px; font-weight:600; }
+.inventory-name,.inventory-actions { grid-column:1/-1; }
+.inventory-actions { justify-content:flex-start; }
+.inventory-form input,.inventory-chat-form input { width:100%; min-width:0; border:1px solid #cdd9cf; border-radius:10px; padding:11px 12px; background:#fcfdfb; color:#223c33; }
+.inventory-actions .primary-button,.inventory-chat-form .primary-button { width:auto; margin:0; padding:12px 20px; }
+.inventory-notice { color:#286144; font-size:14px; background:#edf7ed; padding:12px; border-radius:10px; }
+.inventory-empty { padding:28px 12px; background:#f6f8f3; border-radius:12px; color:#69776c; line-height:1.7; }
+.inventory-table-wrap { overflow-x:auto; }
+.inventory-table { width:100%; border-collapse:collapse; font-size:14px; }
+.inventory-table th { text-align:left; color:#6a7a6e; font-size:12px; font-weight:500; }
+.inventory-table td,.inventory-table th { padding:13px 8px; border-bottom:1px solid #edf0ea; }
+.inventory-table td:first-child { min-width:150px; overflow-wrap:anywhere; }
+.inventory-table small { display:block; color:#788578; font-size:10px; margin-top:6px; }
+.stock-badge { display:inline-block; white-space:nowrap; font-size:11px; padding:5px 8px; border-radius:6px; background:#edf6ed; color:#356545; }
+.stock-low { background:#fff0d8; color:#895316; }
+.inventory-chat-header { display:flex; align-items:center; gap:12px; padding:20px; background:#173f33; color:white; }
+.inventory-chat-header h3 { margin:0 0 5px; font-size:18px; }
+.inventory-chat-header p { margin:0; font-size:12px; color:#cee0d6; }
+.inventory-chat-dot { width:11px; height:11px; background:#a9d291; border-radius:50%; }
+.inventory-messages { height:350px; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:14px; background:#fafcf8; }
+.inventory-message { max-width:95%; align-self:flex-start; border:1px solid #e4eadf; border-radius:12px; padding:12px; background:white; overflow-wrap:anywhere; }
+.inventory-message strong { font-size:11px; color:#637969; }
+.inventory-message p { margin:6px 0 0; white-space:pre-wrap; line-height:1.6; font-size:14px; }
+.inventory-message small { display:block; margin-top:8px; color:#7b827a; font-size:10px; }
+.inventory-message.user { align-self:flex-end; background:#e6f1e5; border-color:#d5e6d3; }
+.inventory-examples { padding:14px 16px 0; display:flex; flex-wrap:wrap; gap:7px; }
+.inventory-examples button { border:1px solid #dbe6d7; background:#f7faf4; color:#416348; border-radius:20px; font-size:11px; padding:7px 10px; }
+.inventory-chat-form { padding:14px 16px 0; display:flex; gap:8px; }
+.inventory-chat-note { font-size:11px; padding:0 16px 12px; line-height:1.6; }
+.inventory-sr { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+@media(max-width:1050px) { .inventory-layout { grid-template-columns:1fr; } }
+@media(max-width:540px) { .inventory-panel { padding:16px; } .inventory-form { grid-template-columns:1fr; } .inventory-summary h2 { font-size:21px; } .inventory-count { padding:12px; } .inventory-heading { flex-wrap:wrap; } }
