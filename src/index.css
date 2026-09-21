@@ -16,7 +16,8 @@ body {
   min-width: 320px;
 }
 button,
-input {
+input,
+select {
   font: inherit;
 }
 button {
@@ -464,6 +465,12 @@ input {
   margin: 7px 0 0;
   font-size: 11px;
   line-height: 1.5;
+}
+.field-hint {
+  margin: 7px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #64735d;
 }
 .primary-button {
   width: 100%;

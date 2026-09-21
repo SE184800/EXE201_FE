@@ -1,5 +1,5 @@
-import { useRef, useState, type FormEvent } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
 import { login } from '../../services/auth.api';
@@ -57,7 +57,12 @@ export default function LoginPage({
 }: {
   onLogin: (user: AuthUser) => void;
 }) {
-  const [username, setUsername] = useState('');
+  const location = useLocation();
+  const registrationState: unknown = location.state;
+  const registeredUsername = registrationState && typeof registrationState === 'object' &&
+    'registeredUsername' in registrationState && typeof registrationState.registeredUsername === 'string'
+    ? registrationState.registeredUsername : '';
+  const [username, setUsername] = useState(registeredUsername);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -67,9 +72,13 @@ export default function LoginPage({
   }>({});
   const [serverError, setServerError] = useState('');
   const [showHelp, setShowHelp] = useState(false);
-  const [searchParams] = useSearchParams();
   const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    document.title = 'SupplyMind AI · Đăng nhập';
+    window.scrollTo(0, 0);
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -156,6 +165,11 @@ export default function LoginPage({
           <p className="form-description">
             Cửa hàng của bạn, sẵn sàng cho ngày mới.
           </p>
+          {registeredUsername && (
+            <p className="success-notice" role="status">
+              Đăng ký thành công! Username đã được điền sẵn. Nhập mật khẩu để đăng nhập.
+            </p>
+          )}
           <form onSubmit={handleSubmit} noValidate className="login-form">
             <div className="field-group">
               <label htmlFor="username">
@@ -174,7 +188,11 @@ export default function LoginPage({
                   spellCheck={false}
                   placeholder="Nhập tên đăng nhập"
                   value={username}
-                  onChange={(event) => setUsername(event.target.value)}
+                  onChange={(event) => {
+                    setUsername(event.target.value);
+                    setErrors((current) => ({ ...current, username: undefined }));
+                    setServerError('');
+                  }}
                   aria-invalid={Boolean(errors.username)}
                   aria-describedby={
                     errors.username ? 'username-error' : undefined
@@ -202,7 +220,11 @@ export default function LoginPage({
                   autoComplete="current-password"
                   placeholder="Nhập mật khẩu của bạn"
                   value={password}
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={(event) => {
+                    setPassword(event.target.value);
+                    setErrors((current) => ({ ...current, password: undefined }));
+                    setServerError('');
+                  }}
                   aria-invalid={Boolean(errors.password)}
                   aria-describedby={
                     errors.password ? 'password-error' : undefined
@@ -270,8 +292,8 @@ export default function LoginPage({
             <div className="help-notice" id="login-help" role="status">
               <strong>Cần hỗ trợ tài khoản?</strong>
               <p>
-                Liên hệ quản trị viên để được cấp username, mật khẩu hoặc hỗ trợ
-                đặt lại mật khẩu.
+                Bạn có thể chọn “Tạo tài khoản” để đăng ký. Nếu quên mật khẩu
+                hoặc cần tài khoản quản trị, hãy liên hệ quản trị viên.
               </p>
             </div>
           )}
@@ -279,7 +301,6 @@ export default function LoginPage({
             Chưa có tài khoản?{' '}
             <Link className="account-link" to="/register">Tạo tài khoản <span>↗</span></Link>
           </p>
-          {searchParams.get('registered') === '1' && <p className="success-notice" role="status">Đăng ký thành công. Đăng nhập để tiếp tục.</p>}
         </div>
         <footer className="form-footer">
           <span>© 2026 SupplyMind AI</span>

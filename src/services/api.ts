@@ -20,3 +20,17 @@ export function getApiError(error: unknown): string {
 export function isUnauthenticated(error: unknown): boolean {
   return axios.isAxiosError(error) && error.response?.status === 401;
 }
+
+export function getApiFieldErrors<T extends string>(error: unknown, fields: T[]): Partial<Record<T, string>> {
+  const result: Partial<Record<T, string>> = {};
+  if (!axios.isAxiosError<{ errors?: unknown }>(error)) return result;
+  const errors = error.response?.data?.errors;
+  if (!errors || typeof errors !== 'object' || Array.isArray(errors)) return result;
+  for (const field of fields) {
+    if (Object.hasOwn(errors, field)) {
+      const message = (errors as Record<string, unknown>)[field];
+      if (typeof message === 'string' && message) result[field] = message;
+    }
+  }
+  return result;
+}
