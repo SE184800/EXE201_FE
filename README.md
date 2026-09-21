@@ -25,7 +25,9 @@ App gọi `/auth/me` khi tải lại để khôi phục phiên. Backend kiểm t
 - `src/pages/login/LoginPage.tsx`: giao diện và kiểm tra form.
 - `src/pages/register/RegisterPage.tsx`: đăng ký, hiển thị lỗi dưới đúng ô và chuyển về login với username đã điền.
 - `src/validation/registration.ts`: chuẩn hóa dữ liệu, kiểm tra form; giữ đồng bộ với BE `services/registrationValidation.js`.
-- `src/pages/WorkspacePage.tsx`: trang chào sau đăng nhập theo role.
+- `src/pages/WorkspacePage.tsx`: trang chào sau đăng nhập cho các role chưa có module nghiệp vụ.
+- `src/pages/supplier/SupplierDashboard.tsx`: core flow Chủ vựa: thiết lập kho, danh mục và tồn kho, điều phối trạng thái đơn, KPI doanh thu.
+- `src/services/supplier.api.ts`: API client cho dashboard Chủ vựa.
 - `src/services`: Axios và hàm gọi API.
 - `src/types/auth.ts`: kiểu dữ liệu và ánh xạ role.
 - `src/components`: logo, icon dùng chung.
@@ -33,7 +35,7 @@ App gọi `/auth/me` khi tải lại để khôi phục phiên. Backend kiểm t
 
 Đăng ký công khai hỗ trợ Chủ tạp hóa và Chủ vựa. Backend kiểm tra lại toàn bộ dữ liệu và lưu tài khoản vào SQL Server. Mật khẩu không được chuyển qua URL hoặc lưu vào browser storage sau đăng ký. Username được chuyển bằng router state; người dùng nhập lại mật khẩu trên trang login.
 
-Các module nghiệp vụ trên trang chào được ghi rõ sắp có, chưa phải chức năng đã triển khai. Chưa có quên mật khẩu, xác minh email hay Google OAuth.
+AI Retail Assistant, khuyến mãi/chiết khấu và AI Trend Alert trên dashboard Chủ vựa được đánh dấu sắp có; chưa phải chức năng đã triển khai. Chưa có quên mật khẩu, xác minh email hay Google OAuth.
 
 ## Kiểm tra và triển khai
 

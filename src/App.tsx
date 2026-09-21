@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import LoginPage from './pages/login/LoginPage';
 import RegisterPage from './pages/register/RegisterPage';
 import WorkspacePage from './pages/WorkspacePage';
+import SupplierDashboard from './pages/supplier/SupplierDashboard';
 import Brand from './components/Brand';
 import { getMe } from './services/auth.api';
 import { getApiError, isUnauthenticated } from './services/api';
@@ -79,7 +80,7 @@ export default function App() {
             path={details.path}
             element={
               user && user.role === role ? (
-                <WorkspacePage user={user} onLogout={clearUser} />
+                role === 'SUPPLIER' ? <SupplierDashboard user={user} onLogout={clearUser} /> : <WorkspacePage user={user} onLogout={clearUser} />
               ) : (
                 <Navigate to={destination} replace />
               )
