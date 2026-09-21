@@ -28,6 +28,9 @@ App gọi `/auth/me` khi tải lại để khôi phục phiên. Backend kiểm t
 - `src/pages/WorkspacePage.tsx`: trang chào sau đăng nhập cho các role chưa có module nghiệp vụ.
 - `src/pages/supplier/SupplierDashboard.tsx`: core flow Chủ vựa: thiết lập kho, danh mục và tồn kho, điều phối trạng thái đơn, KPI doanh thu.
 - `src/services/supplier.api.ts`: API client cho dashboard Chủ vựa.
+- `src/pages/supplier/SupplierProducts.tsx`: `/supplier/products`, đăng/sửa/ẩn/đăng lại sản phẩm bán sỉ.
+- `src/pages/StoreCatalog.tsx`: `/store/catalog`, tạp hóa xem sản phẩm và thông tin chủ vựa, tìm kiếm/lọc/phân trang.
+- `src/pages/StoreInventory.tsx`, `StockActivity.tsx`: kho riêng, nhập/bán hàng, lịch sử và chat tra cứu của tiệm.
 - `src/services`: Axios và hàm gọi API.
 - `src/types/auth.ts`: kiểu dữ liệu và ánh xạ role.
 - `src/components`: logo, icon dùng chung.
@@ -36,6 +39,10 @@ App gọi `/auth/me` khi tải lại để khôi phục phiên. Backend kiểm t
 Đăng ký công khai hỗ trợ Chủ tạp hóa và Chủ vựa. Backend kiểm tra lại toàn bộ dữ liệu và lưu tài khoản vào SQL Server. Mật khẩu không được chuyển qua URL hoặc lưu vào browser storage sau đăng ký. Username được chuyển bằng router state; người dùng nhập lại mật khẩu trên trang login.
 
 AI Retail Assistant, khuyến mãi/chiết khấu và AI Trend Alert trên dashboard Chủ vựa được đánh dấu sắp có; chưa phải chức năng đã triển khai. Chưa có quên mật khẩu, xác minh email hay Google OAuth.
+
+Luồng kiểm tra: đăng nhập Chủ vựa → thiết lập gian hàng → Sản phẩm đăng bán → nhập tên, quy cách, giá, tồn, MOQ và bật hiển thị → Đăng bán sản phẩm. Đăng nhập Chủ tạp hóa → Tìm nguồn sỉ: thấy hàng cùng tên vựa, địa chỉ và bán kính giao. Hàng ẩn không xuất hiện; hàng hết tồn vẫn có nhãn hết hàng. Bấm tải lại nguồn hàng để lấy thay đổi mới. Chưa có nút đặt hàng; xem hàng không thay đổi kho của tiệm.
+
+Pull cả hai repo và chạy migration/generate BE trước khi thử các trang mới. Các form dùng API thật và báo lỗi khi BE hoặc SQL chưa sẵn sàng.
 
 ## Kiểm tra và triển khai
 

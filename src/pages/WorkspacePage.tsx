@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import './catalog.css';
 import Brand from '../components/Brand';
 import Icon from '../components/Icon';
 import StoreInventory from './StoreInventory';
@@ -103,7 +105,10 @@ export default function WorkspacePage({
             </div>
           </div>
         )}
-        {verified && !error && user.role === 'STORE_OWNER' && <StoreInventory onLogout={onLogout} />}
+        {verified && !error && user.role === 'STORE_OWNER' && <>
+          <section className="store-catalog-entry"><div><h2>Tìm nguồn hàng cho tiệm</h2><p>Xem sản phẩm và gian hàng của các chủ vựa đang đăng bán.</p></div><Link className="ghost-button catalog-link" to="/store/catalog">Tìm nguồn sỉ →</Link></section>
+          <StoreInventory onLogout={onLogout} />
+        </>}
         {verified && !error && user.role !== 'STORE_OWNER' && (
           <>
             <div className="workspace-section-title">

@@ -4,6 +4,8 @@ import LoginPage from './pages/login/LoginPage';
 import RegisterPage from './pages/register/RegisterPage';
 import WorkspacePage from './pages/WorkspacePage';
 import SupplierDashboard from './pages/supplier/SupplierDashboard';
+import SupplierProducts from './pages/supplier/SupplierProducts';
+import StoreCatalog from './pages/StoreCatalog';
 import Brand from './components/Brand';
 import { getMe } from './services/auth.api';
 import { getApiError, isUnauthenticated } from './services/api';
@@ -74,6 +76,8 @@ export default function App() {
           }
         />
         <Route path="/register" element={user ? <Navigate to={destination} replace /> : <RegisterPage />} />
+        <Route path="/supplier/products" element={user?.role === 'SUPPLIER' ? <SupplierProducts onLogout={clearUser} /> : <Navigate to={destination} replace />} />
+        <Route path="/store/catalog" element={user?.role === 'STORE_OWNER' ? <StoreCatalog onLogout={clearUser} /> : <Navigate to={destination} replace />} />
         {Object.entries(ROLE_DETAILS).map(([role, details]) => (
           <Route
             key={role}

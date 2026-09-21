@@ -42,7 +42,7 @@ export type SupplierDashboard = {
 };
 
 export type SupplierProfileInput = Omit<SupplierProfile, 'id'>;
-export type SupplierProductInput = Omit<SupplierProduct, 'id' | 'isActive' | 'createdAt' | 'updatedAt'>;
+export type SupplierProductInput = Omit<SupplierProduct, 'id' | 'createdAt' | 'updatedAt'>;
 
 export async function getSupplierDashboard(): Promise<SupplierDashboard> {
   const response = await api.get<SupplierDashboard>('/supplier/dashboard');
@@ -59,8 +59,8 @@ export async function createSupplierProduct(input: SupplierProductInput): Promis
   return response.data.product;
 }
 
-export async function updateSupplierProduct(id: number, input: SupplierProductInput): Promise<SupplierProduct> {
-  const response = await api.put<{ product: SupplierProduct }>(`/supplier/products/${id}`, input);
+export async function updateSupplierProduct(id: number, input: SupplierProductInput, expectedUpdatedAt: string): Promise<SupplierProduct> {
+  const response = await api.put<{ product: SupplierProduct }>(`/supplier/products/${id}`, { ...input, expectedUpdatedAt });
   return response.data.product;
 }
 
