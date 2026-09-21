@@ -600,6 +600,10 @@ input {
 .register-field .input-wrap { min-height: 48px; padding: 0 12px; }
 .register-field .input-wrap > input, .register-field .input-wrap > select { padding: 12px 0; }
 .register-field select { border: 0; outline: 0; background: transparent; width: 100%; color: #243f31; }
+.birth-date-input { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.2fr) auto minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; }
+.birth-date-input select, .birth-date-input input { min-width: 0; width: 100%; padding: 12px 0; border: 0; background: transparent; color: #243f31; }
+.birth-date-input span { color: #899282; }
+.birth-date-input select:focus-visible, .birth-date-input input:focus-visible { outline: 2px solid #759960; outline-offset: 2px; border-radius: 3px; }
 .register-password { width: 100%; display: flex; align-items: center; }
 .register-password input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; padding: 12px 0; }
 .register-password button { border: 0; background: transparent; color: #899282; padding: 7px; display: grid; place-items: center; }

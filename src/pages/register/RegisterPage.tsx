@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Brand from '../../components/Brand';
+import BirthDateInput from '../../components/BirthDateInput';
 import Icon from '../../components/Icon';
 import { getApiError, getApiFieldErrors } from '../../services/api';
 import { registerAccount, type RegistrationInput } from '../../services/auth.api';
 
 import {
-  normalizeRegistration, registrationFields, todayInVietnam,
+  normalizeRegistration, registrationFields,
   validateRegistration, type FieldErrors,
 } from '../../validation/registration';
 
@@ -120,8 +121,11 @@ export default function RegisterPage() {
                 <option value="STORE_OWNER">Chủ tạp hóa</option><option value="SUPPLIER">Chủ vựa</option>
               </select>
             </Field>
-            <Field label="Ngày tháng năm sinh" id="dateOfBirth" error={errors.dateOfBirth}>
-              <input {...inputProps('dateOfBirth')} type="date" value={values.dateOfBirth} onChange={(e) => update('dateOfBirth', e.target.value)} min="1900-01-01" max={todayInVietnam()} autoComplete="bday" />
+            <Field label="Ngày tháng năm sinh" id="dateOfBirth" error={errors.dateOfBirth}
+              description="Nhập năm trực tiếp hoặc bấm vào ô năm rồi cuộn chuột: mỗi nấc 5 năm.">
+              <BirthDateInput value={values.dateOfBirth} onChange={(value) => update('dateOfBirth', value)}
+                onBlur={inputProps('dateOfBirth').onBlur} disabled={submitting}
+                invalid={Boolean(errors.dateOfBirth)} describedBy={inputProps('dateOfBirth', true)['aria-describedby']} />
             </Field>
             <Field label="Mật khẩu" id="password" error={errors.password}
               description="Ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt (ví dụ @, #, !).">
