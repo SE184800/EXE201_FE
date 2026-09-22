@@ -1,4 +1,15 @@
 .catalog-link { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+.store-catalog { container-type: inline-size; }
+@container (max-width: 850px) {
+  .store-catalog .catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .store-catalog .catalog-search { grid-template-columns: 1fr 1fr; }
+  .store-catalog .catalog-search > label:first-child { grid-column: 1 / -1; }
+}
+@container (max-width: 520px) {
+  .store-catalog .catalog-grid, .store-catalog .catalog-search { grid-template-columns: 1fr; }
+  .store-catalog .catalog-search > label:first-child { grid-column: auto; }
+  .store-catalog .catalog-hero > svg { display: none; }
+}
 .catalog-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 30px; }
 .catalog-nav a { padding: 10px 16px; border: 1px solid transparent; border-radius: 9px; color: #53705e; font-size: 13px; text-decoration: none; font-weight: 650; }
 .catalog-nav a[aria-current], .catalog-nav a:hover { color: #204d38; border-color: #dbe6d5; background: #fff; }

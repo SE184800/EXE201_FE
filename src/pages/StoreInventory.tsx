@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import './store-inventory.css';
 import StockActivity from './StockActivity';
 import ProfilePage from './ProfilePage';
 import RestockPage from './RestockPage';
 import SalesCalendar from './SalesCalendar';
+import StoreCatalog from './StoreCatalog';
+import OrderList from '../components/OrderList';
 import Brand from '../components/Brand';
 import Icon from '../components/Icon';
 import type { AuthUser } from '../types/auth';
@@ -13,6 +16,18 @@ type Item = { purchasePrice: number | null; sellingPrice: number | null; id: num
 type Message = { from: 'bot' | 'user'; text: string; time?: string };
 const empty = { name: '', unit: 'lon', quantity: '0', purchasePrice: '', sellingPrice: '', expiryDate: '' };
 const examples = ['Coca còn bao nhiêu?', 'Hàng nào sắp hết hạn?', 'Ngày nào nên nhập hàng?', 'Cuối tuần nên nhập gì?'];
+const tabs = [
+  { id: 'overview', label: 'Tổng quan', icon: 'store' },
+  { id: 'inventory', label: 'Kho hàng', icon: 'box' },
+  { id: 'catalog', label: 'Tìm nguồn sỉ', icon: 'store' },
+  { id: 'orders', label: 'Đơn mua hàng', icon: 'box' },
+  { id: 'activity', label: 'Nhập / bán hàng', icon: 'arrow' },
+  { id: 'history', label: 'Lịch sử giao dịch', icon: 'check' },
+  { id: 'calendar', label: 'Lịch nhập dự kiến', icon: 'sparkle' },
+  { id: 'restock', label: 'Kế hoạch nhập', icon: 'sparkle' },
+  { id: 'profile', label: 'Thông tin cá nhân', icon: 'user' },
+] as const;
+type StoreTab = typeof tabs[number]['id'];
 
 export default function StoreInventory({ user, onLogout, onSignOut, signingOut }: { user: AuthUser; onLogout: () => void; onSignOut: () => void; signingOut: boolean }) {
   const [displayName, setDisplayName] = useState(user.name);
@@ -24,7 +39,10 @@ export default function StoreInventory({ user, onLogout, onSignOut, signingOut }
   const [editing, setEditing] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [revision, setRevision] = useState(0);
-  const [activeTab, setActiveTab] = useState<'overview' | 'inventory' | 'activity' | 'history' | 'profile' | 'restock' | 'calendar'>('overview');
+  const navigate = useNavigate();
+  const { '*': page = '' } = useParams();
+  const activeTab = tabs.find((tab) => tab.id === (page || 'overview'))?.id;
+  function setActiveTab(tab: StoreTab) { navigate(tab === 'overview' ? '/store' : `/store/${tab}`); }
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [chatOpen, setChatOpen] = useState(false);
@@ -53,8 +71,7 @@ export default function StoreInventory({ user, onLogout, onSignOut, signingOut }
   }, [accountOpen]);
 
   useEffect(() => {
-    const titles = { overview: 'Tổng quan', inventory: 'Kho hàng', activity: 'Nhập / bán hàng', history: 'Lịch sử giao dịch', profile: 'Thông tin cá nhân', restock: 'Kế hoạch nhập', calendar: 'Lịch nhập dự kiến' };
-    document.title = `${titles[activeTab]} · SupplyMind AI`;
+    document.title = `${tabs.find((tab) => tab.id === activeTab)?.label ?? 'Cửa hàng'} · SupplyMind AI`;
     return () => { document.title = 'SupplyMind AI'; };
   }, [activeTab]);
 
@@ -108,17 +125,9 @@ export default function StoreInventory({ user, onLogout, onSignOut, signingOut }
   const out = items.filter((item) => item.quantity === 0);
   const fold = (value: string) => value.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
   const visible = items.filter((item) => fold(item.name).includes(fold(search)) && (filter === 'all' || (filter === 'out' && item.quantity === 0) || (filter === 'soon' && soon.includes(item)) || (filter === 'expired' && expired.includes(item))));
-  const tabs = [
-    { id: 'overview', label: 'Tổng quan', icon: 'store' },
-    { id: 'inventory', label: 'Kho hàng', icon: 'box' },
-    { id: 'activity', label: 'Nhập / bán hàng', icon: 'arrow' },
-    { id: 'history', label: 'Lịch sử giao dịch', icon: 'check' },
-    { id: 'calendar', label: 'Lịch nhập dự kiến', icon: 'sparkle' },
-    { id: 'restock', label: 'Kế hoạch nhập', icon: 'sparkle' },
-    { id: 'profile', label: 'Thông tin cá nhân', icon: 'user' },
-  ] as const;
   function addProduct() { setEditing(null); setForm(empty); setError(''); editor.current?.showModal(); }
   function openFilter(value: string) { setFilter(value); setSearch(''); setActiveTab('inventory'); }
+  if (!activeTab) return <Navigate to="/store" replace />;
   return (
     <main className="store-dashboard">
       <aside className="store-sidebar">
@@ -132,12 +141,14 @@ export default function StoreInventory({ user, onLogout, onSignOut, signingOut }
       <div className="store-main">
         <header className="store-topbar"><div><span className="breadcrumb">Không gian làm việc</span><span className="breadcrumb-divider">/</span><strong>{tabs.find((tab) => tab.id === activeTab)?.label}</strong></div><div className="topbar-right"><span className="today-label">{new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span><div className="account-dropdown" ref={accountMenu} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setAccountOpen(false); }}><button ref={accountTrigger} className="topbar-account account-trigger" aria-expanded={accountOpen} aria-controls="account-options" onClick={() => setAccountOpen(!accountOpen)}><span className="online-dot" /><span>@{user.username}</span><span aria-hidden="true">⌄</span></button>{accountOpen && <div id="account-options" className="account-options"><button onClick={() => { setActiveTab('profile'); setAccountOpen(false); accountTrigger.current?.focus(); }}><Icon name="user" />Thông tin cá nhân</button><button className="account-signout" onClick={() => { setAccountOpen(false); onSignOut(); }} disabled={signingOut}><Icon name="logout" />{signingOut ? 'Đang đăng xuất…' : 'Đăng xuất'}</button></div>}</div></div></header>
         <div className="dashboard-content">
+          {activeTab === 'catalog' ? <StoreCatalog onLogout={onLogout} /> : activeTab === 'orders' ? <OrderList kind="store" onLogout={onLogout} /> : <>
           <div className="dashboard-title"><div><p className="dashboard-eyebrow">SUPPLYMIND · CỬA HÀNG THÔNG MINH</p><h1>{activeTab === 'overview' ? `Chào bạn, ${displayName.split(' ').at(-1)}!` : tabs.find((tab) => tab.id === activeTab)?.label}</h1><p>{activeTab === 'overview' ? 'Một góc nhìn rõ ràng hơn cho ngày kinh doanh của bạn.' : activeTab === 'inventory' ? 'Mỗi mặt hàng đều trong tầm kiểm soát.' : activeTab === 'activity' ? 'Ghi nhận nhanh, số tồn luôn theo sát cửa hàng.' : activeTab === 'restock' ? 'Ước tính sức bán, chuẩn bị nguồn hàng và lưu kế hoạch của bạn.' : activeTab === 'profile' ? 'Thông tin của bạn, luôn được cập nhật.' : 'Mọi thay đổi trong kho, được ghi lại rõ ràng.'}</p></div>{(activeTab === 'overview' || activeTab === 'inventory') && <button className="dash-primary" onClick={addProduct}><span>＋</span> Thêm sản phẩm</button>}</div>
           {error && !editor.current?.open && <p className="error-notice" role="alert">{error} <button className="text-button" onClick={() => void refresh()}>Thử lại</button></p>}
           {notice && <p className="inventory-notice" role="status">✓ {notice}</p>}
           <section hidden={activeTab === 'profile' || activeTab === 'restock' || activeTab === 'calendar'} className="metric-grid" aria-label="Tổng quan kho">
             {[{ label: 'Tổng mặt hàng', value: items.length, detail: 'Trong danh mục cửa hàng', icon: 'box', color: 'green', target: 'all' }, { label: 'Đã hết hàng', value: out.length, detail: 'Cần bổ sung vào kho', icon: 'store', color: 'blue', target: 'out' }, { label: 'Gần hết hạn', value: soon.length, detail: 'Hạn dùng trong 15 ngày tới', icon: 'leaf', color: 'amber', target: 'soon' }, { label: 'Đã quá hạn', value: expired.length, detail: 'Hàng còn tồn cần kiểm tra', icon: 'shield', color: 'rose', target: 'expired' }].map((metric) => <button className={`metric-card ${metric.color}`} key={metric.label} onClick={() => openFilter(metric.target)}><div><span className="metric-icon"><Icon name={metric.icon as 'box' | 'store' | 'leaf' | 'shield'} /></span><span className="metric-corner">↗</span></div><p>{metric.label}</p><strong>{loading ? '—' : metric.value.toString().padStart(2, '0')}</strong><small>{metric.detail}</small></button>)}
           </section>
+          </>}
           {activeTab === 'overview' && <>
             <section className="dashboard-hero"><div className="hero-copy"><span className="hero-pill"><span className="online-dot" /> MỖI NGÀY, CHỦ ĐỘNG HƠN</span><h2>Kho gọn gàng.<br />Kinh doanh nhẹ đầu.</h2><p>Biết mình còn gì, cần thêm gì và hàng nào cần chú ý.<br />Bắt đầu từ những cập nhật nhỏ mỗi ngày.</p><button onClick={() => setActiveTab('activity')}>Ghi nhận nhập / bán hàng <Icon name="arrow" /></button></div><div className="shop-illustration" aria-hidden="true"><div className="illustration-orbit" /><div className="shop-roof">supplymind market</div><div className="shop-awning"><i /><i /><i /><i /><i /><i /></div><div className="shop-building"><div className="shop-window"><span>▥</span><span>▥</span><span>▥</span><hr /><span>▥</span><span>▥</span><span>▥</span></div><div className="shop-door"><span>OPEN</span><i /></div></div><div className="shop-step" /><div className="illustration-tag"><Icon name="check" /> Chủ động mỗi ngày</div></div></section>
             <div className="overview-grid"><section className="dashboard-card attention-card"><div className="card-heading"><div><span className="section-kicker">ĐỪNG BỎ LỠ</span><h2>Hàng cần chú ý</h2></div><button className="dash-link" onClick={() => openFilter('soon')}>Xem kho ↗</button></div>{loading ? <p className="inventory-empty">Đang kiểm tra kho…</p> : [...expired, ...soon].length ? [...expired, ...soon].slice(0, 4).map((item) => <button className="attention-row" key={item.id} onClick={() => { setActiveTab('inventory'); edit(item); }}><span className={`product-avatar ${item.daysUntilExpiry! < 0 ? 'rose' : 'amber'}`}><Icon name="box" /></span><span><strong>{item.name}</strong><small>Còn {item.quantity} {item.unit}</small></span><span className={`status-pill ${item.daysUntilExpiry! < 0 ? 'danger' : 'warning'}`}>{item.expiryLabel}</span></button>) : <div className="calm-state"><span><Icon name="check" /></span><h3>Kho hôm nay khá ổn!</h3><p>Không có hàng còn tồn với hạn dùng đã nhập nằm trong diện cảnh báo.</p></div>}</section><section className="dashboard-card quick-card"><span className="section-kicker">THAO TÁC NHANH</span><h2>Bạn muốn làm gì?</h2><button onClick={addProduct}><span className="quick-symbol">＋</span><span><strong>Thêm mặt hàng mới</strong><small>Mở rộng danh mục cửa hàng</small></span><Icon name="arrow" /></button><button onClick={() => setActiveTab('history')}><span className="quick-symbol"><Icon name="check" /></span><span><strong>Xem lịch sử kho</strong><small>Theo dõi từng lần nhập, bán</small></span><Icon name="arrow" /></button><button onClick={() => setChatOpen(true)}><span className="quick-symbol"><Icon name="sparkle" /></span><span><strong>Hỏi trợ lý tồn kho</strong><small>Tra cứu nhanh bằng tiếng Việt</small></span><Icon name="arrow" /></button></section></div>

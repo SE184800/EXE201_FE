@@ -5,9 +5,12 @@ export type SupplierProfile = {
   businessName: string;
   warehouseAddress: string;
   deliveryRadiusKm: number;
+  deliveryFee: number;
 };
 
 export type SupplierProduct = {
+  category: string;
+  imageUrl: string | null;
   id: number;
   name: string;
   packaging: string;
@@ -20,6 +23,10 @@ export type SupplierProduct = {
 };
 
 export type SupplierOrder = {
+  recipientName: string | null;
+  recipientPhone: string | null;
+  deliveryAddress: string | null;
+  supplier?: { id: number; businessName: string };
   id: number;
   status: string;
   statusLabel: string;

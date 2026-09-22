@@ -64,7 +64,8 @@
 .store-dashboard { --forest:#214e3d; --ink:#233d32; --muted:#78837c; --line:#e8ece5; min-height:100svh; background:#f5f7f2; color:var(--ink); font-family:'Segoe UI',Arial,sans-serif; }
 .store-dashboard [hidden] { display:none !important; }
 .store-dashboard button { transition:background .18s,box-shadow .18s,transform .18s; }
-.store-sidebar { width:244px; position:fixed; inset:0 auto 0 0; display:flex; flex-direction:column; background:#fff; padding:30px 20px 18px; border-right:1px solid var(--line); z-index:20; }
+.store-sidebar { width:244px; position:fixed; inset:0 auto 0 0; display:flex; flex-direction:column; overflow-y:auto; background:#fff; padding:30px 20px 18px; border-right:1px solid var(--line); z-index:20; }
+.store-sidebar > * { flex-shrink:0; }
 .sidebar-brand { padding:0 8px 28px; }
 .sidebar-brand .brand { font-size:23px; letter-spacing:-1px; }
 .sidebar-brand>span { display:block; margin:8px 0 0 40px; font-size:8px; font-weight:700; letter-spacing:2px; color:#89958c; }

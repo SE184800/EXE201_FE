@@ -1,6 +1,4 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
-import Brand from '../components/Brand';
 import Icon from '../components/Icon';
 import { getApiError, isUnauthenticated } from '../services/api';
 import { getCatalog, getCatalogSuppliers, type CatalogPage } from '../services/catalog.api';
@@ -32,10 +30,7 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
   }, [filter, revision, onLogout]);
 
   function search(event: FormEvent) { event.preventDefault(); setLoading(true); setFilter({ q: q.trim(), supplierId, page: 1 }); }
-  return <main className="supplier-page">
-    <header className="supplier-header"><Brand /><Link className="ghost-button catalog-link" to="/store">← Kho cửa hàng</Link></header>
-    <section className="supplier-main">
-      <nav className="catalog-nav" aria-label="Chủ tạp hóa"><Link to="/store">Kho hàng & lịch sử</Link><Link to="/store/catalog" aria-current="page">Tìm nguồn sỉ</Link></nav>
+  return <section className="store-catalog" aria-label="Tìm nguồn sỉ">
       <div className="catalog-hero"><div><p className="form-eyebrow">KẾT NỐI NGUỒN HÀNG</p><h1>Tìm nguồn sỉ cho cửa hàng</h1><p>Khám phá sản phẩm và gian hàng đang đăng bán. So sánh giá, quy cách và số lượng đặt tối thiểu.</p></div><Icon name="store" /></div>
       <form className="supplier-panel catalog-search" onSubmit={search}>
         <label>Tìm sản phẩm hoặc chủ vựa<input type="search" maxLength={150} value={q} onChange={(event) => setQ(event.target.value)} placeholder="Ví dụ: gạo, nước ngọt, đại lý Minh Phát…" /></label>
@@ -53,6 +48,5 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
         </article>)}
       </div>}
       {!error && <div className="catalog-pagination"><button className="ghost-button" disabled={loading || filter.page === 1} onClick={() => { setLoading(true); setFilter({ ...filter, page: filter.page - 1 }); }}>Trang trước</button><span>Trang {filter.page}</span><button className="ghost-button" disabled={loading || !data.hasMore} onClick={() => { setLoading(true); setFilter({ ...filter, page: filter.page + 1 }); }}>Trang sau</button></div>}
-    </section>
-  </main>;
+  </section>;
 }
