@@ -6,6 +6,7 @@ import WorkspacePage from './pages/WorkspacePage';
 import SupplierDashboard from './pages/supplier/SupplierDashboard';
 import SupplierProducts from './pages/supplier/SupplierProducts';
 import Brand from './components/Brand';
+import AdminPage from './pages/admin/AdminPage';
 import { getMe } from './services/auth.api';
 import { getApiError, isUnauthenticated } from './services/api';
 import { ROLE_DETAILS, type AuthUser } from './types/auth';
@@ -79,10 +80,10 @@ export default function App() {
         {Object.entries(ROLE_DETAILS).map(([role, details]) => (
           <Route
             key={role}
-            path={role === 'STORE_OWNER' ? '/store/*' : details.path}
+            path={role === 'STORE_OWNER' ? '/store/*' : role === 'ADMIN' ? '/admin/*' : details.path}
             element={
               user && user.role === role ? (
-                role === 'SUPPLIER' ? <SupplierDashboard user={user} onLogout={clearUser} /> : <WorkspacePage user={user} onLogout={clearUser} />
+                role === 'SUPPLIER' ? <SupplierDashboard user={user} onLogout={clearUser} /> : role === 'ADMIN' ? <AdminPage user={user} onLogout={clearUser} /> : <WorkspacePage user={user} onLogout={clearUser} />
               ) : (
                 <Navigate to={destination} replace />
               )

@@ -6,6 +6,13 @@ export type SupplierProfile = {
   warehouseAddress: string;
   deliveryRadiusKm: number;
   deliveryFee: number;
+  region: string | null;
+  taxCode: string | null;
+  legalRepresentative: string | null;
+  verificationDocumentUrl: string | null;
+  verificationStatus: string;
+  verificationNote: string | null;
+  verificationVersion: number;
 };
 
 export type SupplierProduct = {
@@ -23,6 +30,9 @@ export type SupplierProduct = {
 };
 
 export type SupplierOrder = {
+  commissionRate: number | null;
+  commissionAmount: number | null;
+  commissionPaidAt: string | null;
   recipientName: string | null;
   recipientPhone: string | null;
   deliveryAddress: string | null;
@@ -48,7 +58,7 @@ export type SupplierDashboard = {
   summary: { productCount: number; lowStockCount: number; pendingOrders: number; deliveredRevenue: number };
 };
 
-export type SupplierProfileInput = Omit<SupplierProfile, 'id'>;
+export type SupplierProfileInput = Pick<SupplierProfile, 'businessName' | 'warehouseAddress' | 'deliveryRadiusKm' | 'deliveryFee'>;
 export type SupplierProductInput = Omit<SupplierProduct, 'id' | 'createdAt' | 'updatedAt'>;
 
 export async function getSupplierDashboard(): Promise<SupplierDashboard> {

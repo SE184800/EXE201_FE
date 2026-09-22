@@ -17,6 +17,7 @@ export default function RestockPage({ revision, onLogout }: { revision: number; 
   const [items, setItems] = useState<Forecast[]>([]), [quantities, setQuantities] = useState<Record<number, string>>({});
   const [name, setName] = useState('Kế hoạch nhập hàng'), [note, setNote] = useState('');
   const [editing, setEditing] = useState<Plan | null>(null);
+  const [recommendationRunId, setRecommendationRunId] = useState<string | null>(null);
   const [requestId, setRequestId] = useState(() => crypto.randomUUID());
   const [plans, setPlans] = useState<Plan[]>([]), [page, setPage] = useState(1), [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true), [saving, setSaving] = useState(false);
@@ -24,7 +25,7 @@ export default function RestockPage({ revision, onLogout }: { revision: number; 
   useEffect(() => {
     let active = true;
     api.get(view === 'forecast' ? `/restock/forecast?horizonDays=${horizon}&safetyDays=${safety}` : `/restock/plans?page=${page}`)
-      .then(({ data }) => { if (!active) return; if (view === 'forecast') setItems(data.items); else { setPlans(data.plans); setHasMore(data.hasMore); } })
+      .then(({ data }) => { if (!active) return; if (view === 'forecast') { setItems(data.items); setRecommendationRunId(data.recommendationRunId); } else { setPlans(data.plans); setHasMore(data.hasMore); } })
       .catch((e: unknown) => { if (active) { if (view === 'forecast') setItems([]); setError(getApiError(e)); if (isUnauthenticated(e)) onLogout(); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -36,7 +37,7 @@ export default function RestockPage({ revision, onLogout }: { revision: number; 
     event.preventDefault(); setSaving(true); setError(''); setMessage('');
     const lines = Object.entries(quantities).filter(([, q]) => q !== '' && Number(q) !== 0).map(([itemId, quantity]) => ({ itemId: Number(itemId), quantity: Number(quantity) }));
     try {
-      const payload = { requestId, name, note, horizonDays: horizon, safetyDays: safety, lines, expectedUpdatedAt: editing?.updatedAt };
+      const payload = { recommendationRunId, requestId, name, note, horizonDays: horizon, safetyDays: safety, lines, expectedUpdatedAt: editing?.updatedAt };
       const { data } = editing ? await api.put(`/restock/plans/${editing.id}`, payload) : await api.post('/restock/plans', payload);
       setEditing(data.plan); setMessage('Đã lưu kế hoạch. Tồn kho không thay đổi.');
     } catch (e) { setError(getApiError(e)); if (isUnauthenticated(e)) onLogout(); }

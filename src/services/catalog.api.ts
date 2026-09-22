@@ -14,3 +14,4 @@ export async function getCatalog(params: { q: string; supplierId?: string; page:
 export async function getCatalogSuppliers(signal?: AbortSignal) {
   return (await api.get<{ suppliers: SupplierProfile[] }>('/catalog/suppliers', { signal })).data.suppliers;
 }
+export const PRODUCT_CATEGORIES = ['Đồ uống', 'Thực phẩm', 'Gia vị', 'Hóa phẩm', 'Chăm sóc cá nhân', 'Khác'];
