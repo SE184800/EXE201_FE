@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, withTransientRetry } from './api';
 import { ROLE_DETAILS, type AuthUser } from '../types/auth';
 
 function parseUser(value: unknown): AuthUser {
@@ -24,7 +24,10 @@ export async function login(input: {
   username: string;
   password: string;
 }): Promise<AuthUser> {
-  const response = await api.post<{ user: unknown }>('/auth/login', input);
+  const response = await withTransientRetry(
+    () => api.post<{ user: unknown }>('/auth/login', input),
+    1,
+  );
   return parseUser(response.data.user);
 }
 
@@ -45,7 +48,9 @@ export async function registerAccount(input: RegistrationInput): Promise<AuthUse
 }
 
 export async function getMe(): Promise<AuthUser> {
-  const response = await api.get<{ user: unknown }>('/auth/me');
+  const response = await withTransientRetry(() =>
+    api.get<{ user: unknown }>('/auth/me'),
+  );
   return parseUser(response.data.user);
 }
 

@@ -5,17 +5,16 @@ import RegisterPage from './pages/register/RegisterPage';
 import WorkspacePage from './pages/WorkspacePage';
 import SupplierDashboard from './pages/supplier/SupplierDashboard';
 import SupplierProducts from './pages/supplier/SupplierProducts';
+<<<<<<< Updated upstream
 import Brand from './components/Brand';
 import AdminPage from './pages/admin/AdminPage';
+=======
+>>>>>>> Stashed changes
 import { getMe } from './services/auth.api';
-import { getApiError, isUnauthenticated } from './services/api';
 import { ROLE_DETAILS, type AuthUser } from './types/auth';
 
 export default function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [checking, setChecking] = useState(true);
-  const [error, setError] = useState('');
-  const [attempt, setAttempt] = useState(0);
   const clearUser = useCallback(() => setUser(null), []);
 
   useEffect(() => {
@@ -24,43 +23,15 @@ export default function App() {
       .then((currentUser) => {
         if (active) setUser(currentUser);
       })
-      .catch((issue: unknown) => {
-        if (active && !isUnauthenticated(issue)) setError(getApiError(issue));
-      })
-      .finally(() => {
-        if (active) setChecking(false);
+      .catch(() => {
+        // A failed probe must not hide the login screen while a cold database
+        // or a serverless function is waking up.
       });
     return () => {
       active = false;
     };
-  }, [attempt]);
+  }, []);
 
-  if (checking || error)
-    return (
-      <main className="session-screen">
-        <Brand />
-        {error ? (
-          <>
-            <p role="alert">{error}</p>
-            <button
-              className="primary-button"
-              onClick={() => {
-                setError('');
-                setChecking(true);
-                setAttempt(attempt + 1);
-              }}
-            >
-              Kết nối lại
-            </button>
-            <button className="text-button" onClick={() => setError('')}>
-              Về trang đăng nhập
-            </button>
-          </>
-        ) : (
-          <p role="status">Đang kiểm tra phiên đăng nhập…</p>
-        )}
-      </main>
-    );
   const destination = user ? ROLE_DETAILS[user.role].path : '/login';
   return (
     <BrowserRouter>
