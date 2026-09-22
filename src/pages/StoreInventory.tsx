@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-<<<<<<< Updated upstream
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-=======
-import { useNavigate } from 'react-router-dom';
->>>>>>> Stashed changes
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import './store-inventory.css';
 import StockActivity from './StockActivity';
@@ -44,7 +40,6 @@ export default function StoreInventory({ user, onLogout, onSignOut, signingOut }
   const [editing, setEditing] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [revision, setRevision] = useState(0);
-  const navigate = useNavigate();
   const { '*': page = '' } = useParams();
   const activeTab = tabs.find((tab) => tab.id === (page || 'overview'))?.id;
   function setActiveTab(tab: StoreTab) { navigate(tab === 'overview' ? '/store' : `/store/${tab}`); }

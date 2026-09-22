@@ -6,7 +6,16 @@ import { getApiError, getApiFieldErrors, isUnauthenticated } from '../../service
 import { createSupplierProduct, getSupplierDashboard, updateSupplierProduct, type SupplierProduct, type SupplierProductInput, type SupplierProfile } from '../../services/supplier.api';
 import '../../pages/catalog.css';
 
-const empty: SupplierProductInput = { name: '', packaging: '', wholesalePrice: 0, stockQty: 0, moq: 1, isActive: true };
+const empty: SupplierProductInput = {
+  category: '',
+  imageUrl: null,
+  name: '',
+  packaging: '',
+  wholesalePrice: 0,
+  stockQty: 0,
+  moq: 1,
+  isActive: true
+};
 const money = (value: number) => value.toLocaleString('vi-VN') + ' ₫';
 
 export default function SupplierProducts({ onLogout }: { onLogout: () => void }) {
@@ -40,7 +49,16 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
   }
   function edit(item: SupplierProduct) {
     setEditing(item);
-    setForm({ name: item.name, packaging: item.packaging, wholesalePrice: item.wholesalePrice, stockQty: item.stockQty, moq: item.moq, isActive: item.isActive });
+    setForm({
+  category: item.category,
+  imageUrl: item.imageUrl,
+  name: item.name,
+  packaging: item.packaging,
+  wholesalePrice: item.wholesalePrice,
+  stockQty: item.stockQty,
+  moq: item.moq,
+  isActive: item.isActive
+});
     setFields({}); setError(''); setNotice('');
     nameInput.current?.focus();
   }
@@ -58,16 +76,45 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
       if (isUnauthenticated(issue)) onLogout();
     } finally { lock.current = false; setBusy(false); }
   }
-  async function toggle(item: SupplierProduct) {
-    if (lock.current) return;
-    lock.current = true; setBusy(true); setError(''); setNotice('');
-    try {
-      const saved = await updateSupplierProduct(item.id, { name: item.name, packaging: item.packaging, wholesalePrice: item.wholesalePrice, stockQty: item.stockQty, moq: item.moq, isActive: !item.isActive }, item.updatedAt);
-      remember(saved);
-      setNotice(saved.isActive ? 'Đã đăng lại sản phẩm cho chủ tạp hóa xem.' : 'Đã ẩn sản phẩm khỏi Tìm nguồn sỉ.');
-    } catch (issue) { setError(getApiError(issue)); if (isUnauthenticated(issue)) onLogout(); }
-    finally { lock.current = false; setBusy(false); }
+async function toggle(item: SupplierProduct) {
+  if (lock.current) return;
+
+  lock.current = true;
+  setBusy(true);
+  setError('');
+  setNotice('');
+
+  try {
+    const saved = await updateSupplierProduct(
+      item.id,
+      {
+        category: item.category,
+        imageUrl: item.imageUrl,
+        name: item.name,
+        packaging: item.packaging,
+        wholesalePrice: item.wholesalePrice,
+        stockQty: item.stockQty,
+        moq: item.moq,
+        isActive: !item.isActive
+      },
+      item.updatedAt
+    );
+
+    remember(saved);
+
+    setNotice(
+      saved.isActive
+        ? 'Đã đăng lại sản phẩm cho chủ tạp hóa xem.'
+        : 'Đã ẩn sản phẩm khỏi Tìm nguồn sỉ.'
+    );
+  } catch (issue) {
+    setError(getApiError(issue));
+    if (isUnauthenticated(issue)) onLogout();
+  } finally {
+    lock.current = false;
+    setBusy(false);
   }
+}
   return <main className="supplier-page">
     <header className="supplier-header"><Brand /><Link className="ghost-button catalog-link" to="/supplier">← Tổng quan chủ vựa</Link></header>
     <section className="supplier-main">

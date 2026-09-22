@@ -13,7 +13,12 @@ import {
 } from '../../services/supplier.api';
 import type { AuthUser } from '../../types/auth';
 
-const EMPTY_PROFILE: SupplierProfileInput = { businessName: '', warehouseAddress: '', deliveryRadiusKm: 10 };
+const EMPTY_PROFILE: SupplierProfileInput = {
+  businessName: '',
+  warehouseAddress: '',
+  deliveryRadiusKm: 10,
+  deliveryFee: 0
+};
 const STATUS_ACTIONS: Record<string, { next: string; label: string }> = {
   PENDING: { next: 'APPROVED', label: 'Duyệt đơn' },
   APPROVED: { next: 'PREPARING', label: 'Bắt đầu soạn' },
@@ -47,7 +52,12 @@ export default function SupplierDashboard({ user, onLogout }: { user: AuthUser; 
     try {
       const next = await getSupplierDashboard();
       setData(next);
-      if (next.profile) setProfile({ businessName: next.profile.businessName, warehouseAddress: next.profile.warehouseAddress, deliveryRadiusKm: next.profile.deliveryRadiusKm });
+     if (next.profile) setProfile({
+  businessName: next.profile.businessName,
+  warehouseAddress: next.profile.warehouseAddress,
+  deliveryRadiusKm: next.profile.deliveryRadiusKm,
+  deliveryFee: next.profile.deliveryFee
+});
       setError('');
     } catch (issue) {
       if (isUnauthenticated(issue)) return onLogout();
@@ -71,7 +81,12 @@ export default function SupplierDashboard({ user, onLogout }: { user: AuthUser; 
       setProfileErrors({});
       setEditingProfile(false);
     } catch (issue) {
-      setProfileErrors(getApiFieldErrors(issue, ['businessName', 'warehouseAddress', 'deliveryRadiusKm']));
+      setProfileErrors(getApiFieldErrors(issue, [
+  'businessName',
+  'warehouseAddress',
+  'deliveryRadiusKm',
+  'deliveryFee'
+]));
       setNotice(getApiError(issue));
     } finally { setBusy(false); }
   }
