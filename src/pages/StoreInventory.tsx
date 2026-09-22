@@ -30,6 +30,7 @@ const tabs = [
 type StoreTab = typeof tabs[number]['id'];
 
 export default function StoreInventory({ user, onLogout, onSignOut, signingOut }: { user: AuthUser; onLogout: () => void; onSignOut: () => void; signingOut: boolean }) {
+  const navigate = useNavigate();
   const [displayName, setDisplayName] = useState(user.name);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +40,6 @@ export default function StoreInventory({ user, onLogout, onSignOut, signingOut }
   const [editing, setEditing] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [revision, setRevision] = useState(0);
-  const navigate = useNavigate();
   const { '*': page = '' } = useParams();
   const activeTab = tabs.find((tab) => tab.id === (page || 'overview'))?.id;
   function setActiveTab(tab: StoreTab) { navigate(tab === 'overview' ? '/store' : `/store/${tab}`); }
