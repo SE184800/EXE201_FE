@@ -5,11 +5,7 @@ import RegisterPage from './pages/register/RegisterPage';
 import WorkspacePage from './pages/WorkspacePage';
 import SupplierDashboard from './pages/supplier/SupplierDashboard';
 import SupplierProducts from './pages/supplier/SupplierProducts';
-<<<<<<< Updated upstream
-import Brand from './components/Brand';
 import AdminPage from './pages/admin/AdminPage';
-=======
->>>>>>> Stashed changes
 import { getMe } from './services/auth.api';
 import { ROLE_DETAILS, type AuthUser } from './types/auth';
 
