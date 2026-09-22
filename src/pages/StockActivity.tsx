@@ -5,7 +5,7 @@ type Product = { id: number; name: string; unit: string; quantity: number };
 type Movement = { id: string; type: string; quantityChange: number; quantityBefore: number; quantityAfter: number; productName: string; unit: string; note: string; createdAt: string };
 const labels: Record<string, string> = { SALE: 'Bán hàng', RECEIPT: 'Nhập hàng', ADJUSTMENT: 'Điều chỉnh', OPENING: 'Tồn đầu kỳ' };
 
-export default function StockActivity({ items, revision, onChanged, onLogout }: { items: Product[]; revision: number; onChanged: () => Promise<void>; onLogout: () => void }) {
+export default function StockActivity({ items, revision, onChanged, onLogout, mode = 'activity' }: { items: Product[]; revision: number; onChanged: () => Promise<void>; onLogout: () => void; mode?: 'activity' | 'history' }) {
   const [itemId, setItemId] = useState('');
   const [type, setType] = useState('SALE');
   const [quantity, setQuantity] = useState('1');
@@ -46,6 +46,7 @@ export default function StockActivity({ items, revision, onChanged, onLogout }: 
     finally { lock.current = false; setBusy(false); }
   }
   return <section className="stock-activity" aria-label="Nhập xuất kho">
+    <div hidden={mode !== 'activity'} className="transaction-form-card">
     <h3>Ghi nhận nhập / bán hàng</h3>
     <p className="stock-help">Nhập hàng sẽ cộng tồn; bán hàng sẽ trừ tồn và lưu vào lịch sử. Chưa ghi nhận thanh toán hoặc doanh thu.</p>
     <form className="inventory-form" onSubmit={submit}>
@@ -56,8 +57,11 @@ export default function StockActivity({ items, revision, onChanged, onLogout }: 
       <div className="inventory-actions"><button className="primary-button" disabled={busy || !selected}>{busy ? 'Đang ghi nhận…' : type === 'SALE' ? 'Ghi nhận bán hàng' : 'Ghi nhận nhập hàng'}</button></div>
     </form>
     {error && <p className="error-notice" role="alert">{error}</p>}{notice && <p className="inventory-notice" role="status">{notice}</p>}
+    </div>
+    <div hidden={mode !== 'history'}>
     <div className="inventory-heading"><h3>Lịch sử nhập / xuất</h3><button className="inventory-refresh" disabled={loading} onClick={() => { setLoading(true); setReload((value) => value + 1); }}>Tải lại lịch sử</button></div>
     {historyError ? <p role="alert" className="error-notice">{historyError}</p> : loading ? <p role="status">Đang tải lịch sử…</p> : !rows.length ? <p className="inventory-empty">Chưa có giao dịch ở trang này.</p> : <div className="inventory-table-wrap"><table className="inventory-table"><thead><tr><th>Thời gian</th><th>Sản phẩm</th><th>Thao tác</th><th>Thay đổi</th><th>Tồn trước → sau</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{new Date(row.createdAt).toLocaleString('vi-VN')}</td><td><strong>{row.productName}</strong><small>{row.note}</small></td><td>{labels[row.type] || row.type}</td><td className={row.quantityChange < 0 ? 'stock-out' : 'stock-in'}>{row.quantityChange > 0 ? '+' : ''}{row.quantityChange} {row.unit}</td><td>{row.quantityBefore} → {row.quantityAfter}</td></tr>)}</tbody></table></div>}
     <div className="stock-pagination"><button className="secondary-button" disabled={loading || page === 1} onClick={() => { setLoading(true); setPage(page - 1); }}>Trước</button><span>Trang {page}</span><button className="secondary-button" disabled={loading || !more} onClick={() => { setLoading(true); setPage(page + 1); }}>Sau</button></div>
+    </div>
   </section>;
 }
