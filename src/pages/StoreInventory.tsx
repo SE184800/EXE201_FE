@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+<<<<<<< Updated upstream
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
+=======
+import { useNavigate } from 'react-router-dom';
+>>>>>>> Stashed changes
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import './store-inventory.css';
 import StockActivity from './StockActivity';
@@ -30,6 +34,7 @@ const tabs = [
 type StoreTab = typeof tabs[number]['id'];
 
 export default function StoreInventory({ user, onLogout, onSignOut, signingOut }: { user: AuthUser; onLogout: () => void; onSignOut: () => void; signingOut: boolean }) {
+  const navigate = useNavigate();
   const [displayName, setDisplayName] = useState(user.name);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -135,6 +140,7 @@ export default function StoreInventory({ user, onLogout, onSignOut, signingOut }
         <div className="sidebar-shop"><span className="shop-symbol"><Icon name="store" /></span><div><strong>Cửa hàng của bạn</strong><small>Không gian chủ tạp hóa</small></div><span className="online-dot" /></div>
         <p className="nav-caption">QUẢN LÝ CỬA HÀNG</p>
         <nav aria-label="Điều hướng cửa hàng">{tabs.filter((tab) => tab.id !== 'profile').map((tab) => <button key={tab.id} aria-current={activeTab === tab.id ? 'page' : undefined} onClick={() => setActiveTab(tab.id)}><Icon name={tab.icon} /><span>{tab.label}</span>{tab.id === 'inventory' && <small>{items.length}</small>}</button>)}</nav>
+        <nav aria-label="Nguồn hàng"><button onClick={() => navigate('/store/catalog')}><Icon name="store" /><span>Tìm nguồn sỉ</span></button></nav>
         <div className="sidebar-tip"><span className="tip-icon"><Icon name="sparkle" /></span><strong>Một câu hỏi.<br />Nắm rõ cả kho.</strong><p>Tra cứu số lượng và hạn dùng với trợ lý cửa hàng.</p><button onClick={() => setChatOpen(true)}>Hỏi trợ lý <Icon name="arrow" /></button></div>
         <div className="sidebar-bottom"><span className="avatar">{displayName.slice(0, 1).toUpperCase()}</span><div><strong>{displayName}</strong><small>Chủ tạp hóa</small></div><button aria-label="Đăng xuất" title="Đăng xuất" onClick={onSignOut} disabled={signingOut}><Icon name="logout" /></button></div>
       </aside>

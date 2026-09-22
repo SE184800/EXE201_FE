@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react';
+<<<<<<< Updated upstream
+=======
+import './catalog.css';
+>>>>>>> Stashed changes
 import Brand from '../components/Brand';
 import Icon from '../components/Icon';
 import StoreInventory from './StoreInventory';
