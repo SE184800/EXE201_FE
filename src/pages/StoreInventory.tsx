@@ -3,6 +3,7 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import './store-inventory.css';
 import StockActivity from './StockActivity';
+import StoreRevenue from './StoreRevenue';
 import ProfilePage from './ProfilePage';
 import RestockPage from './RestockPage';
 import SalesCalendar from './SalesCalendar';
@@ -23,6 +24,7 @@ const tabs = [
   { id: 'orders', label: 'Đơn mua hàng', icon: 'box' },
   { id: 'activity', label: 'Nhập / bán hàng', icon: 'arrow' },
   { id: 'history', label: 'Lịch sử giao dịch', icon: 'check' },
+  { id: 'revenue', label: 'Doanh thu', icon: 'chart' },
   { id: 'calendar', label: 'Lịch nhập dự kiến', icon: 'sparkle' },
   { id: 'restock', label: 'Kế hoạch nhập', icon: 'sparkle' },
   { id: 'profile', label: 'Thông tin cá nhân', icon: 'user' },
@@ -141,7 +143,7 @@ export default function StoreInventory({ user, onLogout, onSignOut, signingOut }
       <div className="store-main">
         <header className="store-topbar"><div><span className="breadcrumb">Không gian làm việc</span><span className="breadcrumb-divider">/</span><strong>{tabs.find((tab) => tab.id === activeTab)?.label}</strong></div><div className="topbar-right"><span className="today-label">{new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span><div className="account-dropdown" ref={accountMenu} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setAccountOpen(false); }}><button ref={accountTrigger} className="topbar-account account-trigger" aria-expanded={accountOpen} aria-controls="account-options" onClick={() => setAccountOpen(!accountOpen)}><span className="online-dot" /><span>@{user.username}</span><span aria-hidden="true">⌄</span></button>{accountOpen && <div id="account-options" className="account-options"><button onClick={() => { setActiveTab('profile'); setAccountOpen(false); accountTrigger.current?.focus(); }}><Icon name="user" />Thông tin cá nhân</button><button className="account-signout" onClick={() => { setAccountOpen(false); onSignOut(); }} disabled={signingOut}><Icon name="logout" />{signingOut ? 'Đang đăng xuất…' : 'Đăng xuất'}</button></div>}</div></div></header>
         <div className="dashboard-content">
-          {activeTab === 'catalog' ? <StoreCatalog onLogout={onLogout} /> : activeTab === 'orders' ? <OrderList kind="store" onLogout={onLogout} /> : <>
+          {activeTab === 'catalog' ? <StoreCatalog onLogout={onLogout} /> : activeTab === 'orders' ? <OrderList kind="store" onLogout={onLogout} /> : activeTab === 'revenue' ? <StoreRevenue onLogout={onLogout} /> : <>
           <div className="dashboard-title"><div><p className="dashboard-eyebrow">SUPPLYMIND · CỬA HÀNG THÔNG MINH</p><h1>{activeTab === 'overview' ? `Chào bạn, ${displayName.split(' ').at(-1)}!` : tabs.find((tab) => tab.id === activeTab)?.label}</h1><p>{activeTab === 'overview' ? 'Một góc nhìn rõ ràng hơn cho ngày kinh doanh của bạn.' : activeTab === 'inventory' ? 'Mỗi mặt hàng đều trong tầm kiểm soát.' : activeTab === 'activity' ? 'Ghi nhận nhanh, số tồn luôn theo sát cửa hàng.' : activeTab === 'restock' ? 'Ước tính sức bán, chuẩn bị nguồn hàng và lưu kế hoạch của bạn.' : activeTab === 'profile' ? 'Thông tin của bạn, luôn được cập nhật.' : 'Mọi thay đổi trong kho, được ghi lại rõ ràng.'}</p></div>{(activeTab === 'overview' || activeTab === 'inventory') && <button className="dash-primary" onClick={addProduct}><span>＋</span> Thêm sản phẩm</button>}</div>
           {error && !editor.current?.open && <p className="error-notice" role="alert">{error} <button className="text-button" onClick={() => void refresh()}>Thử lại</button></p>}
           {notice && <p className="inventory-notice" role="status">✓ {notice}</p>}
