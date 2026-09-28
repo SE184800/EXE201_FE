@@ -42,6 +42,8 @@
 .catalog-vendor p { font-size: 12px; color: #728477; line-height: 1.6; margin: 8px 0; }
 .catalog-vendor small { font-size: 11px; color: #738c78; }
 .catalog-vendor button { display: block; margin-top: 18px; font-size: 12px; }
+.catalog-phone { display: block; margin-top: 9px; color: #286246; font-size: 12px; font-weight: 650; text-decoration: none; }
+.catalog-phone:hover { text-decoration: underline; }
 .catalog-empty { padding: 42px 24px; text-align: center; }
 .catalog-empty > svg { width: 32px; height: 32px; margin-bottom: 12px; }
 .catalog-empty h2, .catalog-empty h3 { font-size: 20px; margin: 0 0 12px; }

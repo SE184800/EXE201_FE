@@ -6,6 +6,7 @@ export type SupplierProfile = {
   warehouseAddress: string;
   deliveryRadiusKm: number;
   deliveryFee: number;
+  phone?: string | null;
   region: string | null;
   taxCode: string | null;
   legalRepresentative: string | null;
@@ -45,6 +46,7 @@ export type SupplierOrder = {
   total: number;
   note: string | null;
   rejectReason: string | null;
+  complaint?: { id: number; reason: string; description: string; status: string; response: string | null } | null;
   createdAt: string;
   updatedAt: string;
   buyer: { id: number; name: string; username: string };

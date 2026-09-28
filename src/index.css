@@ -1038,3 +1038,27 @@ input {
   .supplier-profile-strip .ghost-button { width: 100%; }
   .supplier-coming-grid { grid-template-columns: 1fr; }
 }
+
+/* Supplier workspace polish: match the store dashboard's spacing and high-contrast controls. */
+.supplier-page { background: #f3f7ef; }
+.supplier-header { min-height: 72px; box-shadow: 0 2px 12px #24493608; }
+.supplier-header .brand { font-size: 21px; }
+.supplier-main { padding-top: 34px; }
+.supplier-main > .catalog-nav { padding: 7px; margin-bottom: 26px; border: 1px solid #dfe9dc; border-radius: 13px; background: #fff; box-shadow: 0 5px 18px #24493608; }
+.supplier-main > .catalog-nav a { min-width: 170px; text-align: center; padding: 12px 18px; font-size: 13px; }
+.supplier-main > .catalog-nav a[aria-current] { background: #20553f; color: #fff; border-color: #20553f; }
+.supplier-heading h1 { font-size: clamp(27px, 3.3vw, 38px); }
+.supplier-heading .ghost-button, .supplier-profile-strip .ghost-button { min-height: 42px; }
+.supplier-kpi { min-height: 126px; display: flex; flex-direction: column; justify-content: center; }
+.supplier-kpi strong { font-size: 29px; color: #1d4e3a; }
+.supplier-panel, .order-card, .supplier-coming { box-shadow: 0 8px 25px #234c300b; }
+.order-card { padding: 18px; background: #fff; }
+.order-card:hover { border-color: #bdd5c0; box-shadow: 0 9px 24px #234c3014; }
+.table-button, .primary-small { min-height: 36px; padding: 8px 12px; }
+.supplier-content-grid { gap: 22px; }
+.supplier-coming-grid { margin-top: 24px; }
+@media (max-width: 620px) {
+  .supplier-main > .catalog-nav { display: grid; grid-template-columns: 1fr 1fr; }
+  .supplier-main > .catalog-nav a { min-width: 0; }
+}
+
