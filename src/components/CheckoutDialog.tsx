@@ -7,13 +7,15 @@ export default function CheckoutDialog({ product, onClose, onLogout }: { product
   const dialog = useRef<HTMLDialogElement>(null);
   const lock = useRef(false);
   const request = useRef<{ signature: string; id: string } | null>(null);
-  const [form, setForm] = useState({ quantity: product.moq, recipientName: '', recipientPhone: '', deliveryAddress: '', note: '' });
+  const [form, setForm] = useState({ quantity: product.moq, recipientName: '', recipientPhone: '', deliveryAddress: '', note: '', proposedPrice: '' });
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [orderId, setOrderId] = useState<number | null>(null);
   useEffect(() => { dialog.current?.showModal(); }, []);
   async function submit(event: FormEvent) {
     event.preventDefault(); if (lock.current) return;
     lock.current = true; setBusy(true); setError('');
-    const body = { ...form, expectedDeliveryFee: product.supplier.deliveryFee, lines: [{ productId: product.id, quantity: form.quantity, expectedUpdatedAt: product.updatedAt }] };
+    const proposed = form.proposedPrice === '' ? null : Number(form.proposedPrice);
+    const dealNote = proposed === null ? form.note : `[ĐỀ NGHỊ DEAL] Giá đề xuất: ${money(proposed)}/ ${product.packaging}.${form.note ? ` ${form.note}` : ''}`;
+    const body = { quantity: form.quantity, recipientName: form.recipientName, recipientPhone: form.recipientPhone, deliveryAddress: form.deliveryAddress, note: dealNote, expectedDeliveryFee: product.supplier.deliveryFee, lines: [{ productId: product.id, quantity: form.quantity, expectedUpdatedAt: product.updatedAt }] };
     const signature = JSON.stringify(body);
     if (request.current?.signature !== signature) request.current = { signature, id: crypto.randomUUID() };
     try { const { data } = await api.post('/orders', { ...body, requestId: request.current.id }); setOrderId(data.order.id); }
@@ -28,6 +30,7 @@ export default function CheckoutDialog({ product, onClose, onLogout }: { product
       <label>Người nhận<input required minLength={2} maxLength={100} autoComplete="name" disabled={busy} value={form.recipientName} onChange={e => setForm({ ...form, recipientName: e.target.value })} /></label>
       <label>Số điện thoại<input type="tel" required maxLength={30} autoComplete="tel" disabled={busy} value={form.recipientPhone} onChange={e => setForm({ ...form, recipientPhone: e.target.value })} /></label>
       <label className="inventory-name">Địa chỉ nhận hàng<input required minLength={10} maxLength={500} autoComplete="street-address" disabled={busy} value={form.deliveryAddress} onChange={e => setForm({ ...form, deliveryAddress: e.target.value })} /></label>
+      <label className="inventory-name">Giá đề xuất khi mua số lượng lớn (không bắt buộc)<input type="number" min="0" max={product.wholesalePrice} step="1" disabled={busy} value={form.proposedPrice} onChange={e => setForm({ ...form, proposedPrice: e.target.value })} placeholder={`Giá niêm yết: ${money(product.wholesalePrice)}`} /><small>Chủ vựa sẽ xem đề nghị này và phản hồi khi duyệt đơn.</small></label>
       <label className="inventory-name">Ghi chú<input maxLength={500} disabled={busy} value={form.note} onChange={e => setForm({ ...form, note: e.target.value })} /></label>
       <div className="checkout-total inventory-name"><span>Tiền hàng: {money(product.wholesalePrice * form.quantity)}</span><span>Phí giao: {money(product.supplier.deliveryFee)}</span><strong>Tổng COD: {money(product.wholesalePrice * form.quantity + product.supplier.deliveryFee)}</strong><small>Thanh toán khi nhận hàng. Đơn có hiệu lực khi chủ vựa duyệt.</small></div>
       {error && <p role="alert" className="error-notice inventory-name">{error}</p>}

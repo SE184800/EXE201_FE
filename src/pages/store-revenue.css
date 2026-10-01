@@ -1,0 +1,43 @@
+.store-revenue { display:grid; grid-template-columns:minmax(0,1fr); gap:22px; min-width:0; }
+.store-revenue>* { min-width:0; }
+.store-revenue .dashboard-title { margin-bottom:0; }
+.store-revenue .dash-primary { text-decoration:none; }
+.revenue-filters { display:grid; gap:18px; }
+.revenue-presets { display:flex; flex-wrap:wrap; gap:8px; }
+.revenue-presets button { border:1px solid #e1e8da; border-radius:8px; padding:9px 15px; background:#fff; color:#52664a; font-size:12px; }
+.revenue-presets button[aria-pressed=true] { background:#eaf2df; border-color:#c9d9b7; color:#315431; font-weight:650; }
+.revenue-filters form { display:flex; align-items:end; flex-wrap:wrap; gap:12px; }
+.revenue-filters label { display:grid; gap:7px; color:#65765d; font-size:12px; }
+.revenue-filters input { min-width:0; padding:10px 12px; border:1px solid #dfe7d8; background:#fbfcf8; border-radius:8px; color:#2a4838; font:inherit; }
+.revenue-note { color:#6e7e66; font-size:12px; line-height:1.7; margin:0; }
+.revenue-period { margin:0; font-size:12px; color:#697c61; }
+.revenue-warning { margin:0; border:1px solid #e8d7a4; border-radius:12px; padding:15px 18px; color:#775b24; background:#fff8e8; font-size:12px; line-height:1.8; }
+.revenue-metrics { display:grid; grid-template-columns:1.6fr 1fr 1fr; gap:16px; }
+.revenue-metrics article { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.revenue-metrics article>span { font-size:12px; color:#6b7e60; }
+.revenue-metrics article>strong { font-size:clamp(22px,2.5vw,34px); font-weight:650; line-height:1.35; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.revenue-metrics article>small { font-size:11px; color:#788a6c; line-height:1.6; }
+.revenue-metrics .revenue-total { color:white; background:#224e3c; border-color:#224e3c; }
+.revenue-metrics .revenue-total>span,.revenue-metrics .revenue-total>small { color:#c6d7b8; }
+.revenue-chart { overflow:hidden; min-width:0; }
+.revenue-chart-scroll { overflow-x:auto; }
+.revenue-bars { display:flex; gap:7px; padding:12px 3px 8px; }
+.revenue-day { flex:1; min-width:16px; text-align:center; border-radius:5px; }
+.revenue-day:focus-visible { outline:2px solid #517c42; outline-offset:1px; }
+.revenue-bar-track { height:160px; display:flex; align-items:end; border-bottom:1px solid #dce6d4; background:repeating-linear-gradient(to top,transparent 0,transparent 39px,#eef2e9 40px); }
+.revenue-bar { background:#709158; width:100%; border-radius:4px 4px 0 0; }
+.revenue-day:hover .revenue-bar,.revenue-day:focus .revenue-bar { background:#214e3d; }
+.revenue-day>small { display:block; font-size:8px; color:#718368; margin-top:10px; white-space:nowrap; }
+.revenue-daily-data { margin-top:14px; font-size:12px; color:#527447; }
+.revenue-daily-data summary { cursor:pointer; padding:8px 0; }
+.store-revenue .inventory-table-wrap { max-width:100%; }
+.store-revenue .inventory-table th { background:#f7f9f3; }
+.store-revenue .inventory-table th,.store-revenue .inventory-table td { padding:14px; }
+.store-revenue .inventory-table td { font-size:12px; overflow-wrap:anywhere; }
+.revenue-money { color:#27563b; font-weight:650; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.revenue-unknown { color:#997433; }
+.revenue-loading,.revenue-empty { text-align:center; padding:34px 22px; }
+.revenue-empty>svg { color:#7c9568; width:34px; height:34px; }
+.revenue-empty p { font-size:12px; line-height:1.8; color:#728369; }
+@media(max-width:1100px) { .revenue-metrics { grid-template-columns:1fr 1fr; }.revenue-total { grid-column:1/-1; } }
+@media(max-width:600px) { .store-revenue { gap:16px; }.store-revenue .dashboard-title { flex-direction:column; }.revenue-filters form { display:grid; grid-template-columns:1fr 1fr; }.revenue-filters input { width:100%; max-width:100%; }.revenue-metrics { gap:10px; }.revenue-metrics article { padding:16px; }.revenue-metrics article>strong { font-size:25px; }.revenue-presets button { flex:1; padding:9px; font-size:11px; }.revenue-bar-track { height:125px; } }

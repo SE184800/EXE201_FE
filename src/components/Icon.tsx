@@ -7,6 +7,7 @@ type IconName =
   | 'eyeOff'
   | 'store'
   | 'box'
+  | 'chart'
   | 'shield'
   | 'check'
   | 'logout'
@@ -15,6 +16,7 @@ type IconName =
   
 
 const paths: Record<IconName, string> = {
+  chart: 'M4 3v18h17M8 17v-5m5 5V8m5 9V4',
   leaf: 'M19 4c-8-1-14 2-14 8a6 6 0 0 0 6 6c6 0 9-6 8-14ZM5 20 15 10M9 16v-5m0 5h5',
   arrow: 'M4 12h16m-6-6 6 6-6 6',
   user: 'M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21v-2a8 8 0 0 1 16 0v2',

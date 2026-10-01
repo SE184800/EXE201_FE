@@ -49,7 +49,7 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
           <span className="supplier-panel-label">{product.packaging}</span><h2>{product.name}</h2>
           <strong className="catalog-price">{product.wholesalePrice.toLocaleString('vi-VN')} ₫ <small>/ {product.packaging}</small></strong>
           <dl className="catalog-facts"><div><dt>Đặt tối thiểu</dt><dd>{product.moq} × {product.packaging}</dd></div><div><dt>Tồn tại vựa</dt><dd>{product.stockQty} × {product.packaging}</dd></div></dl>
-          <div className="catalog-vendor"><strong>{product.supplier.businessName}</strong><p>{product.supplier.warehouseAddress}</p><small>Bán kính giao hàng: {product.supplier.deliveryRadiusKm} km</small><button className="text-button" onClick={() => { setQ(''); setSupplierId(String(product.supplier.id)); setLoading(true); setFilter({ ...filter, q: '', supplierId: String(product.supplier.id), page: 1 }); }}>Xem hàng của vựa này →</button></div>
+          <div className="catalog-vendor"><strong>{product.supplier.businessName}</strong><p>{product.supplier.warehouseAddress}</p><small>Bán kính giao hàng: {product.supplier.deliveryRadiusKm} km</small>{product.supplier.phone && <a className="catalog-phone" href={`tel:${product.supplier.phone}`}>☎ Liên hệ chủ vựa: {product.supplier.phone}</a>}<button className="text-button" onClick={() => { setQ(''); setSupplierId(String(product.supplier.id)); setLoading(true); setFilter({ ...filter, q: '', supplierId: String(product.supplier.id), page: 1 }); }}>Xem hàng của vựa này →</button></div>
           <button className="primary-button" disabled={product.stockQty < product.moq} onClick={() => setSelected(product)}>Đặt hàng từ vựa</button>
         </article>)}
       </div>}

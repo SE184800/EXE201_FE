@@ -72,7 +72,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
   return <main className="supplier-page">
     <header className="supplier-header"><Brand /><Link className="ghost-button catalog-link" to="/supplier">← Tổng quan chủ vựa</Link></header>
     <section className="supplier-main">
-      <nav className="catalog-nav" aria-label="Chủ vựa"><Link to="/supplier">Tổng quan & đơn hàng</Link><Link to="/supplier/products" aria-current="page">Sản phẩm đăng bán</Link></nav>
+      <nav className="catalog-nav" aria-label="Chủ vựa"><Link to="/supplier">Tổng quan & đơn hàng</Link><Link to="/supplier/products" aria-current="page">Sản phẩm đăng bán</Link><Link to="/supplier/inventory">Kho hàng</Link></nav>
       <div className="supplier-heading"><div><p className="form-eyebrow">GIAN HÀNG CỦA BẠN</p><h1>Sản phẩm đăng bán</h1><p className="form-description">Đưa nguồn hàng sỉ của {profile?.businessName || 'gian hàng'} đến các tiệm tạp hóa.</p></div><button className="ghost-button" disabled={loading || busy} onClick={() => { setLoading(true); setRevision((value) => value + 1); }}>Tải lại sản phẩm</button></div>
       {loadError && <p className="error-notice" role="alert">{loadError}</p>}
       {loading ? <p role="status">Đang tải gian hàng…</p> : !loadError && !profile ? <section className="supplier-panel catalog-empty"><Icon name="store" /><h2>Thiết lập gian hàng trước khi đăng bán</h2><p>Thêm tên vựa, địa chỉ kho và bán kính giao hàng để tiệm tạp hóa biết nguồn cung.</p><Link className="primary-button catalog-link" to="/supplier">Thiết lập gian hàng</Link></section> : !loadError && <>
