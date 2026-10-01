@@ -135,6 +135,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
         <Link to="/supplier">Tổng quan</Link>
         <Link to="/supplier/products" aria-current="page">Sản phẩm đăng bán</Link>
         <Link to="/supplier/orders">Đơn hàng</Link>
+        <Link to="/supplier/inventory">Kho hàng</Link>
       </nav>
       <div className="supplier-heading"><div><p className="form-eyebrow">GIAN HÀNG CỦA BẠN</p><h1>Sản phẩm đăng bán</h1><p className="form-description">Đưa nguồn hàng sỉ của {profile?.businessName || 'gian hàng'} đến các tiệm tạp hóa.</p></div><button className="ghost-button" disabled={loading || busy} onClick={() => { setLoading(true); setRevision((value) => value + 1); }}>Tải lại sản phẩm</button></div>
       {loadError && <p className="error-notice" role="alert">{loadError}</p>}

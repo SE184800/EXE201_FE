@@ -110,6 +110,7 @@ export default function SupplierOrders({ user, onLogout }: { user?: AuthUser; on
           <Link to="/supplier">Tổng quan</Link>
           <Link to="/supplier/products">Sản phẩm đăng bán</Link>
           <Link to="/supplier/orders" aria-current="page">Đơn hàng</Link>
+          <Link to="/supplier/inventory">Kho hàng</Link>
         </nav>
         <div className="supplier-heading">
           <div>

@@ -78,6 +78,7 @@ export default function SupplierDashboard({ user, onLogout }: { user: AuthUser; 
           <Link to="/supplier" aria-current="page">Tổng quan</Link>
           <Link to="/supplier/products">Sản phẩm đăng bán</Link>
           <Link to="/supplier/orders">Đơn hàng</Link>
+          <Link to="/supplier/inventory">Kho hàng</Link>
         </nav>
         <div className="supplier-heading"><div><p className="form-eyebrow">WHOLESALE SUPPLIER</p><h1>{data?.profile ? `Xin chào, ${user.name}` : 'Thiết lập gian hàng sỉ'}</h1><p className="form-description">{data?.profile ? 'Theo dõi hàng hóa, đơn hàng và hoạt động bán sỉ trong một nơi.' : 'Hoàn thiện thông tin kho để bắt đầu nhận đơn từ các tiệm tạp hóa.'}</p></div><button className="ghost-button" onClick={() => void load()} disabled={busy}>↻ Làm mới</button></div>
         {notice && <p className={noticeError ? 'error-notice' : 'supplier-success'} role={noticeError ? 'alert' : 'status'}>{notice}</p>}
