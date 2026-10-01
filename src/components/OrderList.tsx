@@ -2,8 +2,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import type { SupplierOrder } from '../services/supplier.api';
 
-const statuses = { PENDING: 'Chờ duyệt', APPROVED: 'Đã duyệt', PREPARING: 'Đang chuẩn bị', SHIPPING: 'Đang vận chuyển', DELIVERED: 'Đã giao', REJECTED: 'Đã từ chối' };
-const actions: Record<string, string> = { PENDING: 'Duyệt đơn', APPROVED: 'Bắt đầu soạn', PREPARING: 'Bàn giao vận chuyển', SHIPPING: 'Xác nhận đã giao & thu COD' };
+const statuses = { PENDING: 'Chờ duyệt', APPROVED: 'Đã duyệt', PREPARING: 'Đang chuẩn bị', SHIPPING: 'Đang vận chuyển', ISSUE_HANDLING: 'Tiếp nhận xử lý vấn đề', DELIVERED: 'Đã giao', REJECTED: 'Đã từ chối' };
+const actions: Record<string, string> = { PENDING: 'Duyệt đơn', APPROVED: 'Bắt đầu soạn', PREPARING: 'Bàn giao vận chuyển', SHIPPING: 'Tiếp nhận xử lý vấn đề', ISSUE_HANDLING: 'Xác nhận đã giao & thu COD' };
 const money = (n: number) => n.toLocaleString('vi-VN') + ' ₫';
 type Props = { kind: 'store' | 'supplier'; onLogout: () => void; revision?: number; busy?: boolean; onStatus?: (order: SupplierOrder, forcedStatus?: string) => void };
 

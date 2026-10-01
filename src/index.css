@@ -989,6 +989,7 @@ input {
 .order-pending { color: #a86815 !important; background: #fff1d6; }
 .order-approved, .order-preparing { color: #386a58 !important; background: #e5f2e7; }
 .order-shipping { color: #446f9d !important; background: #e7f0fb; }
+.order-issue_handling { color: #9a6b2f !important; background: #fef3e0; }
 .order-delivered { color: #34734a !important; background: #dff2e2; }
 .order-rejected { color: #a64b43 !important; background: #fde8e4; }
 .order-items { display: grid; gap: 5px; margin: 13px 0; padding: 10px 0; border-top: 1px dashed #dce5db; border-bottom: 1px dashed #dce5db; color: #5d7064; font-size: 11px; }
