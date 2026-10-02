@@ -136,8 +136,9 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
       <header className="supplier-header"><Brand /><Link className="ghost-button catalog-link" to="/supplier">← Tổng quan chủ vựa</Link></header>
       <section className="supplier-main dashboard-content">
         <nav className="catalog-nav" aria-label="Chủ vựa">
-          <Link to="/supplier">Tổng quan & đơn hàng</Link>
+          <Link to="/supplier">Tổng quan</Link>
           <Link to="/supplier/products">Sản phẩm đăng bán</Link>
+          <Link to="/supplier/orders">Đơn hàng</Link>
           <Link to="/supplier/inventory" aria-current="page">Kho hàng</Link>
         </nav>
         

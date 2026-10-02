@@ -5,8 +5,8 @@ import RegisterPage from './pages/register/RegisterPage';
 import WorkspacePage from './pages/WorkspacePage';
 import SupplierDashboard from './pages/supplier/SupplierDashboard';
 import SupplierProducts from './pages/supplier/SupplierProducts';
+import SupplierOrders from './pages/supplier/SupplierOrders';
 import SupplierInventory from './pages/supplier/SupplierInventory';
-
 import AdminPage from './pages/admin/AdminPage';
 import { getMe } from './services/auth.api';
 import { ROLE_DETAILS, type AuthUser } from './types/auth';
@@ -52,6 +52,7 @@ export default function App() {
         <Route path="/register" element={user ? <Navigate to={destination} replace /> : <RegisterPage />} />
         <Route path="/supplier/inventory" element={user?.role === 'SUPPLIER' ? <SupplierInventory onLogout={clearUser} /> : checkingSession && !user ? restoreSession : <Navigate to={destination} replace />} />
         <Route path="/supplier/products" element={user?.role === 'SUPPLIER' ? <SupplierProducts onLogout={clearUser} /> : checkingSession && !user ? restoreSession : <Navigate to={destination} replace />} />
+        <Route path="/supplier/orders" element={user?.role === 'SUPPLIER' ? <SupplierOrders user={user} onLogout={clearUser} /> : checkingSession && !user ? restoreSession : <Navigate to={destination} replace />} />
         {Object.entries(ROLE_DETAILS).map(([role, details]) => (
           <Route
             key={role}

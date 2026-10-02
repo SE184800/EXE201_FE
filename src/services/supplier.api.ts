@@ -46,7 +46,7 @@ export type SupplierOrder = {
   total: number;
   note: string | null;
   rejectReason: string | null;
-  complaint?: { id: number; reason: string; description: string; status: string; response: string | null } | null;
+  complaint?: { id: number; reason: string; description: string; imageUrl?: string | null; status: string; response: string | null } | null;
   createdAt: string;
   updatedAt: string;
   buyer: { id: number; name: string; username: string };
@@ -92,3 +92,13 @@ export async function updateSupplierOrderStatus(id: number, status: string, reje
   const response = await api.patch<{ order: SupplierOrder }>(`/supplier/orders/${id}/status`, { status, rejectReason });
   return response.data.order;
 }
+
+export async function uploadSupplierProductImage(file: File): Promise<string> {
+  const formData = new FormData();
+  formData.append('image', file);
+  const response = await api.post<{ success: boolean; imageUrl: string }>('/supplier/upload-image', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return response.data.imageUrl;
+}
+

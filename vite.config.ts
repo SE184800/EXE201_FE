@@ -10,7 +10,10 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     open: '/login',
-    proxy: { '/api': { target: 'http://localhost:5000', changeOrigin: true } },
+    proxy: {
+      '/api': { target: 'http://localhost:5000', changeOrigin: true },
+      '/uploads': { target: 'http://localhost:5000', changeOrigin: true },
+    },
   },
   plugins: [react(), tailwindcss()],
   resolve: {

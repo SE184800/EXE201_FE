@@ -1,10 +1,18 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
 import { PRODUCT_CATEGORIES } from '../../services/catalog.api';
 import { getApiError, getApiFieldErrors, isUnauthenticated } from '../../services/api';
-import { createSupplierProduct, getSupplierDashboard, updateSupplierProduct, type SupplierProduct, type SupplierProductInput, type SupplierProfile } from '../../services/supplier.api';
+import {
+  createSupplierProduct,
+  getSupplierDashboard,
+  updateSupplierProduct,
+  uploadSupplierProductImage,
+  type SupplierProduct,
+  type SupplierProductInput,
+  type SupplierProfile,
+} from '../../services/supplier.api';
 import '../../pages/catalog.css';
 
 const empty: SupplierProductInput = { category: 'Khác', imageUrl: null, name: '', packaging: '', wholesalePrice: 0, stockQty: 0, moq: 1, isActive: true };
@@ -21,9 +29,12 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState<SupplierProduct | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const [revision, setRevision] = useState(0);
   const lock = useRef(false);
   const nameInput = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     document.title = 'SupplyMind AI · Sản phẩm đăng bán';
@@ -42,10 +53,58 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
   function edit(item: SupplierProduct) {
     setEditing(item);
     setForm({ category: item.category, imageUrl: item.imageUrl, name: item.name, packaging: item.packaging, wholesalePrice: item.wholesalePrice, stockQty: item.stockQty, moq: item.moq, isActive: item.isActive });
-    setFields({}); setError(''); setNotice('');
+    setFields({});
+    setError('');
+    setNotice('');
+    setUploadError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
     nameInput.current?.focus();
   }
-  function cancel() { setEditing(null); setForm(empty); setFields({}); setError(''); }
+  function cancel() {
+    setEditing(null);
+    setForm(empty);
+    setFields({});
+    setError('');
+    setUploadError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  async function handleFileSelect(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Chỉ hỗ trợ file ảnh (JPG, PNG, WEBP, GIF).');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setUploadError('Kích thước ảnh tối đa là 5MB.');
+      return;
+    }
+    setUploading(true);
+    setUploadError('');
+    try {
+      const url = await uploadSupplierProductImage(file);
+      setForm((current) => ({ ...current, imageUrl: url }));
+      setFields((current) => {
+        const copy = { ...current };
+        delete copy.imageUrl;
+        return copy;
+      });
+    } catch (issue) {
+      setUploadError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  function handleRemoveImage() {
+    setForm((current) => ({ ...current, imageUrl: null }));
+    setUploadError('');
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
   async function save(event: FormEvent) {
     event.preventDefault();
     if (lock.current) return;
@@ -72,7 +131,12 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
   return <main className="supplier-page">
     <header className="supplier-header"><Brand /><Link className="ghost-button catalog-link" to="/supplier">← Tổng quan chủ vựa</Link></header>
     <section className="supplier-main">
-      <nav className="catalog-nav" aria-label="Chủ vựa"><Link to="/supplier">Tổng quan & đơn hàng</Link><Link to="/supplier/products" aria-current="page">Sản phẩm đăng bán</Link><Link to="/supplier/inventory">Kho hàng</Link></nav>
+      <nav className="catalog-nav" aria-label="Chủ vựa">
+        <Link to="/supplier">Tổng quan</Link>
+        <Link to="/supplier/products" aria-current="page">Sản phẩm đăng bán</Link>
+        <Link to="/supplier/orders">Đơn hàng</Link>
+        <Link to="/supplier/inventory">Kho hàng</Link>
+      </nav>
       <div className="supplier-heading"><div><p className="form-eyebrow">GIAN HÀNG CỦA BẠN</p><h1>Sản phẩm đăng bán</h1><p className="form-description">Đưa nguồn hàng sỉ của {profile?.businessName || 'gian hàng'} đến các tiệm tạp hóa.</p></div><button className="ghost-button" disabled={loading || busy} onClick={() => { setLoading(true); setRevision((value) => value + 1); }}>Tải lại sản phẩm</button></div>
       {loadError && <p className="error-notice" role="alert">{loadError}</p>}
       {loading ? <p role="status">Đang tải gian hàng…</p> : !loadError && !profile ? <section className="supplier-panel catalog-empty"><Icon name="store" /><h2>Thiết lập gian hàng trước khi đăng bán</h2><p>Thêm tên vựa, địa chỉ kho và bán kính giao hàng để tiệm tạp hóa biết nguồn cung.</p><Link className="primary-button catalog-link" to="/supplier">Thiết lập gian hàng</Link></section> : !loadError && <>
@@ -80,7 +144,66 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
         {profile?.verificationStatus !== 'APPROVED' && <p className="catalog-hint">Gian hàng chưa được xác minh. Sản phẩm được lưu để chuẩn bị; hãy gửi hồ sơ tại Tổng quan chủ vựa.</p>}<div className="publish-layout">
           <form className="supplier-panel publish-form" onSubmit={save}>
             <div className="supplier-panel-title"><div><span className="supplier-panel-label">{editing ? 'CẬP NHẬT' : 'THÊM MẶT HÀNG'}</span><h2>{editing ? 'Sửa sản phẩm' : 'Đăng sản phẩm mới'}</h2></div><Icon name="box" /></div>
-            <div className="supplier-form-grid"><label className="supplier-field supplier-field-full">Danh mục<select value={form.category} disabled={busy} onChange={e => setForm({ ...form, category: e.target.value })}>{PRODUCT_CATEGORIES.map(category => <option key={category}>{category}</option>)}</select></label><label className="supplier-field supplier-field-full">Ảnh sản phẩm (HTTPS, không bắt buộc)<input type="url" maxLength={1000} value={form.imageUrl || ''} disabled={busy} onChange={e => setForm({ ...form, imageUrl: e.target.value })} placeholder="https://…" />{fields.imageUrl && <small>{fields.imageUrl}</small>}</label>
+            <div className="supplier-form-grid"><label className="supplier-field supplier-field-full">Danh mục<select value={form.category} disabled={busy} onChange={e => setForm({ ...form, category: e.target.value })}>{PRODUCT_CATEGORIES.map(category => <option key={category}>{category}</option>)}</select></label>
+              <div className="supplier-field supplier-field-full">
+                <span>Ảnh sản phẩm (không bắt buộc)</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  disabled={busy || uploading}
+                  style={{ display: 'none' }}
+                  onChange={handleFileSelect}
+                />
+                {form.imageUrl ? (
+                  <div className="image-upload-preview">
+                    <img src={form.imageUrl} alt="Ảnh sản phẩm" />
+                    <div className="image-upload-info">
+                      <span className="image-upload-status">✓ Đã tải ảnh lên</span>
+                      <div className="image-upload-actions">
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          style={{ padding: '6px 12px', fontSize: '12px' }}
+                          disabled={busy || uploading}
+                          onClick={() => fileInputRef.current?.click()}
+                        >
+                          {uploading ? 'Đang tải…' : 'Đổi ảnh khác'}
+                        </button>
+                        <button
+                          type="button"
+                          className="danger-text"
+                          disabled={busy || uploading}
+                          onClick={handleRemoveImage}
+                        >
+                          Xóa ảnh
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    className={`image-upload-zone ${uploading ? 'uploading' : ''}`}
+                    onClick={() => !busy && !uploading && fileInputRef.current?.click()}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        fileInputRef.current?.click();
+                      }
+                    }}
+                  >
+                    <Icon name="box" />
+                    <div>
+                      <strong>{uploading ? 'Đang tải ảnh lên…' : 'Bấm để tải ảnh sản phẩm lên'}</strong>
+                      <p className="catalog-hint">Hỗ trợ JPG, PNG, WEBP, GIF tối đa 5MB</p>
+                    </div>
+                  </div>
+                )}
+                {uploadError && <small className="error-notice" style={{ marginTop: '6px', display: 'block' }}>{uploadError}</small>}
+                {fields.imageUrl && <small>{fields.imageUrl}</small>}
+              </div>
               <label className="supplier-field supplier-field-full">Tên sản phẩm<input ref={nameInput} required minLength={2} maxLength={150} value={form.name} disabled={busy} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Nước ngọt Coca Cola 330ml" />{fields.name && <small>{fields.name}</small>}</label>
               <label className="supplier-field supplier-field-full">Quy cách / đơn vị bán<input required maxLength={50} value={form.packaging} disabled={busy} onChange={(event) => setForm({ ...form, packaging: event.target.value })} placeholder="Thùng 24 lon, bao 25kg…" />{fields.packaging && <small>{fields.packaging}</small>}</label>
               <label className="supplier-field supplier-field-full">Giá sỉ mỗi đơn vị (VNĐ)<input required type="number" min="0.01" max="1000000000" step="0.01" value={form.wholesalePrice || ''} disabled={busy} onChange={(event) => setForm({ ...form, wholesalePrice: Number(event.target.value) })} placeholder="180000" />{fields.wholesalePrice && <small>{fields.wholesalePrice}</small>}</label>
@@ -89,16 +212,25 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
               <label className="publish-checkbox"><input type="checkbox" checked={form.isActive} disabled={busy} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} /><span>Mở bán sau khi gian hàng được xác minh</span></label>
             </div>
             <p className="catalog-hint">Giá, tồn kho và MOQ tính theo quy cách bán đã nhập. Bỏ chọn hiển thị để lưu sản phẩm ở trạng thái ẩn.</p>
-            <div className="product-form-actions"><button className="primary-button" disabled={busy}>{busy ? 'Đang lưu…' : editing ? 'Lưu thay đổi' : form.isActive ? 'Đăng bán sản phẩm' : 'Lưu sản phẩm ẩn'}</button>{editing && <button type="button" className="ghost-button" disabled={busy} onClick={cancel}>Hủy sửa</button>}</div>
+            <div className="product-form-actions"><button className="primary-button" disabled={busy || uploading}>{busy ? 'Đang lưu…' : editing ? 'Lưu thay đổi' : form.isActive ? 'Đăng bán sản phẩm' : 'Lưu sản phẩm ẩn'}</button>{editing && <button type="button" className="ghost-button" disabled={busy || uploading} onClick={cancel}>Hủy sửa</button>}</div>
           </form>
           <section aria-label="Sản phẩm của gian hàng" className="publish-list">
             <div className="supplier-panel-title"><div><span className="supplier-panel-label">DANH MỤC CỦA BẠN</span><h2>{products.length} sản phẩm</h2></div><span className="supplier-count">{products.filter((item) => item.isActive).length} đang hiển thị</span></div>
             {!products.length && <div className="supplier-panel catalog-empty"><Icon name="box" /><h3>Bắt đầu với mặt hàng đầu tiên</h3><p>Điền thông tin và bấm Đăng bán sản phẩm. Hàng sẽ xuất hiện bên chủ tạp hóa khi gian hàng đã được xác minh.</p></div>}
             {products.map((item) => <article className="supplier-panel publish-item" key={item.id} aria-label={item.name}>
-              <div className="publish-item-heading"><div><span className="supplier-panel-label">{item.packaging}</span><h3>{item.name}</h3></div><span className={`catalog-badge ${item.isActive ? '' : 'muted'}`}>{item.isActive ? (profile?.verificationStatus === 'APPROVED' ? 'Đang hiển thị' : 'Chờ xác minh') : 'Đang ẩn'}</span></div>
-              <strong className="catalog-price">{money(item.wholesalePrice)} <small>/ {item.packaging}</small></strong>
-              <p className="catalog-hint">Tồn: {item.stockQty} · MOQ: {item.moq} {item.stockQty === 0 ? '· Hết hàng' : ''}</p>
-              <div className="publish-item-actions"><button className="ghost-button" disabled={busy} onClick={() => edit(item)}>Sửa sản phẩm</button><button className="ghost-button" disabled={busy || editing !== null} onClick={() => void toggle(item)}>{item.isActive ? 'Ẩn sản phẩm' : 'Đăng lại'}</button></div>
+              <div className="publish-item-layout">
+                {item.imageUrl && (
+                  <div className="publish-item-thumb">
+                    <img src={item.imageUrl} alt={item.name} loading="lazy" />
+                  </div>
+                )}
+                <div className="publish-item-body">
+                  <div className="publish-item-heading"><div><span className="supplier-panel-label">{item.packaging}</span><h3>{item.name}</h3></div><span className={`catalog-badge ${item.isActive ? '' : 'muted'}`}>{item.isActive ? (profile?.verificationStatus === 'APPROVED' ? 'Đang hiển thị' : 'Chờ xác minh') : 'Đang ẩn'}</span></div>
+                  <strong className="catalog-price">{money(item.wholesalePrice)} <small>/ {item.packaging}</small></strong>
+                  <p className="catalog-hint">Tồn: {item.stockQty} · MOQ: {item.moq} {item.stockQty === 0 ? '· Hết hàng' : ''}</p>
+                  <div className="publish-item-actions"><button className="ghost-button" disabled={busy} onClick={() => edit(item)}>Sửa sản phẩm</button><button className="ghost-button" disabled={busy || editing !== null} onClick={() => void toggle(item)}>{item.isActive ? 'Ẩn sản phẩm' : 'Đăng lại'}</button></div>
+                </div>
+              </div>
             </article>)}
           </section>
         </div>
