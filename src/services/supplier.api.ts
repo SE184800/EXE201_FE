@@ -46,7 +46,7 @@ export type SupplierOrder = {
   total: number;
   note: string | null;
   rejectReason: string | null;
-  complaint?: { id: number; reason: string; description: string; status: string; response: string | null } | null;
+  complaint?: { id: number; reason: string; description: string; imageUrl?: string | null; status: string; response: string | null } | null;
   createdAt: string;
   updatedAt: string;
   buyer: { id: number; name: string; username: string };

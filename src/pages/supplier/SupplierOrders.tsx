@@ -16,7 +16,7 @@ const STATUS_ACTIONS: Record<string, { next: string; label: string }> = {
   PENDING: { next: 'APPROVED', label: 'Duyệt đơn' },
   APPROVED: { next: 'PREPARING', label: 'Bắt đầu soạn' },
   PREPARING: { next: 'SHIPPING', label: 'Bàn giao vận chuyển' },
-  SHIPPING: { next: 'ISSUE_HANDLING', label: 'Tiếp nhận xử lý vấn đề' },
+  SHIPPING: { next: 'ISSUE_HANDLING', label: 'Chuyển tiếp nhận xử lý' },
   ISSUE_HANDLING: { next: 'DELIVERED', label: 'Xác nhận đã giao & thu COD' },
 };
 
