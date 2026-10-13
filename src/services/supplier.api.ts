@@ -28,6 +28,12 @@ export type SupplierProduct = {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  moderation?: {
+    status: 'AUTO_APPROVED' | 'FLAGGED';
+    riskScore: number;
+    reasons: string[];
+    isClean: boolean;
+  };
 };
 
 export type SupplierOrder = {

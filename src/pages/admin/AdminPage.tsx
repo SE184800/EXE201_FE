@@ -16,8 +16,9 @@ type Verification = { id: number; businessName: string; warehouseAddress: string
 type Settlement = { id: number; supplierId: number; businessName: string; buyerName: string; subtotal: number; total: number; commissionRate: number | null; commissionAmount: number | null; deliveredAt: string | null; paidAt: string | null; paymentReference: string | null; paymentStatus: string; region: string | null };
 const navigation = [
   { path: '', label: 'Tổng quan', icon: 'store' }, { path: 'users', label: 'Người dùng', icon: 'user' },
-  { path: 'verification', label: 'Xác minh chủ vựa', icon: 'shield' }, { path: 'finance', label: 'Hoa hồng & đối soát', icon: 'box' },
-  { path: 'ai', label: 'Hoạt động AI', icon: 'sparkle' }, { path: 'audit', label: 'Nhật ký hệ thống', icon: 'lock' },
+  { path: 'verification', label: 'Xác minh chủ vựa', icon: 'shield' }, { path: 'moderation', label: 'Duyệt bài AI', icon: 'sparkle' },
+  { path: 'finance', label: 'Hoa hồng & đối soát', icon: 'box' }, { path: 'ai', label: 'Hoạt động AI', icon: 'sparkle' },
+  { path: 'audit', label: 'Nhật ký hệ thống', icon: 'lock' },
 ] as const;
 
 export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }) {
@@ -28,7 +29,7 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
   async function signOut() { setBusy(true); try { await logout(); onLogout(); } catch (e) { setError(getApiError(e)); } finally { setBusy(false); } }
   return <div className="admin-layout">
     <aside className="admin-sidebar"><Brand light /><span className="admin-console-label">QUẢN TRỊ NỀN TẢNG</span><nav aria-label="Quản trị">{navigation.map(item => <NavLink key={item.path} to={`/admin${item.path ? '/' + item.path : ''}`} end><Icon name={item.icon} /><span>{item.label}</span></NavLink>)}</nav><div className="admin-sidebar-bottom"><span className="admin-avatar">{user.name.slice(0, 1).toUpperCase()}</span><div><strong>{user.name}</strong><small>Quản trị viên</small></div><button aria-label="Đăng xuất" disabled={busy} onClick={() => void signOut()}><Icon name="logout" /></button></div></aside>
-    <main className="admin-main"><header className="admin-topbar"><span>SupplyMind AI <span className="admin-slash">/</span> {navigation.find(item => item.path === tab)?.label}</span><div className="admin-top-actions"><span className="admin-admin-tag"><Icon name="shield" /> Admin</span><button disabled={busy} onClick={() => void signOut()}>Đăng xuất</button></div></header><div className="admin-content">{error && <p role="alert" className="error-notice">{error}</p>}{tab === '' ? <Overview onLogout={onLogout} /> : tab === 'users' ? <Users onLogout={onLogout} /> : tab === 'verification' ? <Verifications onLogout={onLogout} /> : tab === 'finance' ? <Finance onLogout={onLogout} /> : tab === 'ai' ? <AiMonitoring onLogout={onLogout} /> : <Audit onLogout={onLogout} />}</div><footer className="admin-footer">SupplyMind AI · Dữ liệu vận hành toàn sàn · Múi giờ Việt Nam (UTC+7)</footer></main>
+    <main className="admin-main"><header className="admin-topbar"><span>SupplyMind AI <span className="admin-slash">/</span> {navigation.find(item => item.path === tab)?.label}</span><div className="admin-top-actions"><span className="admin-admin-tag"><Icon name="shield" /> Admin</span><button disabled={busy} onClick={() => void signOut()}>Đăng xuất</button></div></header><div className="admin-content">{error && <p role="alert" className="error-notice">{error}</p>}{tab === '' ? <Overview onLogout={onLogout} /> : tab === 'users' ? <Users onLogout={onLogout} /> : tab === 'verification' ? <Verifications onLogout={onLogout} /> : tab === 'moderation' ? <ModerationQueue onLogout={onLogout} /> : tab === 'finance' ? <Finance onLogout={onLogout} /> : tab === 'ai' ? <AiMonitoring onLogout={onLogout} /> : <Audit onLogout={onLogout} />}</div><footer className="admin-footer">SupplyMind AI · Dữ liệu vận hành toàn sàn · Múi giờ Việt Nam (UTC+7)</footer></main>
   </div>;
 }
 function Heading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description: string; action?: ReactNode }) { return <div className="admin-heading"><div><p>{eyebrow}</p><h1>{title}</h1><span>{description}</span></div>{action}</div>; }
@@ -134,4 +135,146 @@ function Audit({ onLogout }: Props) {
   return <><Heading eyebrow="AUDIT & SECURITY" title="Nhật ký hệ thống" description="Tra cứu ai đã thay đổi dữ liệu, thay đổi khi nào và nội dung thao tác." />
     <form className="admin-filters" onSubmit={e => { e.preventDefault(); setQuery({ ...dates, action, entityId, page: 1 }); setRevision(n => n + 1); }}><DateFields value={dates} onChange={setDates} /><label>Thao tác<select value={action} onChange={e => setAction(e.target.value)}><option value="">Tất cả thao tác</option>{Object.entries(actionLabels).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</select></label><label>Mã đối tượng<input maxLength={50} value={entityId} onChange={e => setEntityId(e.target.value)} placeholder="Ví dụ: mã đơn 42" /></label><button className="admin-primary">Tra cứu</button></form><p className="admin-note">Nhật ký chỉ đọc, ghi nhận từ lúc triển khai; không lưu mật khẩu, khóa API hay nội dung hội thoại.</p>
     <LoadState loading={loading} error={error} />{data && <Panel title="Lịch sử thao tác">{data.logs.length ? <div className="admin-table-wrap"><table><thead><tr><th>Thời gian</th><th>Người thao tác</th><th>Hoạt động</th><th>Đối tượng</th><th>Chi tiết</th></tr></thead><tbody>{data.logs.map(log => <tr key={log.id}><td>{dateTime(log.createdAt)}</td><td><strong>{log.actor?.name || 'Tài khoản đã xóa'}</strong><small>{log.actor ? '@' + log.actor.username : '#' + log.actorId}</small></td><td>{actionLabels[log.action] || log.action}</td><td>{log.entityType} #{log.entityId}</td><td><details><summary>Xem thay đổi</summary><pre className="admin-log-detail">{JSON.stringify(log.details, null, 2)}</pre></details></td></tr>)}</tbody></table></div> : <Empty />}<Pager {...data} onPage={page => setQuery({ ...query, page })} /></Panel>}</>;
+}
+
+type ModerationItem = {
+  id: number;
+  supplierId: number;
+  supplierName: string;
+  supplierOwner: string;
+  name: string;
+  category: string;
+  packaging: string;
+  wholesalePrice: number;
+  stockQty: number;
+  moq: number;
+  isActive: boolean;
+  createdAt: string;
+  moderation: {
+    status: 'AUTO_APPROVED' | 'FLAGGED';
+    riskScore: number;
+    reasons: string[];
+    isClean: boolean;
+  };
+};
+
+type ModerationResponse = List & {
+  queue: ModerationItem[];
+  summary: { flaggedCount: number; autoApprovedCount: number; totalCount: number };
+};
+
+function ModerationQueue({ onLogout }: Props) {
+  const [query, setQuery] = useState({ page: 1 });
+  const [revision, setRevision] = useState(0);
+  const [actionBusy, setActionBusy] = useState<number | null>(null);
+  const { data, loading, error } = useAdminData<ModerationResponse>('/admin/moderation/queue', query, onLogout, revision);
+
+  async function handleAction(id: number, action: 'APPROVE' | 'REJECT') {
+    setActionBusy(id);
+    try {
+      await api.post(`/admin/moderation/${id}/action`, { action, reason: action === 'APPROVE' ? 'Admin duyệt cho phép hiển thị' : 'Vi phạm quy định giá/nội dung sàn sỉ' });
+      setRevision(n => n + 1);
+    } catch (e) {
+      alert(getApiError(e));
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  return (
+    <>
+      <Heading
+        eyebrow="AI AUTO-MODERATION"
+        title="Hàng chờ kiểm duyệt AI"
+        description="Kiểm soát và xử lý các bài đăng khuyến mãi & sản phẩm sỉ bị AI cảnh báo rủi ro (giá ảo, từ cấm, spam)."
+        action={<button onClick={() => setRevision(n => n + 1)}>↻ Làm mới hàng chờ</button>}
+      />
+      <LoadState loading={loading} error={error} />
+      {data && (
+        <>
+          <div className="admin-metrics three">
+            <Metric label="Tổng số mặt hàng sỉ" value={data.summary.totalCount} note="Toàn sàn sỉ B2B" />
+            <Metric label="AI đã tự động duyệt" value={data.summary.autoApprovedCount} note="Bài đăng sạch (Clean)" />
+            <Metric label="Bị AI gắn cờ nghi vấn" value={data.summary.flaggedCount} note="Cần Admin xem xét" />
+          </div>
+          <Panel title="Danh sách sản phẩm nghi vấn (AI Moderation Queue)">
+            {data.queue.length ? (
+              <div className="admin-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Sản phẩm / Quy cách</th>
+                      <th>Chủ vựa</th>
+                      <th>Giá sỉ</th>
+                      <th>Điểm rủi ro AI</th>
+                      <th>Lý do AI cảnh báo</th>
+                      <th>Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.queue.map(item => (
+                      <tr key={item.id}>
+                        <td>
+                          <strong>{item.name}</strong>
+                          <br />
+                          <small>{item.category} · {item.packaging}</small>
+                        </td>
+                        <td>
+                          <strong>{item.supplierName}</strong>
+                          <br />
+                          <small>{item.supplierOwner}</small>
+                        </td>
+                        <td className="admin-money">{money(item.wholesalePrice)}</td>
+                        <td>
+                          <span
+                            style={{
+                              background: item.moderation.riskScore >= 50 ? '#fce8e6' : '#fef7e0',
+                              color: item.moderation.riskScore >= 50 ? '#c5221f' : '#b06000',
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              fontSize: '12px'
+                            }}
+                          >
+                            ⚠️ Rủi ro {item.moderation.riskScore}%
+                          </span>
+                        </td>
+                        <td>
+                          <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '12px', color: '#d93025' }}>
+                            {item.moderation.reasons.map((r, idx) => <li key={idx}>{r}</li>)}
+                          </ul>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              className="admin-primary"
+                              style={{ background: '#137333', borderColor: '#137333', padding: '4px 10px', fontSize: '12px' }}
+                              disabled={actionBusy === item.id}
+                              onClick={() => void handleAction(item.id, 'APPROVE')}
+                            >
+                              Duyệt
+                            </button>
+                            <button
+                              style={{ background: '#d93025', color: '#fff', border: 'none', padding: '4px 10px', borderRadius: '4px', fontSize: '12px', cursor: 'pointer' }}
+                              disabled={actionBusy === item.id}
+                              onClick={() => void handleAction(item.id, 'REJECT')}
+                            >
+                              Từ chối
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty>Hiện không có bài đăng sỉ nào bị gắn cờ nghi vấn.</Empty>
+            )}
+            <Pager {...data} onPage={page => setQuery({ page })} />
+          </Panel>
+        </>
+      )}
+    </>
+  );
 }

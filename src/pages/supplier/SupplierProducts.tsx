@@ -225,9 +225,40 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                   </div>
                 )}
                 <div className="publish-item-body">
-                  <div className="publish-item-heading"><div><span className="supplier-panel-label">{item.packaging}</span><h3>{item.name}</h3></div><span className={`catalog-badge ${item.isActive ? '' : 'muted'}`}>{item.isActive ? (profile?.verificationStatus === 'APPROVED' ? 'Đang hiển thị' : 'Chờ xác minh') : 'Đang ẩn'}</span></div>
+                  <div className="publish-item-heading">
+                    <div>
+                      <span className="supplier-panel-label">{item.packaging}</span>
+                      <h3>{item.name}</h3>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <span className={`catalog-badge ${item.isActive ? '' : 'muted'}`}>
+                        {item.isActive ? (profile?.verificationStatus === 'APPROVED' ? 'Đang hiển thị' : 'Chờ xác minh') : 'Đang ẩn'}
+                      </span>
+                      {item.moderation && (
+                        <span
+                          className={`catalog-badge ${item.moderation.status === 'AUTO_APPROVED' ? 'success' : 'warning'}`}
+                          style={{
+                            background: item.moderation.status === 'AUTO_APPROVED' ? '#e6f4ea' : '#fef7e0',
+                            color: item.moderation.status === 'AUTO_APPROVED' ? '#137333' : '#b06000',
+                            border: `1px solid ${item.moderation.status === 'AUTO_APPROVED' ? '#ceead6' : '#feefc3'}`,
+                            fontSize: '11px',
+                            fontWeight: 600,
+                            padding: '2px 8px',
+                            borderRadius: '12px'
+                          }}
+                        >
+                          {item.moderation.status === 'AUTO_APPROVED' ? '🟢 AI Tự Động Duyệt' : '⚠️ AI Cảnh Báo'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   <strong className="catalog-price">{money(item.wholesalePrice)} <small>/ {item.packaging}</small></strong>
                   <p className="catalog-hint">Tồn: {item.stockQty} · MOQ: {item.moq} {item.stockQty === 0 ? '· Hết hàng' : ''}</p>
+                  {item.moderation?.reasons && item.moderation.reasons.length > 0 && (
+                    <div style={{ fontSize: '12px', color: '#d93025', background: '#fce8e6', padding: '6px 10px', borderRadius: '6px', margin: '6px 0' }}>
+                      <strong>⚠️ Lý do AI cảnh báo:</strong> {item.moderation.reasons.join(' · ')}
+                    </div>
+                  )}
                   <div className="publish-item-actions"><button className="ghost-button" disabled={busy} onClick={() => edit(item)}>Sửa sản phẩm</button><button className="ghost-button" disabled={busy || editing !== null} onClick={() => void toggle(item)}>{item.isActive ? 'Ẩn sản phẩm' : 'Đăng lại'}</button></div>
                 </div>
               </div>
