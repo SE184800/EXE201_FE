@@ -8,11 +8,7 @@ import { ROLE_DETAILS, type AuthUser } from '../types/auth';
 
 const modules = {
   STORE_OWNER: ['Đề xuất nhập hàng AI', 'Hàng hóa và tồn kho', 'Tìm nguồn sỉ'],
-  SUPPLIER: [
-    'Danh mục hàng sỉ',
-    'Đơn hàng từ cửa hàng',
-    'Doanh thu và đối soát',
-  ],
+  SUPPLIER: ['Danh mục hàng sỉ', 'Đơn hàng từ cửa hàng', 'Doanh thu và đối soát'],
   ADMIN: ['Quản lý người dùng', 'Xác minh chủ vựa', 'Thống kê nền tảng'],
 };
 
@@ -61,10 +57,22 @@ export default function WorkspacePage({
     }
   }
 
-  if (user.role === 'STORE_OWNER' && verified) return <>
-    {error && <p className="error-notice" role="alert">{error}</p>}
-    <StoreInventory user={user} onLogout={onLogout} onSignOut={handleLogout} signingOut={busy} />
-  </>;
+  if (user.role === 'STORE_OWNER' && verified)
+    return (
+      <>
+        {error && (
+          <p className="error-notice" role="alert">
+            {error}
+          </p>
+        )}
+        <StoreInventory
+          user={user}
+          onLogout={onLogout}
+          onSignOut={handleLogout}
+          signingOut={busy}
+        />
+      </>
+    );
 
   return (
     <main className="workspace-page">
@@ -72,11 +80,7 @@ export default function WorkspacePage({
         <Brand />
         <div>
           <span className="workspace-role">{details.label}</span>
-          <button
-            className="secondary-button"
-            onClick={handleLogout}
-            disabled={busy}
-          >
+          <button className="secondary-button" onClick={handleLogout} disabled={busy}>
             <Icon name="logout" />
             {busy ? 'Đang đăng xuất…' : 'Đăng xuất'}
           </button>
@@ -97,11 +101,7 @@ export default function WorkspacePage({
           <div className="session-notice" role="status">
             <Icon name="shield" />
             <div>
-              <strong>
-                {verified
-                  ? 'Đăng nhập thành công'
-                  : 'Đang kiểm tra quyền truy cập…'}
-              </strong>
+              <strong>{verified ? 'Đăng nhập thành công' : 'Đang kiểm tra quyền truy cập…'}</strong>
               <p>
                 Tài khoản <b>{user.username}</b> · {details.label}
               </p>

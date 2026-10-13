@@ -2,8 +2,9 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
-import { login } from '../../services/auth.api';
+import { isSubscriptionRequiredError, login } from '../../services/auth.api';
 import { getApiError } from '../../services/api';
+import { renewExpiredSubscription, type Subscription } from '../../services/subscription.api';
 import type { AuthUser } from '../../types/auth';
 
 function ProductPreview() {
@@ -52,16 +53,16 @@ function ProductPreview() {
   );
 }
 
-export default function LoginPage({
-  onLogin,
-}: {
-  onLogin: (user: AuthUser) => void;
-}) {
+export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => void }) {
   const location = useLocation();
   const registrationState: unknown = location.state;
-  const registeredUsername = registrationState && typeof registrationState === 'object' &&
-    'registeredUsername' in registrationState && typeof registrationState.registeredUsername === 'string'
-    ? registrationState.registeredUsername : '';
+  const registeredUsername =
+    registrationState &&
+    typeof registrationState === 'object' &&
+    'registeredUsername' in registrationState &&
+    typeof registrationState.registeredUsername === 'string'
+      ? registrationState.registeredUsername
+      : '';
   const [username, setUsername] = useState(registeredUsername);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -71,9 +72,16 @@ export default function LoginPage({
     password?: string;
   }>({});
   const [serverError, setServerError] = useState('');
+  const [payment, setPayment] = useState<{
+    renewalToken: string;
+    subscription: Subscription;
+  } | null>(null);
+  const [paying, setPaying] = useState(false);
+  const [paymentError, setPaymentError] = useState('');
   const [showHelp, setShowHelp] = useState(false);
   const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
+  const paymentRequest = useRef<string | null>(null);
 
   useEffect(() => {
     document.title = 'SupplyMind AI · Đăng nhập';
@@ -102,9 +110,30 @@ export default function LoginPage({
     try {
       onLogin(await login({ username: username.trim(), password }));
     } catch (error) {
-      setServerError(getApiError(error));
+      if (isSubscriptionRequiredError(error)) {
+        setPayment({ renewalToken: error.renewalToken, subscription: error.subscription });
+        setServerError('');
+        paymentRequest.current = null;
+      } else {
+        setServerError(getApiError(error));
+      }
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleRenewal() {
+    if (!payment || paying) return;
+    if (!paymentRequest.current) paymentRequest.current = crypto.randomUUID();
+    setPaying(true);
+    setPaymentError('');
+    try {
+      await renewExpiredSubscription(payment.renewalToken, paymentRequest.current);
+      onLogin(await login({ username: username.trim(), password }));
+    } catch (error) {
+      setPaymentError(getApiError(error));
+    } finally {
+      setPaying(false);
     }
   }
 
@@ -123,8 +152,7 @@ export default function LoginPage({
           </h1>
           <p className="story-description">
             Từ gợi ý nhập hàng đến kết nối nguồn sỉ.
-            <br className="desktop-break" /> Cùng bạn chăm chút cửa hàng mỗi
-            ngày.
+            <br className="desktop-break" /> Cùng bạn chăm chút cửa hàng mỗi ngày.
           </p>
           <ProductPreview />
         </div>
@@ -161,113 +189,158 @@ export default function LoginPage({
             <Icon name="store" />
           </div>
           <p className="form-eyebrow">CHÀO MỪNG TRỞ LẠI</p>
-          <h2 id="login-title">Đăng nhập</h2>
+          <h2 id="login-title">{payment ? 'Gia hạn sử dụng' : 'Đăng nhập'}</h2>
           <p className="form-description">
-            Cửa hàng của bạn, sẵn sàng cho ngày mới.
+            {payment
+              ? 'Tài khoản đã hết hạn và chưa được đăng nhập vào hệ thống.'
+              : 'Cửa hàng của bạn, sẵn sàng cho ngày mới.'}
           </p>
-          {registeredUsername && (
+          {registeredUsername && !payment && (
             <p className="success-notice" role="status">
               Đăng ký thành công! Username đã được điền sẵn. Nhập mật khẩu để đăng nhập.
             </p>
           )}
-          <form onSubmit={handleSubmit} noValidate className="login-form">
-            <div className="field-group">
-              <label htmlFor="username">
-                Tên đăng nhập <span>Username</span>
-              </label>
-              <div
-                className={`input-wrap ${errors.username ? 'input-error' : ''}`}
-              >
-                <Icon name="user" />
-                <input
-                  ref={usernameRef}
-                  id="username"
-                  name="username"
-                  autoComplete="username"
-                  autoCapitalize="none"
-                  spellCheck={false}
-                  placeholder="Nhập tên đăng nhập"
-                  value={username}
-                  onChange={(event) => {
-                    setUsername(event.target.value);
-                    setErrors((current) => ({ ...current, username: undefined }));
-                    setServerError('');
-                  }}
-                  aria-invalid={Boolean(errors.username)}
-                  aria-describedby={
-                    errors.username ? 'username-error' : undefined
-                  }
-                  disabled={submitting}
-                />
-              </div>
-              {errors.username && (
-                <p className="field-error" id="username-error">
-                  {errors.username}
-                </p>
-              )}
-            </div>
-            <div className="field-group">
-              <label htmlFor="password">Mật khẩu</label>
-              <div
-                className={`input-wrap ${errors.password ? 'input-error' : ''}`}
-              >
+          {payment ? (
+            <section className="login-payment-card" aria-label="Thanh toán gia hạn">
+              <div className="login-payment-status">
                 <Icon name="lock" />
-                <input
-                  ref={passwordRef}
-                  id="password"
-                  name="password"
-                  type={showPassword ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  placeholder="Nhập mật khẩu của bạn"
-                  value={password}
-                  onChange={(event) => {
-                    setPassword(event.target.value);
-                    setErrors((current) => ({ ...current, password: undefined }));
-                    setServerError('');
-                  }}
-                  aria-invalid={Boolean(errors.password)}
-                  aria-describedby={
-                    errors.password ? 'password-error' : undefined
-                  }
-                  disabled={submitting}
-                />
-                <button
-                  className="password-toggle"
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                  aria-pressed={showPassword}
-                >
-                  <Icon name={showPassword ? 'eyeOff' : 'eye'} />
-                </button>
+                <span>
+                  <strong>Gói dùng thử đã hết hạn</strong>
+                  <small>@{username.trim()}</small>
+                </span>
               </div>
-              {errors.password && (
-                <p className="field-error" id="password-error">
-                  {errors.password}
+              <div className="login-payment-price">
+                <strong>{payment.subscription.monthlyPrice.toLocaleString('vi-VN')} ₫</strong>
+                <span>/ 1 tháng</span>
+              </div>
+              <ul>
+                <li>Mở lại toàn bộ chức năng kho và bán hàng</li>
+                <li>Tiếp tục dùng AI dự báo, nguồn sỉ và đơn hàng</li>
+                <li>Không làm mất dữ liệu đã nhập trước đó</li>
+              </ul>
+              <p>Đây là thanh toán mô phỏng phục vụ demo; hệ thống không trừ tiền thật.</p>
+              {paymentError && (
+                <p className="error-notice" role="alert">
+                  {paymentError}
                 </p>
               )}
-            </div>
-            {serverError && (
-              <p className="error-notice" role="alert">
-                {serverError}
-              </p>
-            )}
-            <button
-              className="primary-button"
-              type="submit"
-              disabled={submitting}
-            >
-              {submitting ? (
-                <>
-                  <span className="spinner" /> Đang đăng nhập…
-                </>
-              ) : (
-                <>
-                  Đăng nhập <Icon name="arrow" />
-                </>
+              <button
+                className="primary-button"
+                type="button"
+                disabled={paying}
+                onClick={() => void handleRenewal()}
+              >
+                {paying ? (
+                  <>
+                    <span className="spinner" /> Đang mở khóa…
+                  </>
+                ) : (
+                  <>
+                    Thanh toán 19.000đ và đăng nhập <Icon name="arrow" />
+                  </>
+                )}
+              </button>
+              <button
+                className="login-payment-back"
+                type="button"
+                disabled={paying}
+                onClick={() => {
+                  setPayment(null);
+                  setPaymentError('');
+                  paymentRequest.current = null;
+                }}
+              >
+                ← Quay lại nhập tài khoản
+              </button>
+            </section>
+          ) : (
+            <form onSubmit={handleSubmit} noValidate className="login-form">
+              <div className="field-group">
+                <label htmlFor="username">
+                  Tên đăng nhập <span>Username</span>
+                </label>
+                <div className={`input-wrap ${errors.username ? 'input-error' : ''}`}>
+                  <Icon name="user" />
+                  <input
+                    ref={usernameRef}
+                    id="username"
+                    name="username"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    placeholder="Nhập tên đăng nhập"
+                    value={username}
+                    onChange={(event) => {
+                      setUsername(event.target.value);
+                      setErrors((current) => ({ ...current, username: undefined }));
+                      setServerError('');
+                    }}
+                    aria-invalid={Boolean(errors.username)}
+                    aria-describedby={errors.username ? 'username-error' : undefined}
+                    disabled={submitting}
+                  />
+                </div>
+                {errors.username && (
+                  <p className="field-error" id="username-error">
+                    {errors.username}
+                  </p>
+                )}
+              </div>
+              <div className="field-group">
+                <label htmlFor="password">Mật khẩu</label>
+                <div className={`input-wrap ${errors.password ? 'input-error' : ''}`}>
+                  <Icon name="lock" />
+                  <input
+                    ref={passwordRef}
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    placeholder="Nhập mật khẩu của bạn"
+                    value={password}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                      setErrors((current) => ({ ...current, password: undefined }));
+                      setServerError('');
+                    }}
+                    aria-invalid={Boolean(errors.password)}
+                    aria-describedby={errors.password ? 'password-error' : undefined}
+                    disabled={submitting}
+                  />
+                  <button
+                    className="password-toggle"
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    aria-pressed={showPassword}
+                  >
+                    <Icon name={showPassword ? 'eyeOff' : 'eye'} />
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="field-error" id="password-error">
+                    {errors.password}
+                  </p>
+                )}
+              </div>
+              {serverError && (
+                <p className="error-notice" role="alert">
+                  {serverError}
+                </p>
               )}
-            </button>
-          </form>
+              <button className="primary-button" type="submit" disabled={submitting}>
+                {submitting ? (
+                  <>
+                    <span className="spinner" /> Đang đăng nhập…
+                  </>
+                ) : (
+                  <>
+                    Đăng nhập <Icon name="arrow" />
+                  </>
+                )}
+              </button>
+            </form>
+          )}
           <div className="role-section">
             <p>MỘT NỀN TẢNG, BA VAI TRÒ</p>
             <div className="role-chips">
@@ -284,22 +357,22 @@ export default function LoginPage({
                 Quản trị viên
               </span>
             </div>
-            <p className="role-hint">
-              Hệ thống tự chuyển đến không gian theo vai trò của bạn.
-            </p>
+            <p className="role-hint">Hệ thống tự chuyển đến không gian theo vai trò của bạn.</p>
           </div>
           {showHelp && (
             <div className="help-notice" id="login-help" role="status">
               <strong>Cần hỗ trợ tài khoản?</strong>
               <p>
-                Bạn có thể chọn “Tạo tài khoản” để đăng ký. Nếu quên mật khẩu
-                hoặc cần tài khoản quản trị, hãy liên hệ quản trị viên.
+                Bạn có thể chọn “Tạo tài khoản” để đăng ký. Nếu quên mật khẩu hoặc cần tài khoản
+                quản trị, hãy liên hệ quản trị viên.
               </p>
             </div>
           )}
           <p className="account-help">
             Chưa có tài khoản?{' '}
-            <Link className="account-link" to="/register">Tạo tài khoản <span>↗</span></Link>
+            <Link className="account-link" to="/register">
+              Tạo tài khoản <span>↗</span>
+            </Link>
           </p>
         </div>
         <footer className="form-footer">

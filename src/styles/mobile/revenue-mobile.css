@@ -1,0 +1,88 @@
+/* Revenue responsive rules. Keep desktop/base styles in their feature stylesheet. */
+
+@media (max-width: 1100px) {
+  .revenue-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+  .revenue-total {
+    grid-column: 1/-1;
+  }
+}
+
+@media (max-width: 600px) {
+  .store-revenue {
+    gap: 16px;
+  }
+  .store-revenue .dashboard-title {
+    flex-direction: column;
+  }
+  .revenue-filters form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .revenue-filters input {
+    width: 100%;
+    max-width: 100%;
+  }
+  .revenue-metrics {
+    gap: 10px;
+  }
+  .revenue-metrics article {
+    padding: 16px;
+  }
+  .revenue-metrics article > strong {
+    font-size: 25px;
+  }
+  .revenue-presets button {
+    flex: 1;
+    padding: 9px;
+    font-size: 11px;
+  }
+  .revenue-bar-track {
+    height: 125px;
+  }
+}
+
+@media (max-width: 460px) {
+  .revenue-filters form {
+    grid-template-columns: 1fr;
+  }
+  .revenue-filters form button {
+    width: 100%;
+    min-height: 46px;
+  }
+  .revenue-filters input {
+    min-height: 46px;
+    font-size: 16px;
+  }
+  .revenue-metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+  .revenue-metrics .revenue-total {
+    grid-column: 1/-1;
+  }
+  .revenue-metrics article {
+    min-height: 120px;
+  }
+  .revenue-metrics article > strong {
+    font-size: 22px;
+  }
+  .revenue-presets {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .revenue-presets button {
+    min-height: 42px;
+  }
+  .revenue-chart {
+    padding: 15px;
+  }
+  .store-revenue .inventory-table-wrap {
+    margin-inline: -16px;
+    padding-inline: 16px;
+    overflow-x: auto;
+  }
+  .store-revenue .inventory-table {
+    min-width: 620px;
+  }
+}

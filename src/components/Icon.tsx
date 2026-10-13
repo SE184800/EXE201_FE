@@ -13,7 +13,6 @@ type IconName =
   | 'logout'
   | 'help'
   | 'sparkle';
-  
 
 const paths: Record<IconName, string> = {
   chart: 'M4 3v18h17M8 17v-5m5 5V8m5 9V4',
@@ -24,8 +23,7 @@ const paths: Record<IconName, string> = {
   eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
   eyeOff:
     'm3 3 18 18M10 5h2c6 0 10 7 10 7a18 18 0 0 1-3 4M6 6a20 20 0 0 0-4 6s4 7 10 7a11 11 0 0 0 5-1M10 10a3 3 0 0 0 4 4',
-  store:
-    'M3 10 5 3h14l2 7M3 10a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0M5 13v8h14v-8M9 21v-6h6v6',
+  store: 'M3 10 5 3h14l2 7M3 10a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0M5 13v8h14v-8M9 21v-6h6v6',
   box: 'm12 3 9 5v9l-9 5-9-5V8l9-5ZM3 8l9 5 9-5M12 13v9M7 5.8l9 5V15',
   shield: 'm12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3ZM8 12l3 3 5-6',
   check: 'm5 12 4 4L19 6',
@@ -34,13 +32,7 @@ const paths: Record<IconName, string> = {
   sparkle: 'm12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z',
 };
 
-export default function Icon({
-  name,
-  className = '',
-}: {
-  name: IconName;
-  className?: string;
-}) {
+export default function Icon({ name, className = '' }: { name: IconName; className?: string }) {
   return (
     <svg
       className={className}

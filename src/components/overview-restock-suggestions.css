@@ -1,0 +1,325 @@
+.overview-restock-card {
+  position: relative;
+  overflow: hidden;
+  border-color: #efd076;
+  background:
+    radial-gradient(circle at 96% 4%, #ffe69a 0, transparent 34%),
+    linear-gradient(145deg, #fffefa 0%, #fff9df 100%);
+  box-shadow: 0 12px 32px #9a6b1514;
+}
+
+.overview-restock-card::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 6px;
+  background: linear-gradient(#d96b15, #f0b429);
+  content: '';
+}
+
+.overview-restock-heading {
+  position: relative;
+  margin-bottom: 18px;
+}
+
+.overview-restock-heading h2 {
+  font-size: 21px;
+}
+
+.overview-restock-alert-badge {
+  padding: 8px 11px;
+  border: 1px solid #edc25b;
+  border-radius: 999px;
+  background: #fff0bd;
+  color: #9a4d08;
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
+}
+
+.holiday-overview {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 17px 18px;
+  border: 1px solid #edcf75;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fff8d9, #f0f8de);
+  box-shadow: 0 5px 18px #a46c1312;
+}
+
+.overview-restock-sparkle {
+  display: grid;
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 13px;
+  background: #d96b15;
+  color: #fff8dc;
+  box-shadow: 0 7px 16px #b3531f2b;
+}
+
+.holiday-overview > div {
+  min-width: 0;
+}
+
+.holiday-overview div > span {
+  display: block;
+  margin-bottom: 4px;
+  color: #6b8259;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1.1px;
+}
+
+.holiday-overview strong {
+  display: block;
+  color: #183e31;
+  font-size: 16px;
+}
+
+.holiday-overview p {
+  margin: 5px 0 0;
+  color: #5f7162;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.holiday-overview > b {
+  padding: 8px 10px;
+  border-radius: 999px;
+  background: #ffedaa;
+  color: #8d4707;
+  font-size: 14px;
+}
+
+.holiday-overview .holiday-overview-alert {
+  margin-top: 7px;
+  color: #934800;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.overview-restock-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 52px;
+  margin-top: 14px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #d96816, #ee9823);
+  box-shadow: 0 9px 20px #c45f1f33;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.overview-restock-toggle:hover,
+.overview-restock-toggle:focus-visible {
+  background: linear-gradient(135deg, #c85a0d, #df8412);
+  transform: translateY(-1px);
+}
+
+.overview-restock-toggle > span:first-child {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.overview-restock-toggle svg {
+  width: 19px;
+  height: 19px;
+}
+
+.overview-restock-chevron {
+  font-size: 23px;
+  line-height: 1;
+  transition: transform 0.2s ease;
+}
+
+.overview-restock-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.overview-restock-details {
+  margin-top: 10px;
+  padding: 0 12px 12px;
+  border: 1px solid #ecd9a4;
+  border-radius: 13px;
+  background: #fffefa;
+}
+
+.overview-restock-list {
+  display: grid;
+}
+
+.overview-restock-list > button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 4px;
+  border: 0;
+  border-top: 1px solid #e8eee5;
+  background: transparent;
+  color: #173f32;
+  text-align: left;
+}
+
+.overview-restock-list > button:hover,
+.overview-restock-list > button:focus-visible {
+  background: #f5f9f2;
+}
+
+.overview-restock-product-icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 10px;
+  background: #edf3e7;
+  color: #6f9559;
+}
+
+.overview-restock-product {
+  min-width: 0;
+}
+
+.overview-restock-product strong,
+.overview-restock-product small {
+  display: block;
+}
+
+.overview-restock-product strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-restock-product small {
+  margin-top: 4px;
+  overflow: hidden;
+  color: #7d897f;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-restock-quantity {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #e7f3df;
+  color: #2a6a48;
+  font-size: 10px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.overview-restock-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
+  margin-top: 8px;
+  border: 1px solid #e4c775;
+  border-radius: 10px;
+  background: #fff8dc;
+  color: #85500e;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.overview-restock-more svg {
+  width: 16px;
+}
+
+.overview-restock-loading,
+.overview-restock-empty {
+  display: flex;
+  min-height: 120px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 7px;
+  padding: 20px;
+  border: 1px dashed #d5dfd1;
+  border-radius: 13px;
+  background: #fbfdf9;
+  color: #3e5f4d;
+  text-align: center;
+}
+
+.overview-restock-loading {
+  justify-content: flex-start;
+  flex-direction: row;
+  text-align: left;
+}
+
+.overview-restock-loading p,
+.overview-restock-empty p {
+  margin: 0;
+  color: #7a887d;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.overview-restock-empty button {
+  min-height: 38px;
+  margin-top: 5px;
+  padding: 0 14px;
+  border: 1px solid #c9d9c6;
+  border-radius: 9px;
+  background: #fff;
+  color: #245d47;
+  font-weight: 700;
+}
+
+@media (max-width: 600px) {
+  .overview-restock-heading {
+    align-items: flex-start;
+  }
+
+  .overview-restock-alert-badge {
+    padding: 7px 9px;
+    font-size: 8px;
+  }
+
+  .overview-restock-heading h2 {
+    font-size: 19px;
+  }
+
+  .holiday-overview {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 14px;
+  }
+
+  .holiday-overview > b {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .overview-restock-list > button {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .overview-restock-quantity {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .overview-restock-toggle {
+    min-height: 56px;
+    padding: 0 14px;
+    font-size: 12px;
+    text-align: left;
+  }
+}

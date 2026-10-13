@@ -1,0 +1,83 @@
+/* Subscription responsive rules. Keep desktop/base styles in their feature stylesheet. */
+
+@media (max-width: 760px) {
+  .subscription-layout {
+    grid-template-columns: 1fr;
+  }
+  .subscription-hero {
+    padding: 29px;
+  }
+  .subscription-hero svg {
+    display: none;
+  }
+  .subscription-card-head {
+    flex-direction: column;
+  }
+  .subscription-page {
+    padding-inline: 3px;
+  }
+}
+
+@media (max-width: 600px) {
+  .subscription-page {
+    padding: 0 0 24px;
+  }
+  .subscription-hero {
+    padding: 24px 19px;
+    margin-bottom: 14px;
+    border-radius: 16px;
+  }
+  .subscription-hero h1 {
+    font-size: 28px;
+    letter-spacing: -0.6px;
+  }
+  .subscription-hero span {
+    font-size: 12px;
+  }
+  .subscription-layout {
+    gap: 13px;
+  }
+  .subscription-card {
+    padding: 19px 17px;
+    border-radius: 14px;
+  }
+  .subscription-card-head {
+    gap: 9px;
+  }
+  .subscription-card h2 {
+    font-size: 19px;
+  }
+  .subscription-price {
+    margin: 19px 0;
+  }
+  .subscription-price strong {
+    font-size: 34px;
+  }
+  .subscription-card dl > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .subscription-card dd {
+    text-align: left;
+  }
+  .subscription-renew {
+    min-height: 50px;
+    font-size: 14px;
+  }
+  .subscription-back {
+    align-items: center;
+    min-height: 44px;
+  }
+  .subscription-history {
+    margin-top: 13px;
+  }
+  .subscription-table {
+    margin-inline: -17px;
+    padding-inline: 17px;
+    overscroll-behavior-x: contain;
+  }
+  .subscription-table table {
+    min-width: 560px;
+  }
+}
