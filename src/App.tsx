@@ -7,7 +7,9 @@ import SupplierDashboard from './pages/supplier/SupplierDashboard';
 import SupplierProducts from './pages/supplier/SupplierProducts';
 import SupplierOrders from './pages/supplier/SupplierOrders';
 import SupplierInventory from './pages/supplier/SupplierInventory';
+import SupplierQuotes from './pages/supplier/SupplierQuotes';
 import AdminPage from './pages/admin/AdminPage';
+import SubscriptionPage from './pages/SubscriptionPage';
 import { getMe } from './services/auth.api';
 import { ROLE_DETAILS, type AuthUser } from './types/auth';
 
@@ -26,7 +28,9 @@ export default function App() {
         // A failed probe must not hide the login screen while a cold database
         // or a serverless function is waking up.
       })
-      .finally(() => { if (active) setCheckingSession(false); });
+      .finally(() => {
+        if (active) setCheckingSession(false);
+      });
     return () => {
       active = false;
     };
@@ -35,33 +39,102 @@ export default function App() {
   const destination = user ? ROLE_DETAILS[user.role].path : '/login';
   // Keep protected deep links while /me restores the session; login stays usable
   // immediately even when a cold server is waking up.
-  const restoreSession = <main className="session-screen"><p role="status">Đang khôi phục phiên đăng nhập…</p><Link to="/login">Về trang đăng nhập</Link></main>;
+  const restoreSession = (
+    <main className="session-screen">
+      <p role="status">Đang khôi phục phiên đăng nhập…</p>
+      <Link to="/login">Về trang đăng nhập</Link>
+    </main>
+  );
   return (
     <BrowserRouter>
       <Routes>
         <Route
           path="/login"
+          element={user ? <Navigate to={destination} replace /> : <LoginPage onLogin={setUser} />}
+        />
+        <Route
+          path="/register"
+          element={user ? <Navigate to={destination} replace /> : <RegisterPage />}
+        />
+        <Route
+          path="/supplier/inventory"
           element={
-            user ? (
-              <Navigate to={destination} replace />
+            user?.role === 'SUPPLIER' ? (
+              <SupplierInventory onLogout={clearUser} />
+            ) : checkingSession && !user ? (
+              restoreSession
             ) : (
-              <LoginPage onLogin={setUser} />
+              <Navigate to={destination} replace />
             )
           }
         />
-        <Route path="/register" element={user ? <Navigate to={destination} replace /> : <RegisterPage />} />
-        <Route path="/supplier/inventory" element={user?.role === 'SUPPLIER' ? <SupplierInventory onLogout={clearUser} /> : checkingSession && !user ? restoreSession : <Navigate to={destination} replace />} />
-        <Route path="/supplier/products" element={user?.role === 'SUPPLIER' ? <SupplierProducts onLogout={clearUser} /> : checkingSession && !user ? restoreSession : <Navigate to={destination} replace />} />
-        <Route path="/supplier/orders" element={user?.role === 'SUPPLIER' ? <SupplierOrders user={user} onLogout={clearUser} /> : checkingSession && !user ? restoreSession : <Navigate to={destination} replace />} />
+        <Route
+          path="/supplier/products"
+          element={
+            user?.role === 'SUPPLIER' ? (
+              <SupplierProducts onLogout={clearUser} />
+            ) : checkingSession && !user ? (
+              restoreSession
+            ) : (
+              <Navigate to={destination} replace />
+            )
+          }
+        />
+        <Route
+          path="/supplier/quotes"
+          element={
+            user?.role === 'SUPPLIER' ? (
+              <SupplierQuotes onLogout={clearUser} />
+            ) : checkingSession && !user ? (
+              restoreSession
+            ) : (
+              <Navigate to={destination} replace />
+            )
+          }
+        />
+        <Route
+          path="/supplier/subscription"
+          element={
+            user?.role === 'SUPPLIER' ? (
+              <SubscriptionPage role="SUPPLIER" onLogout={clearUser} />
+            ) : checkingSession && !user ? (
+              restoreSession
+            ) : (
+              <Navigate to={destination} replace />
+            )
+          }
+        />
+        <Route
+          path="/supplier/orders"
+          element={
+            user?.role === 'SUPPLIER' ? (
+              <SupplierOrders user={user} onLogout={clearUser} />
+            ) : checkingSession && !user ? (
+              restoreSession
+            ) : (
+              <Navigate to={destination} replace />
+            )
+          }
+        />
         {Object.entries(ROLE_DETAILS).map(([role, details]) => (
           <Route
             key={role}
-            path={role === 'STORE_OWNER' ? '/store/*' : role === 'ADMIN' ? '/admin/*' : details.path}
+            path={
+              role === 'STORE_OWNER' ? '/store/*' : role === 'ADMIN' ? '/admin/*' : details.path
+            }
             element={
               user && user.role === role ? (
-                role === 'SUPPLIER' ? <SupplierDashboard user={user} onLogout={clearUser} /> : role === 'ADMIN' ? <AdminPage user={user} onLogout={clearUser} /> : <WorkspacePage user={user} onLogout={clearUser} />
+                role === 'SUPPLIER' ? (
+                  <SupplierDashboard user={user} onLogout={clearUser} />
+                ) : role === 'ADMIN' ? (
+                  <AdminPage user={user} onLogout={clearUser} />
+                ) : (
+                  <WorkspacePage user={user} onLogout={clearUser} />
+                )
+              ) : checkingSession && !user ? (
+                restoreSession
               ) : (
-                checkingSession && !user ? restoreSession : <Navigate to={destination} replace />
+                <Navigate to={destination} replace />
               )
             }
           />

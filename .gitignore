@@ -24,3 +24,7 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# Local Android deliverables. Android build outputs are already ignored inside
+# android/.gitignore; this folder only keeps a convenient copy for testing.
+artifacts/*.apk

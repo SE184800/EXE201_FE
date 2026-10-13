@@ -6,10 +6,7 @@ import Icon from '../../components/Icon';
 import OrderList from '../../components/OrderList';
 import { getApiError, isUnauthenticated } from '../../services/api';
 import { logout } from '../../services/auth.api';
-import {
-  updateSupplierOrderStatus,
-  type SupplierOrder,
-} from '../../services/supplier.api';
+import { updateSupplierOrderStatus, type SupplierOrder } from '../../services/supplier.api';
 import type { AuthUser } from '../../types/auth';
 
 const STATUS_ACTIONS: Record<string, { next: string; label: string }> = {
@@ -20,7 +17,13 @@ const STATUS_ACTIONS: Record<string, { next: string; label: string }> = {
   ISSUE_HANDLING: { next: 'DELIVERED', label: 'Xác nhận đã giao & thu COD' },
 };
 
-export default function SupplierOrders({ user, onLogout }: { user?: AuthUser; onLogout: () => void }) {
+export default function SupplierOrders({
+  user,
+  onLogout,
+}: {
+  user?: AuthUser;
+  onLogout: () => void;
+}) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [noticeError, setNoticeError] = useState(false);
@@ -33,14 +36,20 @@ export default function SupplierOrders({ user, onLogout }: { user?: AuthUser; on
     document.title = 'SupplyMind AI · Đơn hàng từ cửa hàng';
   }, []);
 
-  async function handleOrderStatus(order: SupplierOrder, forcedStatus?: string, suppliedReason?: string) {
+  async function handleOrderStatus(
+    order: SupplierOrder,
+    forcedStatus?: string,
+    suppliedReason?: string,
+  ) {
     if (forcedStatus === 'REJECTED' && suppliedReason === undefined) {
       setRejectingOrder(order);
       setRejectReason('');
       setRejectError('');
       return;
     }
-    const action = forcedStatus ? { next: forcedStatus, label: 'Từ chối' } : STATUS_ACTIONS[order.status];
+    const action = forcedStatus
+      ? { next: forcedStatus, label: 'Từ chối' }
+      : STATUS_ACTIONS[order.status];
     if (!action) return;
     const normalizedReason = action.next === 'REJECTED' ? suppliedReason?.trim() : undefined;
     setBusy(true);
@@ -48,7 +57,7 @@ export default function SupplierOrders({ user, onLogout }: { user?: AuthUser; on
     setNoticeError(false);
     try {
       const saved = await updateSupplierOrderStatus(order.id, action.next, normalizedReason);
-      setOrderRevision(n => n + 1);
+      setOrderRevision((n) => n + 1);
       setNotice(`Đơn #${order.id} đã chuyển sang “${saved.statusLabel}”.`);
     } catch (issue) {
       setNoticeError(true);
@@ -109,8 +118,12 @@ export default function SupplierOrders({ user, onLogout }: { user?: AuthUser; on
         <nav className="catalog-nav" aria-label="Chủ vựa">
           <Link to="/supplier">Tổng quan</Link>
           <Link to="/supplier/products">Sản phẩm đăng bán</Link>
-          <Link to="/supplier/orders" aria-current="page">Đơn hàng</Link>
+          <Link to="/supplier/quotes">Báo giá tiếp thị</Link>
+          <Link to="/supplier/orders" aria-current="page">
+            Đơn hàng
+          </Link>
           <Link to="/supplier/inventory">Kho hàng</Link>
+          <Link to="/supplier/subscription">Gói sử dụng</Link>
         </nav>
         <div className="supplier-heading">
           <div>
@@ -122,7 +135,7 @@ export default function SupplierOrders({ user, onLogout }: { user?: AuthUser; on
           </div>
           <button
             className="ghost-button"
-            onClick={() => setOrderRevision(n => n + 1)}
+            onClick={() => setOrderRevision((n) => n + 1)}
             disabled={busy}
           >
             ↻ Làm mới
@@ -185,7 +198,12 @@ function RejectDialog({
 }) {
   return (
     <div className="supplier-dialog-backdrop" role="presentation">
-      <section className="supplier-dialog" role="dialog" aria-modal="true" aria-labelledby="reject-dialog-title">
+      <section
+        className="supplier-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reject-dialog-title"
+      >
         <span className="supplier-panel-label">ĐƠN #{order.id}</span>
         <h2 id="reject-dialog-title">Từ chối đơn hàng</h2>
         <p>Cho cửa hàng biết lý do để họ chủ động điều chỉnh đơn.</p>

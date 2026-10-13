@@ -1,5 +1,23 @@
+import axios from 'axios';
 import { api, withTransientRetry } from './api';
 import { ROLE_DETAILS, type AuthUser } from '../types/auth';
+import type { Subscription } from './subscription.api';
+
+export class SubscriptionRequiredError extends Error {
+  renewalToken: string;
+  subscription: Subscription;
+
+  constructor(message: string, renewalToken: string, subscription: Subscription) {
+    super(message);
+    this.name = 'SubscriptionRequiredError';
+    this.renewalToken = renewalToken;
+    this.subscription = subscription;
+  }
+}
+
+export function isSubscriptionRequiredError(error: unknown): error is SubscriptionRequiredError {
+  return error instanceof SubscriptionRequiredError;
+}
 
 function parseUser(value: unknown): AuthUser {
   if (
@@ -20,15 +38,39 @@ function parseUser(value: unknown): AuthUser {
   return value as AuthUser;
 }
 
-export async function login(input: {
-  username: string;
-  password: string;
-}): Promise<AuthUser> {
-  const response = await withTransientRetry(
-    () => api.post<{ user: unknown }>('/auth/login', input),
-    1,
-  );
-  return parseUser(response.data.user);
+export async function login(input: { username: string; password: string }): Promise<AuthUser> {
+  try {
+    const response = await withTransientRetry(
+      () => api.post<{ user: unknown }>('/auth/login', input),
+      1,
+    );
+    return parseUser(response.data.user);
+  } catch (error) {
+    if (
+      axios.isAxiosError<{
+        code?: string;
+        message?: string;
+        renewalToken?: unknown;
+        subscription?: unknown;
+      }>(error)
+    ) {
+      const data = error.response?.data;
+      if (
+        error.response?.status === 402 &&
+        data?.code === 'SUBSCRIPTION_REQUIRED' &&
+        typeof data.renewalToken === 'string' &&
+        data.subscription &&
+        typeof data.subscription === 'object'
+      ) {
+        throw new SubscriptionRequiredError(
+          data.message || 'Gói sử dụng đã hết hạn.',
+          data.renewalToken,
+          data.subscription as Subscription,
+        );
+      }
+    }
+    throw error;
+  }
 }
 
 export type RegistrationInput = {
@@ -48,9 +90,7 @@ export async function registerAccount(input: RegistrationInput): Promise<AuthUse
 }
 
 export async function getMe(): Promise<AuthUser> {
-  const response = await withTransientRetry(() =>
-    api.get<{ user: unknown }>('/auth/me'),
-  );
+  const response = await withTransientRetry(() => api.get<{ user: unknown }>('/auth/me'));
   return parseUser(response.data.user);
 }
 

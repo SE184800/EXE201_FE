@@ -10,7 +10,14 @@ type Props = {
   describedBy?: string;
 };
 
-export default function BirthDateInput({ value, onChange, onBlur, disabled, invalid, describedBy }: Props) {
+export default function BirthDateInput({
+  value,
+  onChange,
+  onBlur,
+  disabled,
+  invalid,
+  describedBy,
+}: Props) {
   const [year = '', month = '', day = ''] = value.split('-');
   const yearRef = useRef<HTMLInputElement>(null);
   const maxYear = Number(todayInVietnam().slice(0, 4));
@@ -32,28 +39,58 @@ export default function BirthDateInput({ value, onChange, onBlur, disabled, inva
 
   const shared = { disabled, 'aria-invalid': invalid, 'aria-describedby': describedBy };
   return (
-    <div className="birth-date-input" onBlur={(event) => {
-      if (!event.currentTarget.contains(event.relatedTarget)) onBlur();
-    }}>
-      <select {...shared} id="dateOfBirth" name="dateOfBirth" aria-label="Ngày sinh" autoComplete="bday-day"
-        value={day} onChange={(event) => onChange(`${year}-${month}-${event.target.value}`)}>
+    <div
+      className="birth-date-input"
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) onBlur();
+      }}
+    >
+      <select
+        {...shared}
+        id="dateOfBirth"
+        name="dateOfBirth"
+        aria-label="Ngày sinh"
+        autoComplete="bday-day"
+        value={day}
+        onChange={(event) => onChange(`${year}-${month}-${event.target.value}`)}
+      >
         <option value="">Ngày</option>
         {Array.from({ length: 31 }, (_, i) => i + 1).map((number) => (
-          <option key={number} value={String(number).padStart(2, '0')}>{number}</option>
+          <option key={number} value={String(number).padStart(2, '0')}>
+            {number}
+          </option>
         ))}
       </select>
       <span aria-hidden="true">/</span>
-      <select {...shared} name="birthMonth" aria-label="Tháng sinh" autoComplete="bday-month"
-        value={month} onChange={(event) => onChange(`${year}-${event.target.value}-${day}`)}>
+      <select
+        {...shared}
+        name="birthMonth"
+        aria-label="Tháng sinh"
+        autoComplete="bday-month"
+        value={month}
+        onChange={(event) => onChange(`${year}-${event.target.value}-${day}`)}
+      >
         <option value="">Tháng</option>
         {Array.from({ length: 12 }, (_, i) => i + 1).map((number) => (
-          <option key={number} value={String(number).padStart(2, '0')}>{number}</option>
+          <option key={number} value={String(number).padStart(2, '0')}>
+            {number}
+          </option>
         ))}
       </select>
       <span aria-hidden="true">/</span>
-      <input {...shared} ref={yearRef} name="birthYear" aria-label="Năm sinh" autoComplete="bday-year"
-        type="text" inputMode="numeric" maxLength={4} placeholder="Năm" value={year}
-        onChange={(event) => onChange(`${event.target.value.replace(/\D/g, '')}-${month}-${day}`)} />
+      <input
+        {...shared}
+        ref={yearRef}
+        name="birthYear"
+        aria-label="Năm sinh"
+        autoComplete="bday-year"
+        type="text"
+        inputMode="numeric"
+        maxLength={4}
+        placeholder="Năm"
+        value={year}
+        onChange={(event) => onChange(`${event.target.value.replace(/\D/g, '')}-${month}-${day}`)}
+      />
     </div>
   );
 }
