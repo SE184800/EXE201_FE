@@ -85,13 +85,15 @@ export default function BirthDateInput({
   });
 
   // Keep display text in sync when external value changes
-  useEffect(() => {
+  const [prevValue, setPrevValue] = useState(value);
+  if (value !== prevValue) {
+    setPrevValue(value);
     setDisplayText(isoToDisplay(value));
     if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
       setViewYear(Number(value.slice(0, 4)));
       setViewMonth(Number(value.slice(5, 7)) - 1);
     }
-  }, [value]);
+  }
 
   // Click outside and Escape handler
   useEffect(() => {

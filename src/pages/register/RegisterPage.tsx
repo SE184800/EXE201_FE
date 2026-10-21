@@ -599,10 +599,12 @@ function OtpModal({
   const [successUser, setSuccessUser] = useState<AuthUser | null>(null);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  useEffect(() => {
+  const [prevOtpToken, setPrevOtpToken] = useState(otpToken);
+  if (otpToken !== prevOtpToken) {
+    setPrevOtpToken(otpToken);
     setCurrentOtpToken(otpToken);
     if (devOtpNotice) setCurrentDevOtp(devOtpNotice);
-  }, [otpToken, devOtpNotice]);
+  }
 
   useEffect(() => {
     if (timeLeft <= 0 || successUser) return;

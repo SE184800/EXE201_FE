@@ -528,9 +528,11 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
   const startIndex = (currentPage - 1) * PAGE_SIZE;
   const paginatedProducts = filteredProducts.slice(startIndex, startIndex + PAGE_SIZE);
 
-  useEffect(() => {
+  const [prevCurrentPage, setPrevCurrentPage] = useState(currentPage);
+  if (currentPage !== prevCurrentPage) {
+    setPrevCurrentPage(currentPage);
     setPageInput(String(currentPage));
-  }, [currentPage]);
+  }
 
   return (
     <main className="supplier-page">
