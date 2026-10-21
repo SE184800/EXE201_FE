@@ -82,7 +82,36 @@ export type RegistrationInput = {
   dateOfBirth: string;
   password: string;
   confirmPassword: string;
+  acceptTerms?: boolean;
 };
+
+
+export type RequestOtpResponse = {
+  success: boolean;
+  message: string;
+  email: string;
+  otpToken: string;
+  expiresIn: number;
+  devOtp?: string;
+};
+
+export async function requestRegistrationOtp(input: RegistrationInput): Promise<RequestOtpResponse> {
+  const response = await api.post<RequestOtpResponse>('/auth/register-request-otp', input);
+  return response.data;
+}
+
+export async function verifyRegistrationOtp(input: {
+  otpToken: string;
+  otp: string;
+}): Promise<AuthUser> {
+  const response = await api.post<{ success: boolean; user: unknown }>('/auth/register-verify-otp', input);
+  return parseUser(response.data.user);
+}
+
+export async function resendRegistrationOtp(input: RegistrationInput): Promise<RequestOtpResponse> {
+  const response = await api.post<RequestOtpResponse>('/auth/register-resend-otp', input);
+  return response.data;
+}
 
 export async function registerAccount(input: RegistrationInput): Promise<AuthUser> {
   const response = await api.post<{ user: unknown }>('/auth/register', input);

@@ -68,6 +68,7 @@ const navigation = [
   { path: 'finance', label: 'Hoa hồng & đối soát', icon: 'box' },
   { path: 'holidays', label: 'Ngày lễ & AI', icon: 'sparkle' },
   { path: 'ai', label: 'Hoạt động AI', icon: 'sparkle' },
+  { path: 'moderation', label: 'Duyệt bài AI', icon: 'sparkle' },
   { path: 'audit', label: 'Nhật ký hệ thống', icon: 'lock' },
 ] as const;
 
@@ -147,6 +148,8 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
             <HolidaySettings onLogout={onLogout} />
           ) : tab === 'ai' ? (
             <AiMonitoring onLogout={onLogout} />
+          ) : tab === 'moderation' ? (
+            <ModerationQueue onLogout={onLogout} />
           ) : (
             <Audit onLogout={onLogout} />
           )}
@@ -1888,6 +1891,169 @@ function Audit({ onLogout }: Props) {
           )}
           <Pager {...data} onPage={(page) => setQuery({ ...query, page })} />
         </Panel>
+      )}
+    </>
+  );
+}
+
+type ModerationItem = {
+  id: number;
+  supplierId: number;
+  supplierName: string;
+  supplierOwner: string;
+  name: string;
+  category: string;
+  packaging: string;
+  wholesalePrice: number;
+  stockQty: number;
+  moq: number;
+  isActive: boolean;
+  createdAt: string;
+  moderation: {
+    status: 'AUTO_APPROVED' | 'NEEDS_REVIEW' | 'AUTO_REJECTED' | 'FLAGGED';
+    riskScore: number;
+    reasons: string[];
+    criticalReasons?: string[];
+    isClean: boolean;
+  };
+};
+
+type ModerationResponse = List & {
+  queue: ModerationItem[];
+  summary: { flaggedCount: number; autoApprovedCount: number; autoRejectedCount?: number; totalCount: number };
+};
+
+function ModerationQueue({ onLogout }: Props) {
+  const [query, setQuery] = useState({ page: 1 });
+  const [revision, setRevision] = useState(0);
+  const [actionBusy, setActionBusy] = useState<number | null>(null);
+  const { data, loading, error } = useAdminData<ModerationResponse>('/admin/moderation/queue', query, onLogout, revision);
+
+  async function handleAction(id: number, action: 'APPROVE' | 'REJECT') {
+    setActionBusy(id);
+    try {
+      await api.post(`/admin/moderation/${id}/action`, {
+        action,
+        reason: action === 'APPROVE' ? 'Admin duyệt cho phép hiển thị' : 'Vi phạm quy định giá/nội dung sàn sỉ',
+      });
+      setRevision((n) => n + 1);
+    } catch (e) {
+      alert(getApiError(e));
+    } finally {
+      setActionBusy(null);
+    }
+  }
+
+  return (
+    <>
+      <Heading
+        eyebrow="AI AUTO-MODERATION"
+        title="Hàng chờ kiểm duyệt AI"
+        description="Kiểm soát các bài đăng bị cảnh báo nhẹ (Mức 2: thuốc lá, giá lệch nhẹ). Các bài vi phạm nghiêm trọng (Mức 3) đã được AI tự động cấm thẳng để giảm tải cho Admin."
+        action={<button onClick={() => setRevision((n) => n + 1)}>↻ Làm mới hàng chờ</button>}
+      />
+      <LoadState loading={loading} error={error} />
+      {data && (
+        <>
+          <div className="admin-metrics three">
+            <Metric label="Cần Admin duyệt (Mức 2)" value={data.summary.flaggedCount} note="Cảnh báo nhẹ / 1 lỗi" />
+            <Metric label="AI đã tự cấm (Mức 3)" value={data.summary.autoRejectedCount ?? 0} note="Vi phạm nặng / Giảm tải Admin" />
+            <Metric label="AI duyệt tự động (Mức 1)" value={data.summary.autoApprovedCount} note="Bài đăng sạch (Clean)" />
+          </div>
+          <Panel title="Danh sách sản phẩm cần Admin duyệt (Mức 2: Cảnh báo nhẹ)">
+            {data.queue.length ? (
+              <div className="admin-table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Sản phẩm / Quy cách</th>
+                      <th>Chủ vựa</th>
+                      <th>Giá sỉ</th>
+                      <th>Điểm rủi ro AI</th>
+                      <th>Lý do AI cảnh báo</th>
+                      <th>Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.queue.map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          <strong>{item.name}</strong>
+                          <br />
+                          <small>
+                            {item.category} · {item.packaging}
+                          </small>
+                        </td>
+                        <td>
+                          <strong>{item.supplierName}</strong>
+                          <br />
+                          <small>{item.supplierOwner}</small>
+                        </td>
+                        <td className="admin-money">{money(item.wholesalePrice)}</td>
+                        <td>
+                          <span
+                            style={{
+                              background: item.moderation.riskScore >= 50 ? '#fce8e6' : '#fef7e0',
+                              color: item.moderation.riskScore >= 50 ? '#c5221f' : '#b06000',
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: '12px',
+                              fontSize: '12px',
+                            }}
+                          >
+                            ⚠️ Rủi ro {item.moderation.riskScore}%
+                          </span>
+                        </td>
+                        <td>
+                          <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '12px', color: '#d93025' }}>
+                            {item.moderation.reasons.map((r, idx) => (
+                              <li key={idx}>{r}</li>
+                            ))}
+                          </ul>
+                        </td>
+                        <td>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button
+                              className="admin-primary"
+                              style={{
+                                background: '#137333',
+                                borderColor: '#137333',
+                                padding: '4px 10px',
+                                fontSize: '12px',
+                              }}
+                              disabled={actionBusy === item.id}
+                              onClick={() => void handleAction(item.id, 'APPROVE')}
+                            >
+                              Duyệt
+                            </button>
+                            <button
+                              style={{
+                                background: '#d93025',
+                                color: '#fff',
+                                border: 'none',
+                                padding: '4px 10px',
+                                borderRadius: '4px',
+                                fontSize: '12px',
+                                cursor: 'pointer',
+                              }}
+                              disabled={actionBusy === item.id}
+                              onClick={() => void handleAction(item.id, 'REJECT')}
+                            >
+                              Từ chối
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <Empty>Hiện không có bài đăng sỉ nào bị gắn cờ nghi vấn.</Empty>
+            )}
+            <Pager {...data} onPage={(page) => setQuery({ page })} />
+          </Panel>
+        </>
       )}
     </>
   );

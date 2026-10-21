@@ -12,7 +12,8 @@ type IconName =
   | 'check'
   | 'logout'
   | 'help'
-  | 'sparkle';
+  | 'sparkle'
+  | 'calendar';
 
 const paths: Record<IconName, string> = {
   chart: 'M4 3v18h17M8 17v-5m5 5V8m5 9V4',
@@ -30,6 +31,7 @@ const paths: Record<IconName, string> = {
   logout: 'M9 4H4v16h5M10 12h11m-4-4 4 4-4 4',
   help: 'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0ZM9 9a3 3 0 0 1 6 0c0 2-3 2-3 4m0 3h.01',
   sparkle: 'm12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z',
+  calendar: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z',
 };
 
 export default function Icon({ name, className = '' }: { name: IconName; className?: string }) {

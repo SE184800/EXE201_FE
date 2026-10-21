@@ -36,6 +36,13 @@ export type SupplierProduct = {
   priceChangedAt: string | null;
   priceChangeReason: string | null;
   priceWarning: boolean;
+  moderation?: {
+    status: 'AUTO_APPROVED' | 'NEEDS_REVIEW' | 'AUTO_REJECTED' | 'FLAGGED';
+    riskScore: number;
+    reasons: string[];
+    criticalReasons?: string[];
+    isClean: boolean;
+  };
 };
 
 export type SupplierOrder = {

@@ -9,6 +9,8 @@ $apkDestination = Join-Path $artifactRoot 'SupplyMindAI-demo.apk'
 $androidStudioJava = 'C:\Program Files\Android\Android Studio\jbr'
 if (Test-Path -LiteralPath $androidStudioJava) {
   $env:JAVA_HOME = $androidStudioJava
+} elseif (Test-Path -LiteralPath 'C:\jdk-22.0.1') {
+  $env:JAVA_HOME = 'C:\jdk-22.0.1'
 }
 
 $env:ANDROID_HOME = Join-Path $env:LOCALAPPDATA 'Android\Sdk'

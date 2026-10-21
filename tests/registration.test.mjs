@@ -6,6 +6,7 @@ const base = {
   name: 'Nguyễn Văn An', username: 'nguyen.an', email: 'an@example.com',
   phone: '0912345678', role: 'STORE_OWNER', dateOfBirth: '1998-05-20',
   password: 'Register@2026', confirmPassword: 'Register@2026',
+  acceptTerms: true,
 };
 const now = new Date('2026-09-20T18:00:00Z');
 
@@ -22,6 +23,7 @@ test('báo lỗi đúng ô trước khi gửi tên, email, phone, role và xác 
     ['name', 'An123'], ['name', '...'], ['name', 'A'.repeat(101)], ['username', 'ab'],
     ['email', 'a@@example.com'], ['email', `${'a'.repeat(250)}@example.com`],
     ['phone', '12345'], ['role', 'ADMIN'], ['confirmPassword', ''], ['confirmPassword', 'different'],
+    ['acceptTerms', false],
   ]) {
     assert.ok(validateRegistration({ ...base, [field]: value }, now)[field], field);
   }
