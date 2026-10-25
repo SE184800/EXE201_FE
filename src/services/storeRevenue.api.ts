@@ -50,7 +50,12 @@ export const vnd = (value: string | number) =>
 export const vietnamDay = (date = new Date()) =>
   new Date(date.getTime() + 7 * 3600000).toISOString().slice(0, 10);
 
-export async function getStoreRevenue(from: string, to: string, page: number, signal: AbortSignal) {
+export async function getStoreRevenue(
+  from: string,
+  to: string,
+  page = 1,
+  signal?: AbortSignal,
+) {
   return (
     await api.get<StoreRevenueReport>('/inventory/revenue', { params: { from, to, page }, signal })
   ).data;

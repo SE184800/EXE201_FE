@@ -14,6 +14,7 @@ import StoreQuotes from './StoreQuotes';
 import SubscriptionPage from './SubscriptionPage';
 import Brand from '../components/Brand';
 import Icon from '../components/Icon';
+import ExportSalesDialog from '../components/ExportSalesDialog';
 import InventoryImportDialog, {
   type InventoryImportDialogHandle,
 } from '../components/InventoryImportDialog';
@@ -126,6 +127,7 @@ export default function StoreInventory({
   );
   const [quickCounts, setQuickCounts] = useState<Record<number, number>>({});
   const [quickSaving, setQuickSaving] = useState(false);
+  const [exportSalesOpen, setExportSalesOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       from: 'bot',
@@ -628,6 +630,13 @@ export default function StoreInventory({
                         <Icon name="box" /> Nhập từ Excel
                       </button>
                     )}
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => setExportSalesOpen(true)}
+                    >
+                      <Icon name="download" /> Xuất báo cáo bán
+                    </button>
                     <button type="button" className="dash-primary" onClick={addProduct}>
                       <span>＋</span> Thêm sản phẩm
                     </button>
@@ -1398,6 +1407,10 @@ export default function StoreInventory({
           </div>
         </form>
       </dialog>
+      <ExportSalesDialog
+        isOpen={exportSalesOpen}
+        onClose={() => setExportSalesOpen(false)}
+      />
     </main>
   );
 }

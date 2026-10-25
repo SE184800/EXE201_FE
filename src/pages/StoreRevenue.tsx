@@ -1,6 +1,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from '../components/Icon';
+import ExportSalesDialog from '../components/ExportSalesDialog';
+import ExportDropdown from '../components/ExportDropdown';
+import { exportSalesToExcel, exportSalesToPdf } from '../utils/exportSales';
 import { getApiError, isUnauthenticated } from '../services/api';
 import {
   getStoreRevenue,
@@ -32,6 +35,29 @@ export default function StoreRevenue({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filterError, setFilterError] = useState('');
+  const [exportOpen, setExportOpen] = useState(false);
+
+  async function loadFullReport(from: string, to: string): Promise<StoreRevenueReport | null> {
+    try {
+      let p = 1;
+      const initial = await getStoreRevenue(from, to, p);
+      const allSales = [...initial.sales];
+      let current = initial;
+
+      while (current.hasMore && p < 20) {
+        p += 1;
+        current = await getStoreRevenue(from, to, p);
+        allSales.push(...current.sales);
+      }
+
+      return {
+        ...initial,
+        sales: allSales,
+      };
+    } catch {
+      return null;
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -93,9 +119,41 @@ export default function StoreRevenue({ onLogout }: { onLogout: () => void }) {
           <h1>Doanh thu cửa hàng</h1>
           <p>Theo dõi số tiền bán hàng đã ghi nhận của riêng cửa hàng bạn.</p>
         </div>
-        <Link className="dash-primary" to="/store/activity">
-          <Icon name="arrow" /> Ghi nhận bán hàng
-        </Link>
+        <div className="dashboard-title-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          <ExportDropdown
+            label="Xuất báo cáo"
+            onOpenModal={() => setExportOpen(true)}
+            onExportExcel={async () => {
+              const full = await loadFullReport(range.from, range.to);
+              if (full) {
+                exportSalesToExcel({
+                  from: range.from,
+                  to: range.to,
+                  storeName: 'Cửa hàng tạp hóa',
+                  summary: full.summary,
+                  topProducts: full.topProducts,
+                  sales: full.sales,
+                });
+              }
+            }}
+            onExportPdf={async () => {
+              const full = await loadFullReport(range.from, range.to);
+              if (full) {
+                await exportSalesToPdf({
+                  from: range.from,
+                  to: range.to,
+                  storeName: 'Cửa hàng tạp hóa',
+                  summary: full.summary,
+                  topProducts: full.topProducts,
+                  sales: full.sales,
+                });
+              }
+            }}
+          />
+          <Link className="dash-primary" to="/store/activity">
+            <Icon name="arrow" /> Ghi nhận bán hàng
+          </Link>
+        </div>
       </header>
       <div className="dashboard-card revenue-filters">
         <div className="revenue-presets" aria-label="Khoảng thời gian nhanh">
@@ -150,6 +208,7 @@ export default function StoreRevenue({ onLogout }: { onLogout: () => void }) {
           <button className="inventory-refresh" type="button" disabled={loading} onClick={refresh}>
             ↻ Tải lại
           </button>
+          
         </form>
         {filterError && (
           <p className="error-notice" role="alert">
@@ -326,7 +385,24 @@ export default function StoreRevenue({ onLogout }: { onLogout: () => void }) {
                   <span className="section-kicker">GIÁ TẠI THỜI ĐIỂM BÁN</span>
                   <h2>Chi tiết bán hàng</h2>
                 </div>
-                <span className="revenue-note">Mới nhất trước</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    style={{
+                      fontSize: '12px',
+                      padding: '6px 12px',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setExportOpen(true)}
+                  >
+                    📥 Xuất Excel / PDF
+                  </button>
+                  <span className="revenue-note">Mới nhất trước</span>
+                </div>
               </div>
               {!data.sales.length ? (
                 <p className="revenue-note">Không có lượt bán ở trang này.</p>
@@ -404,6 +480,11 @@ export default function StoreRevenue({ onLogout }: { onLogout: () => void }) {
           </>
         )
       )}
+      <ExportSalesDialog
+        isOpen={exportOpen}
+        onClose={() => setExportOpen(false)}
+        defaultDate={range.from === range.to ? range.from : undefined}
+      />
     </section>
   );
 }

@@ -5,6 +5,8 @@ import '../store-inventory.css';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
 import type { SupplierProduct } from '../../services/supplier.api';
+import ExportDropdown from '../../components/ExportDropdown';
+import { exportSupplierInventoryToExcel, exportSupplierInventoryToPdf } from '../../utils/exportSupplier';
 
 const empty = {
   name: '',
@@ -75,6 +77,7 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const editor = useRef<HTMLDialogElement>(null);
+  
 
   useEffect(() => {
     if (!notice) return;
@@ -193,9 +196,17 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
             <h1>Kho hàng của bạn</h1>
             <p>Kiểm soát số lượng hàng tồn kho thực tế tại vựa.</p>
           </div>
-          <button className="dash-primary" onClick={add}>
-            <span>＋</span> Thêm sản phẩm
-          </button>
+          <div className="dashboard-title-actions" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <ExportDropdown
+              label="Xuất file"
+              disabled={!items.length}
+              onExportExcel={() => exportSupplierInventoryToExcel(items, 'Kho hàng chủ vựa')}
+              onExportPdf={() => exportSupplierInventoryToPdf(items, 'Kho hàng chủ vựa')}
+            />
+            <button className="dash-primary" onClick={add}>
+              <span>＋</span> Thêm sản phẩm
+            </button>
+          </div>
         </div>
 
         {notice && (
