@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import type { SupplierOrder } from '../services/supplier.api';
+import ExportDropdown from './ExportDropdown';
+import { exportSupplierOrdersToExcel, exportSupplierOrdersToPdf } from '../utils/exportSupplier';
 import { rescheduleOrder, respondRescheduleOrder } from '../services/supplier.api';
 import { depositOrderWithWallet } from '../services/wallet.api';
 
@@ -80,6 +82,20 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
   const [depositDraft, setDepositDraft] = useState<{ orderId: number; reference: string } | null>(
     null,
   );
+  function handleExportExcel() {
+    exportSupplierOrdersToExcel(
+      data.orders,
+      kind === 'store' ? 'Đơn Mua Hàng Cửa Hàng' : 'Đơn Bán Sỉ Chủ Vựa',
+    );
+  }
+
+  async function handleExportPdf() {
+    await exportSupplierOrdersToPdf(
+      data.orders,
+      kind === 'store' ? 'Đơn Mua Hàng Cửa Hàng' : 'Đơn Bán Sỉ Chủ Vựa',
+    );
+  }
+
   const [refundDraft, setRefundDraft] = useState<{ orderId: number; reference: string } | null>(
     null,
   );
@@ -381,16 +397,24 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
           <h2>{kind === 'store' ? 'Đơn mua của cửa hàng' : 'Đơn hàng từ cửa hàng'}</h2>
           <p className="catalog-hint">Tự cập nhật mỗi 30 giây khi bạn đang xem.</p>
         </div>
-        <button
-          className="ghost-button"
-          disabled={loading || busy}
-          onClick={() => {
-            setLoading(true);
-            setReload((n) => n + 1);
-          }}
-        >
-          Tải lại đơn
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <ExportDropdown
+            label="Xuất đơn"
+            disabled={!data.orders.length}
+            onExportExcel={handleExportExcel}
+            onExportPdf={handleExportPdf}
+          />
+          <button
+            className="ghost-button"
+            disabled={loading || busy}
+            onClick={() => {
+              setLoading(true);
+              setReload((n) => n + 1);
+            }}
+          >
+            Tải lại đơn
+          </button>
+        </div>
       </div>
 
       {depositNotice && (
