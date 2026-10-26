@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import '../catalog.css';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
+import TopbarBalance from '../../components/TopbarBalance';
 import SupplierVerification from './SupplierVerification';
 import { getApiError, getApiFieldErrors, isUnauthenticated } from '../../services/api';
 import { logout } from '../../services/auth.api';
@@ -154,6 +155,7 @@ export default function SupplierDashboard({
       <header className="supplier-header">
         <Brand />
         <div className="supplier-header-actions">
+          <TopbarBalance linkTo="/supplier/wallet" />
           <span>
             <strong>{user.name}</strong>
             <small>Chủ vựa / Đại lý bỏ mối</small>
@@ -172,6 +174,7 @@ export default function SupplierDashboard({
           <Link to="/supplier/quotes">Báo giá tiếp thị</Link>
           <Link to="/supplier/orders">Đơn hàng</Link>
           <Link to="/supplier/inventory">Kho hàng</Link>
+          <Link to="/supplier/wallet">Ví & Ký quỹ</Link>
           <Link to="/supplier/subscription">Gói sử dụng</Link>
         </nav>
         <div className="supplier-heading">

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import Brand from '../../components/Brand';
+import TopbarBalance from '../../components/TopbarBalance';
 import Icon from '../../components/Icon';
 import { PRODUCT_CATEGORIES } from '../../services/catalog.api';
 import { getApiError, getApiFieldErrors, isUnauthenticated } from '../../services/api';
@@ -538,9 +539,12 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
     <main className="supplier-page">
       <header className="supplier-header">
         <Brand />
-        <Link className="ghost-button catalog-link" to="/supplier">
-          ← Tổng quan chủ vựa
-        </Link>
+        <div className="supplier-header-actions">
+          <TopbarBalance linkTo="/supplier/wallet" />
+          <Link className="ghost-button catalog-link" to="/supplier">
+            ← Tổng quan chủ vựa
+          </Link>
+        </div>
       </header>
       <section className="supplier-main">
         <nav className="catalog-nav" aria-label="Chủ vựa">
@@ -551,6 +555,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
           <Link to="/supplier/quotes">Báo giá tiếp thị</Link>
           <Link to="/supplier/orders">Đơn hàng</Link>
           <Link to="/supplier/inventory">Kho hàng</Link>
+          <Link to="/supplier/wallet">Ví & Ký quỹ</Link>
           <Link to="/supplier/subscription">Gói sử dụng</Link>
         </nav>
         <div className="supplier-heading">

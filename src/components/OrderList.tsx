@@ -1,6 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import type { SupplierOrder } from '../services/supplier.api';
+import { rescheduleOrder, respondRescheduleOrder } from '../services/supplier.api';
+import { depositOrderWithWallet } from '../services/wallet.api';
 
 const statuses = {
   PENDING: 'Chờ duyệt',
@@ -81,6 +83,38 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
   const [refundDraft, setRefundDraft] = useState<{ orderId: number; reference: string } | null>(
     null,
   );
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState('');
+  const [resolutionType, setResolutionType] = useState<'DEDUCT_COD' | 'RETURN_REFUND' | 'REJECT_REFUSAL_CLAIM_DEPOSIT'>('DEDUCT_COD');
+  const [deductAmount, setDeductAmount] = useState<number>(0);
+  const [rescheduleOrderTarget, setRescheduleOrderTarget] = useState<SupplierOrder | null>(null);
+  const [rescheduleTimeChoice, setRescheduleTimeChoice] = useState<'1_HOUR' | 'THIS_AFTERNOON' | 'TOMORROW_MORNING' | 'CUSTOM'>('1_HOUR');
+  const [customRescheduleTime, setCustomRescheduleTime] = useState('');
+  const [rescheduleReason, setRescheduleReason] = useState('');
+  const [rescheduleBusy, setRescheduleBusy] = useState(false);
+  const [rescheduleMessage, setRescheduleMessage] = useState('');
+  const [supplierRescheduleBusy, setSupplierRescheduleBusy] = useState<number | null>(null);
+  const [rejectRescheduleOrder, setRejectRescheduleOrder] = useState<SupplierOrder | null>(null);
+  const [rejectRescheduleReason, setRejectRescheduleReason] = useState('');
+
+  async function handleDepositWithWallet(order: SupplierOrder) {
+    if (depositBusy !== null) return;
+    setDepositBusy(order.id);
+    setError('');
+    setDepositNotice('');
+    try {
+      await depositOrderWithWallet(order.id);
+      setDepositNotice(
+        `Đã ký quỹ thành công ${money(order.depositAmount)} từ Ví hệ thống cho đơn #${order.id}.`,
+      );
+      setReload((value) => value + 1);
+    } catch (issue) {
+      setError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      setDepositBusy(null);
+    }
+  }
 
   async function submitDeposit(event: FormEvent, order: SupplierOrder) {
     event.preventDefault();
@@ -179,17 +213,91 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
     }
   }
 
-  async function updateComplaint(status: string) {
+  async function handleSupplierReschedule(order: SupplierOrder, action: 'ACCEPT' | 'REJECT', note?: string) {
+    if (supplierRescheduleBusy !== null) return;
+    setSupplierRescheduleBusy(order.id);
+    setError('');
+    try {
+      await respondRescheduleOrder(order.id, action, note);
+      setReload((n) => n + 1);
+      if (action === 'REJECT') {
+        setRejectRescheduleOrder(null);
+        setRejectRescheduleReason('');
+      }
+    } catch (issue) {
+      setError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      setSupplierRescheduleBusy(null);
+    }
+  }
+
+  async function handleReschedule(event: FormEvent) {
+    event.preventDefault();
+    if (!rescheduleOrderTarget || rescheduleBusy) return;
+    setRescheduleBusy(true);
+    setRescheduleMessage('');
+    const timeText = rescheduleTimeChoice === '1_HOUR'
+      ? 'Sau 1 tiếng nữa'
+      : rescheduleTimeChoice === 'THIS_AFTERNOON'
+        ? 'Buổi chiều nay (14h00 – 16h30)'
+        : rescheduleTimeChoice === 'TOMORROW_MORNING'
+          ? 'Buổi sáng mai (8h00 – 11h00)'
+          : customRescheduleTime.trim() || 'Thời gian đã thỏa thuận';
+    try {
+      await rescheduleOrder(rescheduleOrderTarget.id, timeText, rescheduleReason.trim() || undefined);
+      setRescheduleMessage('Đã gửi yêu cầu dời giờ giao hàng cho chủ vựa thành công.');
+      setTimeout(() => {
+        setRescheduleOrderTarget(null);
+        setRescheduleReason('');
+        setCustomRescheduleTime('');
+        setReload((n) => n + 1);
+      }, 1000);
+    } catch (issue) {
+      setRescheduleMessage(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      setRescheduleBusy(false);
+    }
+  }
+
+  async function handleUploadComplaintImage(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    setComplaintMessage('');
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const { data } = await api.post<{ success: boolean; imageUrl: string }>('/complaints/upload-image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      setUploadedImageUrl(data.imageUrl);
+    } catch (issue) {
+      setComplaintMessage(getApiError(issue));
+    } finally {
+      setUploadingImage(false);
+    }
+  }
+
+  async function submitResolution(event: FormEvent) {
+    event.preventDefault();
     if (!complaintOrder?.complaint || complaintActionBusy) return;
     setComplaintActionBusy(true);
+    setComplaintMessage('');
     try {
-      await api.patch(`/complaints/${complaintOrder.complaint.id}`, {
-        status,
-        response: complaintResponse,
+      await api.post(`/complaints/${complaintOrder.complaint.id}/resolve`, {
+        resolutionType,
+        deductAmount: resolutionType === 'DEDUCT_COD' ? deductAmount : undefined,
+        note: complaintResponse.trim() || undefined,
       });
-      setComplaintOrder(null);
-      setComplaintResponse('');
-      setReload((n) => n + 1);
+      setComplaintMessage('Đã xử lý sự cố đơn hàng thành công.');
+      setTimeout(() => {
+        setComplaintOrder(null);
+        setComplaintResponse('');
+        setDeductAmount(0);
+        setReload((n) => n + 1);
+      }, 1000);
     } catch (issue) {
       setComplaintMessage(getApiError(issue));
       if (isUnauthenticated(issue)) onLogout();
@@ -201,19 +309,26 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
   async function submitComplaint(event: FormEvent) {
     event.preventDefault();
     if (!complaintOrder || complaintBusy) return;
+    if (!uploadedImageUrl) {
+      setComplaintMessage('Vui lòng chụp hoặc tải ảnh bằng chứng hàng bị hỏng / thiếu trước khi gửi.');
+      return;
+    }
     setComplaintBusy(true);
     setComplaintMessage('');
     try {
       await api.post('/complaints', {
         orderId: complaintOrder.id,
         reason: complaintReason,
-        description: complaintDescription,
+        description: complaintDescription.trim() || undefined,
+        imageUrl: uploadedImageUrl || undefined,
       });
-      setComplaintMessage('Đã gửi báo cáo về nhà cung cấp. Supplier sẽ tiếp nhận xử lý.');
+      setComplaintMessage('Đã gửi báo cáo cho chủ vựa thành công. Vựa sẽ kiểm tra và phản hồi phương án xử lý.');
       setTimeout(() => {
         setComplaintOrder(null);
+        setUploadedImageUrl('');
+        setComplaintDescription('');
         setReload((n) => n + 1);
-      }, 900);
+      }, 1000);
     } catch (issue) {
       setComplaintMessage(getApiError(issue));
       if (isUnauthenticated(issue)) onLogout();
@@ -362,6 +477,271 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
 
               {order.note && <p className="catalog-hint">Ghi chú: {order.note}</p>}
 
+              {/* Reschedule statuses & actions for both Store and Supplier */}
+              {(() => {
+                const isPending = Boolean(
+                  order.note?.includes('[YÊU CẦU DỜI LỊCH GIAO') &&
+                  !order.note?.includes('[VỰA ĐÃ ĐỒNG Ý DỜI LỊCH') &&
+                  !order.note?.includes('[VỰA TỪ CHỐI DỜI LỊCH')
+                );
+                const isAccepted = Boolean(order.note?.includes('[VỰA ĐÃ ĐỒNG Ý DỜI LỊCH'));
+                const isRejected = Boolean(order.note?.includes('[VỰA TỪ CHỐI DỜI LỊCH'));
+
+                if (isPending) {
+                  return kind === 'supplier' ? (
+                    <div
+                      style={{
+                        margin: '10px 0',
+                        padding: '12px 14px',
+                        borderRadius: '8px',
+                        backgroundColor: '#fffbeb',
+                        border: '1px solid #fde68a',
+                        fontSize: '13px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <strong style={{ color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>🔔</span> Yêu cầu dời giờ giao từ tiệm tạp hóa
+                        </strong>
+                        <span style={{ fontSize: '11px', color: '#92400e', fontWeight: 600, backgroundColor: '#fef3c7', padding: '2px 8px', borderRadius: '10px' }}>
+                          Cần xác nhận
+                        </span>
+                      </div>
+                      <p style={{ margin: '4px 0 8px', color: '#78350f' }}>
+                        {order.note?.split('[YÊU CẦU DỜI LỊCH GIAO')[1]?.split(']')[0]
+                          ? `[YÊU CẦU DỜI LỊCH GIAO${order.note?.split('[YÊU CẦU DỜI LỊCH GIAO')[1]?.split(']')[0]}]`
+                          : 'Tiệm có việc bận đi vắng, xin dời giờ giao hàng (cam kết nhận, không bùng đơn).'}
+                      </p>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          className="table-button primary-small"
+                          disabled={supplierRescheduleBusy === order.id}
+                          onClick={() => void handleSupplierReschedule(order, 'ACCEPT')}
+                        >
+                          {supplierRescheduleBusy === order.id ? 'Đang lưu…' : '✅ Đồng ý dời lịch'}
+                        </button>
+                        <a
+                          href={`tel:${order.recipientPhone || '0908123456'}`}
+                          className="ghost-button"
+                          style={{ fontSize: '11px', padding: '4px 8px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        >
+                          📞 Gọi cho Tiệm (${order.recipientPhone || '0908 123 456'})
+                        </a>
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          style={{ color: '#b91c1c' }}
+                          disabled={supplierRescheduleBusy === order.id}
+                          onClick={() => {
+                            setRejectRescheduleOrder(order);
+                            setRejectRescheduleReason('');
+                          }}
+                        >
+                          ❌ Không thể dời
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        margin: '8px 0',
+                        padding: '10px 12px',
+                        borderRadius: '6px',
+                        backgroundColor: '#fffbeb',
+                        border: '1px solid #fde68a',
+                        fontSize: '12px',
+                        color: '#92400e',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
+                        <span>⏰</span>
+                        <span>ĐÃ GỬI YÊU CẦU DỜI LỊCH GIAO: Đang chờ chủ vựa xác nhận.</span>
+                      </div>
+                      <small style={{ display: 'block', marginTop: '2px', color: '#b45309' }}>
+                        Tiệm đã báo trước để tài xế chủ động tuyến đường, hoàn toàn không tính là bùng đơn.
+                      </small>
+                    </div>
+                  );
+                }
+
+                if (isAccepted) {
+                  return (
+                    <div
+                      style={{
+                        margin: '8px 0',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        backgroundColor: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
+                        fontSize: '12px',
+                        color: '#166534',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <span>✅</span>
+                      <strong>ĐÃ THỐNG NHẤT DỜI LỊCH GIAO: Chủ vựa đã xác nhận đổi tuyến giao theo giờ hẹn của tiệm.</strong>
+                    </div>
+                  );
+                }
+
+                if (isRejected) {
+                  return (
+                    <div
+                      style={{
+                        margin: '8px 0',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        backgroundColor: '#fef2f2',
+                        border: '1px solid #fecaca',
+                        fontSize: '12px',
+                        color: '#b91c1c',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      <span>⚠️</span>
+                      <strong>CHỦ VỰA KHÔNG THỂ DỜI LỊCH: Vui lòng sắp xếp người nhận hàng hoặc gọi trực tiếp cho vựa.</strong>
+                    </div>
+                  );
+                }
+
+                return null;
+              })()}
+
+              {order.status === 'SHIPPING' && (
+                <div
+                  style={{
+                    margin: '10px 0',
+                    padding: '12px 14px',
+                    borderRadius: '8px',
+                    backgroundColor: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    fontSize: '12px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '8px',
+                      flexWrap: 'wrap',
+                      gap: '6px',
+                    }}
+                  >
+                    <strong
+                      style={{
+                        color: '#1d4ed8',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        fontSize: '13px',
+                      }}
+                    >
+                      <span>🚚</span> Đang trên đường vận chuyển
+                    </strong>
+                    <span
+                      style={{
+                        color: '#1e40af',
+                        fontWeight: 600,
+                        backgroundColor: '#dbeafe',
+                        padding: '3px 8px',
+                        borderRadius: '12px',
+                      }}
+                    >
+                      ⏱️ Dự kiến giao: trong 30 – 45 phút tới
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                      gap: '8px',
+                      color: '#1e3a8a',
+                      marginTop: '6px',
+                    }}
+                  >
+                    <div>
+                      <span>📍 <strong>Kho xuất phát:</strong> </span>
+                      <span>{order.supplier?.warehouseAddress || 'Kho vựa phân phối'}</span>
+                      <small style={{ display: 'block', color: '#3b82f6', marginTop: '1px' }}>
+                        Khoảng cách ước tính: ~4.5 km
+                      </small>
+                    </div>
+                    <div>
+                      <span>👤 <strong>Tài xế giao hàng:</strong> </span>
+                      <span>Đội giao vận {order.supplier?.businessName || 'Chủ vựa'}</span>
+                      <br />
+                      <span>📞 <strong>Hotline liên hệ:</strong> </span>
+                      <a
+                        href={`tel:${order.supplier?.phone || '0908123789'}`}
+                        style={{
+                          color: '#1d4ed8',
+                          fontWeight: 700,
+                          textDecoration: 'underline',
+                        }}
+                      >
+                        {order.supplier?.phone || '0908 123 789'}
+                      </a>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: '10px',
+                      paddingTop: '8px',
+                      borderTop: '1px dashed #93c5fd',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                    }}
+                  >
+                    <span style={{ color: '#475569', fontSize: '11px' }}>
+                      💡 Nếu bạn có việc bận đi vắng, hãy gọi tài xế hoặc bấm <strong>Hẹn dời giờ nhận</strong> để tài xế chủ động tuyến đường.
+                    </span>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <a
+                        href={`tel:${order.supplier?.phone || '0908123789'}`}
+                        className="ghost-button"
+                        style={{
+                          fontSize: '11px',
+                          padding: '4px 10px',
+                          textDecoration: 'none',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                        }}
+                      >
+                        📞 Gọi tài xế / vựa
+                      </a>
+                      {kind === 'store' && (
+                        <button
+                          type="button"
+                          className="table-button primary-small"
+                          style={{ fontSize: '11px', padding: '4px 10px' }}
+                          onClick={() => {
+                            setRescheduleOrderTarget(order);
+                            setRescheduleTimeChoice('1_HOUR');
+                            setCustomRescheduleTime('');
+                            setRescheduleReason('');
+                            setRescheduleMessage('');
+                          }}
+                        >
+                          ⏰ Hẹn dời giờ nhận hàng
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {order.depositAmount > 0 && (
                 <div className={`order-deposit order-deposit-${order.depositStatus.toLowerCase()}`}>
                   <div className="order-deposit-heading">
@@ -369,30 +749,65 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       Đặt cọc {order.depositRate}% · {money(order.depositAmount)}
                     </strong>
                     <span>
-                      {order.depositStatus === 'PENDING'
-                        ? 'Chờ cửa hàng chuyển cọc'
-                        : order.depositStatus === 'SUBMITTED'
-                          ? 'Cửa hàng đã báo chuyển · chờ chủ vựa xác nhận'
-                          : order.depositStatus === 'PAID'
-                            ? 'Chủ vựa đã xác nhận nhận cọc'
-                            : order.depositStatus === 'REFUND_PENDING'
-                              ? 'Chủ vựa cần hoàn lại tiền cọc'
-                              : order.depositStatus === 'REFUNDED'
-                                ? 'Đã hoàn cọc'
-                                : order.depositStatus}
+                      {order.depositReference === 'VÍ_HỆ_THỐNG' && order.depositStatus === 'PAID'
+                        ? '🔒 Đã ký quỹ qua Ví hệ thống (An toàn)'
+                        : order.depositReference === 'VÍ_HỆ_THỐNG' && order.depositStatus === 'REFUNDED'
+                          ? '↩️ Đã hoàn cọc vào Ví hệ thống'
+                          : order.depositStatus === 'PENDING'
+                            ? 'Chờ cửa hàng chuyển cọc'
+                            : order.depositStatus === 'SUBMITTED'
+                              ? 'Cửa hàng đã báo chuyển · chờ chủ vựa xác nhận'
+                              : order.depositStatus === 'PAID'
+                                ? 'Chủ vựa đã xác nhận nhận cọc'
+                                : order.depositStatus === 'REFUNDED'
+                                  ? 'Đã hoàn cọc'
+                                  : order.depositStatus === 'REFUND_PENDING'
+                                    ? 'Chủ vựa cần hoàn lại tiền cọc'
+                                    : order.depositStatus}
                     </span>
                   </div>
-                  {order.depositBankAccountNumber && (
-                    <div className="order-deposit-bank">
-                      <span>Chuyển trực tiếp đến</span>
-                      <strong>{order.depositBankName}</strong>
-                      <b>{order.depositBankAccountNumber}</b>
-                      <span>{order.depositBankAccountHolder}</span>
-                      <small>Nội dung gợi ý: COC DH{order.id}</small>
+                  {order.depositReference === 'VÍ_HỆ_THỐNG' ? (
+                    <div
+                      style={{
+                        margin: '6px 0',
+                        fontSize: '12px',
+                        color: '#047857',
+                        backgroundColor: '#f0fdf4',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid #bbf7d0',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                      }}
+                    >
+                      <strong style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>🔒</span> Ký quỹ đảm bảo qua Ví hệ thống (Escrow)
+                      </strong>
+                      <span>
+                        {kind === 'store'
+                          ? `Tiền cọc ${money(order.depositAmount)} đang được hệ thống giữ an toàn. Chỉ giải ngân cho chủ vựa sau khi bạn nhận hàng thành công.`
+                          : `Sàn đã khóa cọc ${money(order.depositAmount)} từ Ví của cửa hàng. Tiền cọc sẽ tự động giải ngân vào Ví của bạn khi giao hàng thành công.`}
+                      </span>
+                      <strong style={{ color: '#1f2937', marginTop: '2px' }}>
+                        Thanh toán COD khi giao: ${money(order.total - order.depositAmount)}
+                      </strong>
                     </div>
-                  )}
-                  {order.depositReference && (
-                    <small>Mã/nội dung cửa hàng cung cấp: {order.depositReference}</small>
+                  ) : (
+                    <>
+                      {order.depositBankAccountNumber && (
+                        <div className="order-deposit-bank">
+                          <span>Chuyển trực tiếp đến</span>
+                          <strong>{order.depositBankName}</strong>
+                          <b>{order.depositBankAccountNumber}</b>
+                          <span>{order.depositBankAccountHolder}</span>
+                          <small>Nội dung gợi ý: COC DH{order.id}</small>
+                        </div>
+                      )}
+                      {order.depositReference && (
+                        <small>Mã/nội dung cửa hàng cung cấp: {order.depositReference}</small>
+                      )}
+                    </>
                   )}
                   {order.depositSubmittedAt && (
                     <small>
@@ -462,6 +877,15 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                             <button
                               className="table-button primary-small"
                               disabled={depositBusy !== null}
+                              onClick={() => void handleDepositWithWallet(order)}
+                            >
+                              {depositBusy === order.id
+                                ? 'Đang ký quỹ…'
+                                : `🔒 Ký quỹ từ Ví (${money(order.depositAmount)})`}
+                            </button>
+                            <button
+                              className="ghost-button"
+                              disabled={depositBusy !== null}
                               onClick={() =>
                                 setDepositDraft({
                                   orderId: order.id,
@@ -469,7 +893,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                                 })
                               }
                             >
-                              Tôi đã chuyển cọc
+                              Tôi đã chuyển khoản ngoài
                             </button>
                             <button
                               className="ghost-button"
@@ -480,7 +904,6 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                                 ? 'Đang chạy sandbox…'
                                 : 'Thanh toán thử sandbox'}
                             </button>
-                            <small>Sandbox không chuyển tiền thật.</small>
                           </div>
                         )}
                       </>
@@ -616,6 +1039,20 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                   <p style={{ margin: '4px 0', color: '#431407' }}>
                     <strong>Nội dung báo cáo:</strong> {order.complaint.description}
                   </p>
+                  {order.complaint.imageUrl && (
+                    <div style={{ margin: '8px 0' }}>
+                      <a href={order.complaint.imageUrl} target="_blank" rel="noreferrer" title="Bấm để xem ảnh phóng to">
+                        <img
+                          src={order.complaint.imageUrl}
+                          alt="Ảnh hàng hỏng / thiếu"
+                          style={{ maxWidth: '140px', maxHeight: '100px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #fed7aa' }}
+                        />
+                      </a>
+                      <small style={{ display: 'block', color: '#78350f', fontSize: '11px', marginTop: '2px' }}>
+                        🔍 Bấm vào ảnh để xem kích thước lớn
+                      </small>
+                    </div>
+                  )}
                   {order.complaint.response ? (
                     <div
                       style={{
@@ -808,48 +1245,142 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
         <div className="supplier-dialog-backdrop">
           <form
             className="supplier-dialog"
-            onSubmit={
-              kind === 'store'
-                ? submitComplaint
-                : (e) => {
-                    e.preventDefault();
-                    void updateComplaint('RESOLVED');
-                  }
-            }
+            style={{ maxWidth: kind === 'store' ? '540px' : '620px' }}
+            onSubmit={kind === 'store' ? submitComplaint : submitResolution}
           >
             <h2>
               {kind === 'store'
-                ? `Báo cáo sự cố đơn hàng #${complaintOrder.id}`
-                : `Xử lý báo cáo đơn #${complaintOrder.id}`}
+                ? `⚠️ Báo hàng bị hỏng / thiếu (Đơn #${complaintOrder.id})`
+                : `Xử lý sự cố đơn hàng #${complaintOrder.id}`}
             </h2>
 
             {kind === 'store' ? (
               <>
                 <p className="catalog-hint" style={{ marginTop: 0 }}>
-                  Báo cáo này sẽ được gửi trực tiếp đến nhà cung cấp (
-                  {complaintOrder.supplier?.businessName || 'Supplier'}) để tiếp nhận và xử lý.
+                  Chụp 1 tấm ảnh chỗ bị vỡ/hỏng hoặc chọn nhanh lý do bên dưới để chủ vựa (
+                  <strong>{complaintOrder.supplier?.businessName || 'Chủ vựa'}</strong>) hỗ trợ trừ tiền
+                  COD hoặc đổi trả nhanh nhất.
                 </p>
-                <label className="supplier-dialog-field">
-                  <span>Lý do báo cáo</span>
-                  <select
-                    value={complaintReason}
-                    onChange={(e) => setComplaintReason(e.target.value)}
+
+                <div
+                  style={{
+                    padding: '8px 12px',
+                    backgroundColor: '#fffbeb',
+                    border: '1px solid #fde68a',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    color: '#92400e',
+                    marginBottom: '12px',
+                  }}
+                >
+                  ⏱️ <strong>Lưu ý:</strong> Vui lòng báo sự cố trong vòng 2 giờ kể từ khi nhận hàng để được hỗ trợ đối soát với shipper và giải quyết nhanh nhất.
+                </div>
+
+                {/* Chụp ảnh / Tải ảnh */}
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ fontWeight: 600, display: 'block', marginBottom: '6px', fontSize: '13px' }}>
+                    📷 Chụp ảnh hàng hỏng / thiếu <span style={{ color: '#dc2626' }}>(Bắt buộc)</span>:
+                  </label>
+                  <div
+                    style={{
+                      border: '2px dashed #bbf7d0',
+                      borderRadius: '8px',
+                      padding: '16px',
+                      textAlign: 'center',
+                      backgroundColor: '#f0fdf4',
+                      cursor: 'pointer',
+                    }}
                   >
-                    {COMPLAINT_REASONS.map((r) => (
-                      <option key={r.code} value={r.code}>
-                        {r.label}
-                      </option>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      disabled={uploadingImage || complaintBusy}
+                      onChange={handleUploadComplaintImage}
+                      id="complaint-photo-upload"
+                      style={{ display: 'none' }}
+                    />
+                    <label htmlFor="complaint-photo-upload" style={{ cursor: 'pointer', display: 'block' }}>
+                      {uploadingImage ? (
+                        <span style={{ color: '#15803d', fontWeight: 600 }}>⏳ Đang tải ảnh lên…</span>
+                      ) : uploadedImageUrl ? (
+                        <div>
+                          <img
+                            src={uploadedImageUrl}
+                            alt="Ảnh chụp hàng hỏng"
+                            style={{
+                              maxWidth: '180px',
+                              maxHeight: '130px',
+                              borderRadius: '6px',
+                              objectFit: 'cover',
+                              border: '1px solid #86efac',
+                            }}
+                          />
+                          <p style={{ margin: '6px 0 0', color: '#15803d', fontWeight: 600, fontSize: '12px' }}>
+                            ✓ Đã tải ảnh lên. Bấm để chụp lại ảnh khác
+                          </p>
+                        </div>
+                      ) : (
+                        <div>
+                          <span style={{ fontSize: '28px', display: 'block' }}>📷</span>
+                          <span style={{ fontWeight: 600, color: '#166534', fontSize: '14px' }}>
+                            Bấm vào đây để Chụp ảnh hoặc Chọn ảnh
+                          </span>
+                          <small style={{ color: '#6b7280', display: 'block', marginTop: '2px' }}>
+                            Chụp rõ vị trí hàng hóa bị bể vỡ, rách thùng hoặc thiếu
+                          </small>
+                        </div>
+                      )}
+                    </label>
+                  </div>
+                </div>
+
+                {/* 3 Lựa chọn nhanh 1 chạm */}
+                <div style={{ marginBottom: '14px' }}>
+                  <span style={{ fontWeight: 600, display: 'block', marginBottom: '8px', fontSize: '13px' }}>
+                    Loại sự cố gặp phải (Bấm chọn 1 chạm):
+                  </span>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                    {[
+                      { code: 'DAMAGED', label: '💥 Hàng bị bể vỡ / hư hỏng' },
+                      { code: 'SHORTAGE', label: '📦 Giao thiếu số lượng' },
+                      { code: 'WRONG_ITEM', label: '🔄 Giao sai sản phẩm' },
+                      { code: 'EXPIRED', label: '⏳ Hàng cận date / hết hạn' },
+                    ].map((item) => (
+                      <label
+                        key={item.code}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '10px 12px',
+                          borderRadius: '6px',
+                          border: complaintReason === item.code ? '2px solid #16a34a' : '1px solid #d1d5db',
+                          backgroundColor: complaintReason === item.code ? '#f0fdf4' : '#fff',
+                          cursor: 'pointer',
+                          fontWeight: complaintReason === item.code ? 600 : 400,
+                          fontSize: '12px',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="complaintReason"
+                          value={item.code}
+                          checked={complaintReason === item.code}
+                          onChange={() => setComplaintReason(item.code)}
+                        />
+                        <span>{item.label}</span>
+                      </label>
                     ))}
-                  </select>
-                </label>
+                  </div>
+                </div>
+
                 <label className="supplier-dialog-field">
-                  <span>Chi tiết sự cố / lỗi gặp phải</span>
-                  <textarea
-                    required
-                    minLength={3}
-                    maxLength={1000}
-                    rows={4}
-                    placeholder="Mô tả cụ thể hàng hóa bị lỗi, số lượng chênh lệch hoặc vấn đề cần supplier giải quyết..."
+                  <span>Ghi chú thêm (Không bắt buộc):</span>
+                  <input
+                    type="text"
+                    maxLength={500}
+                    placeholder="Ví dụ: Bể 1 thùng nước ngọt lúc hạ hàng..."
                     value={complaintDescription}
                     onChange={(e) => setComplaintDescription(e.target.value)}
                   />
@@ -857,6 +1388,48 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
               </>
             ) : (
               <>
+                {/* Supplier Resolution View */}
+                <div
+                  style={{
+                    marginBottom: '14px',
+                    padding: '12px',
+                    background: '#fff7ed',
+                    borderRadius: '8px',
+                    border: '1px solid #fed7aa',
+                    fontSize: '13px',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                    <strong>
+                      Lý do: {REASON_LABELS[complaintOrder.complaint?.reason || ''] || complaintOrder.complaint?.reason}
+                    </strong>
+                    <span style={{ color: '#c2410c', fontWeight: 600 }}>Cần giải quyết</span>
+                  </div>
+                  <p style={{ margin: '4px 0', color: '#431407' }}>
+                    <strong>Mô tả từ tiệm:</strong> {complaintOrder.complaint?.description}
+                  </p>
+                  {complaintOrder.complaint?.imageUrl && (
+                    <div style={{ marginTop: '8px' }}>
+                      <strong>Ảnh chụp từ tiệm:</strong>
+                      <div style={{ marginTop: '4px' }}>
+                        <a href={complaintOrder.complaint.imageUrl} target="_blank" rel="noreferrer">
+                          <img
+                            src={complaintOrder.complaint.imageUrl}
+                            alt="Ảnh bằng chứng"
+                            style={{
+                              maxWidth: '180px',
+                              maxHeight: '130px',
+                              objectFit: 'cover',
+                              borderRadius: '6px',
+                              border: '1px solid #fdba74',
+                            }}
+                          />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div
                   style={{
                     marginBottom: '14px',
@@ -866,25 +1439,155 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                     fontSize: '13px',
                   }}
                 >
-                  <p style={{ margin: '0 0 6px 0' }}>
-                    <strong>Lý do từ cửa hàng:</strong>{' '}
-                    {REASON_LABELS[complaintOrder.complaint?.reason || ''] ||
-                      complaintOrder.complaint?.reason}
-                  </p>
-                  <p style={{ margin: 0 }}>
-                    <strong>Nội dung:</strong> {complaintOrder.complaint?.description}
-                  </p>
+                  <strong>Tóm tắt thanh toán:</strong>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                    <span>Tổng đơn: <strong>{money(complaintOrder.total)}</strong></span>
+                    <span>Cọc ký quỹ: <strong style={{ color: '#15803d' }}>{money(complaintOrder.depositAmount)}</strong></span>
+                    <span>COD cần thu: <strong>{money(complaintOrder.total - complaintOrder.depositAmount)}</strong></span>
+                  </div>
                 </div>
+
+                {/* 3 Phương án xử lý dứt khoát */}
+                <div style={{ marginBottom: '14px' }}>
+                  <strong style={{ display: 'block', marginBottom: '8px', fontSize: '13px' }}>
+                    Chọn phương án giải quyết:
+                  </strong>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '8px',
+                        padding: '10px 12px',
+                        borderRadius: '6px',
+                        border: resolutionType === 'DEDUCT_COD' ? '2px solid #16a34a' : '1px solid #d1d5db',
+                        background: resolutionType === 'DEDUCT_COD' ? '#f0fdf4' : '#fff',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="resType"
+                        checked={resolutionType === 'DEDUCT_COD'}
+                        onChange={() => setResolutionType('DEDUCT_COD')}
+                      />
+                      <div>
+                        <strong style={{ color: '#15803d' }}>
+                          💰 1. Đồng ý trừ tiền vào COD (Hàng hỏng / thiếu một phần)
+                        </strong>
+                        <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#4b5563' }}>
+                          Giảm trừ phần hàng hỏng vào tiền COD. Tiền cọc 10% vẫn giải ngân cho bạn khi hoàn tất.
+                        </p>
+                      </div>
+                    </label>
+
+                    {resolutionType === 'DEDUCT_COD' && (
+                      <div
+                        style={{
+                          marginLeft: '26px',
+                          padding: '10px 12px',
+                          background: '#f0fdf4',
+                          borderRadius: '6px',
+                          border: '1px solid #bbf7d0',
+                        }}
+                      >
+                        <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                          Số tiền muốn giảm trừ vào COD (₫):
+                        </label>
+                        <input
+                          type="number"
+                          min="1000"
+                          max={complaintOrder.total - complaintOrder.depositAmount}
+                          step="1000"
+                          value={deductAmount || ''}
+                          onChange={(e) => setDeductAmount(Number(e.target.value))}
+                          placeholder="Ví dụ: 50000"
+                          style={{
+                            width: '100%',
+                            padding: '6px 8px',
+                            borderRadius: '4px',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '13px',
+                          }}
+                        />
+                        <small style={{ color: '#15803d', display: 'block', marginTop: '4px', fontWeight: 600 }}>
+                          Tiền COD thực thu sau khi trừ:{' '}
+                          {money(
+                            Math.max(
+                              0,
+                              complaintOrder.total - complaintOrder.depositAmount - deductAmount,
+                            ),
+                          )}
+                        </small>
+                      </div>
+                    )}
+
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '8px',
+                        padding: '10px 12px',
+                        borderRadius: '6px',
+                        border: resolutionType === 'RETURN_REFUND' ? '2px solid #2563eb' : '1px solid #d1d5db',
+                        background: resolutionType === 'RETURN_REFUND' ? '#eff6ff' : '#fff',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="resType"
+                        checked={resolutionType === 'RETURN_REFUND'}
+                        onChange={() => setResolutionType('RETURN_REFUND')}
+                      />
+                      <div>
+                        <strong style={{ color: '#1d4ed8' }}>
+                          ↩️ 2. Nhận lại hàng & Hoàn cọc 100% (Hàng hỏng nặng / Giao sai)
+                        </strong>
+                        <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#4b5563' }}>
+                          Đồng ý hủy đơn, nhận lại hàng. Hệ thống hoàn 100% cọc về Ví của tiệm và cộng trả tồn kho.
+                        </p>
+                      </div>
+                    </label>
+
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '8px',
+                        padding: '10px 12px',
+                        borderRadius: '6px',
+                        border: resolutionType === 'REJECT_REFUSAL_CLAIM_DEPOSIT' ? '2px solid #dc2626' : '1px solid #d1d5db',
+                        background: resolutionType === 'REJECT_REFUSAL_CLAIM_DEPOSIT' ? '#fef2f2' : '#fff',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="resType"
+                        checked={resolutionType === 'REJECT_REFUSAL_CLAIM_DEPOSIT'}
+                        onChange={() => setResolutionType('REJECT_REFUSAL_CLAIM_DEPOSIT')}
+                      />
+                      <div>
+                        <strong style={{ color: '#b91c1c' }}>
+                          ❌ 3. Bác bỏ: Khách từ chối nhận vô cớ (Bùng đơn)
+                        </strong>
+                        <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#4b5563' }}>
+                          Khách từ chối nhận hàng không có lý do. Tiền cọc 10% sẽ chuyển vào Ví của bạn để đền bù chi phí giao hàng.
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
                 <label className="supplier-dialog-field">
-                  <span>Phản hồi cho cửa hàng</span>
-                  <textarea
-                    required
-                    minLength={3}
-                    maxLength={1000}
-                    rows={4}
+                  <span>Lời nhắn gửi đến tiệm tạp hóa (Không bắt buộc):</span>
+                  <input
+                    type="text"
+                    maxLength={500}
+                    placeholder="Ví dụ: Đã đối soát shipper, đồng ý trừ 50k vào tiền COD..."
                     value={complaintResponse}
                     onChange={(e) => setComplaintResponse(e.target.value)}
-                    placeholder="Nhập phương án xử lý hoặc phản hồi gửi đến cửa hàng (ví dụ: đổi trả hàng, hoàn tiền, bổ sung kiện hàng...)..."
                   />
                 </label>
               </>
@@ -911,32 +1614,166 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                 Đóng
               </button>
               {kind === 'store' ? (
-                <button className="table-button danger" disabled={complaintBusy}>
-                  {complaintBusy ? 'Đang gửi…' : 'Gửi báo cáo về Supplier'}
+                <button className="table-button danger" disabled={complaintBusy || uploadingImage || !uploadedImageUrl}>
+                  {complaintBusy ? 'Đang gửi…' : '🚀 Gửi báo cáo cho Chủ vựa'}
                 </button>
               ) : (
-                <>
-                  <button
-                    type="button"
-                    className="table-button"
-                    disabled={complaintActionBusy}
-                    onClick={() => void updateComplaint('IN_REVIEW')}
-                  >
-                    Tiếp nhận xử lý
-                  </button>
-                  <button className="table-button primary-small" disabled={complaintActionBusy}>
-                    Đã giải quyết
-                  </button>
-                  <button
-                    type="button"
-                    className="table-button danger"
-                    disabled={complaintActionBusy}
-                    onClick={() => void updateComplaint('REJECTED')}
-                  >
-                    Từ chối báo cáo
-                  </button>
-                </>
+                <button
+                  className="table-button primary-small"
+                  disabled={complaintActionBusy || (resolutionType === 'DEDUCT_COD' && deductAmount <= 0)}
+                >
+                  {complaintActionBusy ? 'Đang xử lý…' : 'Xác nhận giải quyết'}
+                </button>
               )}
+            </div>
+          </form>
+        </div>
+      )}
+      {/* Reschedule Delivery Modal */}
+      {rescheduleOrderTarget && (
+        <div className="supplier-dialog-backdrop">
+          <form
+            className="supplier-dialog"
+            style={{ maxWidth: '520px' }}
+            onSubmit={handleReschedule}
+          >
+            <h2>⏰ Hẹn dời giờ nhận hàng (Đơn #{rescheduleOrderTarget.id})</h2>
+            <p className="catalog-hint" style={{ marginTop: 0 }}>
+              Thông báo trước cho tài xế và chủ vựa (
+              <strong>{rescheduleOrderTarget.supplier?.businessName || 'Chủ vựa'}</strong>) nếu bạn có việc bận đột xuất để dời lịch giao, hoàn toàn không tính là bùng đơn.
+            </p>
+
+            <div style={{ margin: '14px 0' }}>
+              <span style={{ fontWeight: 600, display: 'block', marginBottom: '8px', fontSize: '13px' }}>
+                Chọn thời gian mong muốn dời lại:
+              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {[
+                  { code: '1_HOUR', label: '⏱️ Dời lại 1 tiếng nữa (Tôi đang ra ngoài có việc gấp)' },
+                  { code: 'THIS_AFTERNOON', label: '🌤️ Giao vào buổi chiều nay (14h00 – 16h30)' },
+                  { code: 'TOMORROW_MORNING', label: '🌅 Giao vào sáng mai (8h00 – 11h00)' },
+                  { code: 'CUSTOM', label: '✏️ Tự nhập thời gian khác...' },
+                ].map((item) => (
+                  <label
+                    key={item.code}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '10px 12px',
+                      borderRadius: '6px',
+                      border: rescheduleTimeChoice === item.code ? '2px solid #2563eb' : '1px solid #d1d5db',
+                      backgroundColor: rescheduleTimeChoice === item.code ? '#eff6ff' : '#fff',
+                      cursor: 'pointer',
+                      fontWeight: rescheduleTimeChoice === item.code ? 600 : 400,
+                      fontSize: '13px',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="rescheduleTime"
+                      value={item.code}
+                      checked={rescheduleTimeChoice === item.code}
+                      onChange={() => setRescheduleTimeChoice(item.code as any)}
+                    />
+                    <span>{item.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {rescheduleTimeChoice === 'CUSTOM' && (
+              <label className="supplier-dialog-field">
+                <span>Thời gian bạn có thể nhận hàng:</span>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: Khoảng 17h30 chiều nay..."
+                  value={customRescheduleTime}
+                  onChange={(e) => setCustomRescheduleTime(e.target.value)}
+                />
+              </label>
+            )}
+
+            <label className="supplier-dialog-field">
+              <span>Lý do dời giờ (Không bắt buộc):</span>
+              <input
+                type="text"
+                placeholder="Ví dụ: Đang đi đón con / Đi lấy hàng / Đang có việc gia đình..."
+                value={rescheduleReason}
+                onChange={(e) => setRescheduleReason(e.target.value)}
+              />
+            </label>
+
+            {rescheduleMessage && (
+              <p
+                className={
+                  rescheduleMessage.includes('Lỗi') || rescheduleMessage.includes('không')
+                    ? 'error-notice'
+                    : 'supplier-success'
+                }
+              >
+                {rescheduleMessage}
+              </p>
+            )}
+
+            <div className="supplier-dialog-actions">
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => setRescheduleOrderTarget(null)}
+              >
+                Đóng
+              </button>
+              <button className="table-button primary-small" disabled={rescheduleBusy}>
+                {rescheduleBusy ? 'Đang gửi…' : 'Gửi yêu cầu dời giờ'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {/* Reject Reschedule Modal for Supplier */}
+      {rejectRescheduleOrder && (
+        <div className="supplier-dialog-backdrop">
+          <form
+            className="supplier-dialog"
+            style={{ maxWidth: '480px' }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleSupplierReschedule(rejectRescheduleOrder, 'REJECT', rejectRescheduleReason);
+            }}
+          >
+            <h2>❌ Không thể dời lịch giao (Đơn #{rejectRescheduleOrder.id})</h2>
+            <p className="catalog-hint" style={{ marginTop: 0 }}>
+              Nhập lý do không thể dời giờ giao (ví dụ: xe đã kín tuyến, hàng đông lạnh cần giao ngay, hoặc vựa hết chuyến giao trong ngày) để thông báo cho tiệm tạp hóa.
+            </p>
+
+            <label className="supplier-dialog-field">
+              <span>Lý do không thể dời:</span>
+              <input
+                type="text"
+                required
+                minLength={3}
+                placeholder="Ví dụ: Xe đã kín tuyến / Hàng cần bảo quản lạnh gấp..."
+                value={rejectRescheduleReason}
+                onChange={(e) => setRejectRescheduleReason(e.target.value)}
+              />
+            </label>
+
+            <div className="supplier-dialog-actions">
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => setRejectRescheduleOrder(null)}
+              >
+                Hủy
+              </button>
+              <button
+                className="table-button danger"
+                disabled={supplierRescheduleBusy !== null || rejectRescheduleReason.trim().length < 3}
+              >
+                {supplierRescheduleBusy !== null ? 'Đang gửi…' : 'Xác nhận không thể dời'}
+              </button>
             </div>
           </form>
         </div>

@@ -2318,3 +2318,64 @@ input {
   font-style: italic;
   margin: 0 0 20px 0;
 }
+
+/* Topbar Balance Widget (Store & Supplier) */
+.topbar-balance-link {
+  text-decoration: none;
+  color: inherit;
+  display: inline-flex;
+}
+.topbar-balance-widget {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 20px;
+  font-size: 11px;
+  color: #166534;
+  line-height: 1.4;
+  user-select: none;
+  transition: all 0.2s ease;
+}
+.topbar-balance-widget:hover {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+.topbar-balance-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.balance-text-prefix {
+  color: #4b5563;
+  font-weight: 500;
+}
+.balance-amount {
+  color: #15803d;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.topbar-balance-eye-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  padding: 2px;
+  margin: 0;
+  cursor: pointer;
+  color: #4b5563;
+  border-radius: 4px;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+.topbar-balance-eye-btn:hover {
+  color: #15803d;
+  transform: scale(1.15);
+}
+.topbar-balance-eye-btn svg {
+  width: 14px;
+  height: 14px;
+}

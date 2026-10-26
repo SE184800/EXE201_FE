@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import '../catalog.css';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
+import TopbarBalance from '../../components/TopbarBalance';
 import OrderList from '../../components/OrderList';
 import { getApiError, isUnauthenticated } from '../../services/api';
 import { logout } from '../../services/auth.api';
@@ -100,6 +101,7 @@ export default function SupplierOrders({
       <header className="supplier-header">
         <Brand />
         <div className="supplier-header-actions">
+          <TopbarBalance linkTo="/supplier/wallet" />
           {user && (
             <span>
               <strong>{user.name}</strong>
@@ -123,6 +125,7 @@ export default function SupplierOrders({
             Đơn hàng
           </Link>
           <Link to="/supplier/inventory">Kho hàng</Link>
+          <Link to="/supplier/wallet">Ví & Ký quỹ</Link>
           <Link to="/supplier/subscription">Gói sử dụng</Link>
         </nav>
         <div className="supplier-heading">

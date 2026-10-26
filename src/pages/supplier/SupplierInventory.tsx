@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
 import '../store-inventory.css';
 import Brand from '../../components/Brand';
+import TopbarBalance from '../../components/TopbarBalance';
 import Icon from '../../components/Icon';
 import type { SupplierProduct } from '../../services/supplier.api';
 
@@ -171,9 +172,12 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
     <main className="supplier-page store-dashboard">
       <header className="supplier-header">
         <Brand />
-        <Link className="ghost-button catalog-link" to="/supplier">
-          ← Tổng quan chủ vựa
-        </Link>
+        <div className="supplier-header-actions">
+          <TopbarBalance linkTo="/supplier/wallet" />
+          <Link className="ghost-button catalog-link" to="/supplier">
+            ← Tổng quan chủ vựa
+          </Link>
+        </div>
       </header>
       <section className="supplier-main dashboard-content">
         <nav className="catalog-nav" aria-label="Chủ vựa">
@@ -184,6 +188,7 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
           <Link to="/supplier/inventory" aria-current="page">
             Kho hàng
           </Link>
+          <Link to="/supplier/wallet">Ví & Ký quỹ</Link>
           <Link to="/supplier/subscription">Gói sử dụng</Link>
         </nav>
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import Brand from '../../components/Brand';
+import TopbarBalance from '../../components/TopbarBalance';
 import Icon from '../../components/Icon';
 import { getApiError, isUnauthenticated } from '../../services/api';
 import {
@@ -51,7 +52,7 @@ export default function SupplierQuotes({ onLogout }: { onLogout: () => void }) {
     title: 'Báo giá tiếp thị trực tiếp',
     validUntil: nextWeek(),
     deliveryFee: 0,
-    depositRate: 20,
+    depositRate: 10,
     note: '',
   });
   const [lines, setLines] = useState<DraftLine[]>([]);
@@ -207,9 +208,12 @@ export default function SupplierQuotes({ onLogout }: { onLogout: () => void }) {
     <main className="supplier-page">
       <header className="supplier-header">
         <Brand />
-        <Link className="ghost-button catalog-link" to="/supplier">
-          ← Tổng quan chủ vựa
-        </Link>
+        <div className="supplier-header-actions">
+          <TopbarBalance linkTo="/supplier/wallet" />
+          <Link className="ghost-button catalog-link" to="/supplier">
+            ← Tổng quan chủ vựa
+          </Link>
+        </div>
       </header>
       <section className="supplier-main">
         <nav className="catalog-nav" aria-label="Chủ vựa">
@@ -220,6 +224,7 @@ export default function SupplierQuotes({ onLogout }: { onLogout: () => void }) {
           </Link>
           <Link to="/supplier/orders">Đơn hàng</Link>
           <Link to="/supplier/inventory">Kho hàng</Link>
+          <Link to="/supplier/wallet">Ví & Ký quỹ</Link>
           <Link to="/supplier/subscription">Gói sử dụng</Link>
         </nav>
         <div className="supplier-heading">
@@ -314,35 +319,36 @@ export default function SupplierQuotes({ onLogout }: { onLogout: () => void }) {
                     onChange={(event) => setForm({ ...form, validUntil: event.target.value })}
                   />
                 </label>
-                <label className="supplier-field">
-                  Tỷ lệ cọc chuyển khoản (%)
-                  <input
-                    required
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    value={form.depositRate}
-                    onChange={(event) =>
-                      setForm({ ...form, depositRate: Number(event.target.value) })
-                    }
-                  />
-                </label>
-                {form.depositRate > 0 && (
-                  <div className="supplier-field supplier-field-full quote-bank-summary">
-                    <strong>Tài khoản nhận cọc</strong>
-                    {profile?.bankAccountNumber ? (
-                      <span>
-                        {profile.bankName} · {profile.bankAccountNumber} ·{' '}
-                        {profile.bankAccountHolder}
-                      </span>
-                    ) : (
-                      <span>
-                        Chưa cấu hình. Vào <Link to="/supplier">Tổng quan chủ vựa</Link> để bổ sung.
-                      </span>
-                    )}
+                <div className="supplier-field">
+                  <span className="field-label" style={{ fontSize: '13px', fontWeight: 600, color: '#374151', display: 'block', marginBottom: '6px' }}>
+                    Tỷ lệ cọc ký quỹ (Cố định chuẩn sàn)
+                  </span>
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      backgroundColor: '#f0fdf4',
+                      border: '1px solid #bbf7d0',
+                      borderRadius: '6px',
+                      fontWeight: 600,
+                      color: '#15803d',
+                      fontSize: '13px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                  >
+                    <span>🔒</span> 10% tổng đơn hàng (Ký quỹ qua Ví hệ thống)
                   </div>
-                )}
+                  <small style={{ color: '#6b7280', fontSize: '11px', marginTop: '4px', display: 'block' }}>
+                    Áp dụng mức cọc chuẩn 10% theo quy chuẩn sàn nhằm đảm bảo trách nhiệm đơn hàng, tránh bùng đơn mà không gây đọng vốn của tiệm tạp hóa.
+                  </small>
+                </div>
+                <div className="supplier-field supplier-field-full quote-bank-summary">
+                  <strong>Cơ chế ký quỹ bảo hộ</strong>
+                  <span style={{ color: '#047857' }}>
+                    🔒 Tiền cọc 10% sẽ được khóa an toàn trong Ví hệ thống của tiệm tạp hóa và tự động giải ngân vào Ví của bạn ngay khi giao hàng thành công.
+                  </span>
+                </div>
                 <label className="supplier-field supplier-field-full">
                   Phí giao hàng
                   <input

@@ -12,6 +12,8 @@ import StoreCatalog from './StoreCatalog';
 import OrderList from '../components/OrderList';
 import StoreQuotes from './StoreQuotes';
 import SubscriptionPage from './SubscriptionPage';
+import WalletPage from './WalletPage';
+import TopbarBalance from '../components/TopbarBalance';
 import Brand from '../components/Brand';
 import Icon from '../components/Icon';
 import InventoryImportDialog, {
@@ -62,12 +64,13 @@ const tabs = [
   { id: 'catalog', label: 'Tìm nguồn sỉ', icon: 'store' },
   { id: 'quotes', label: 'Báo giá nhận được', icon: 'sparkle' },
   { id: 'orders', label: 'Đơn mua hàng', icon: 'box' },
+  { id: 'wallet', label: 'Ví & Ký quỹ', icon: 'sparkle' },
   { id: 'history', label: 'Lịch sử giao dịch', icon: 'check' },
   { id: 'revenue', label: 'Doanh thu', icon: 'chart' },
   { id: 'calendar', label: 'Lịch nhập dự kiến', icon: 'sparkle' },
   { id: 'restock', label: 'Kế hoạch nhập', icon: 'sparkle' },
   { id: 'subscription', label: 'Gói sử dụng', icon: 'shield' },
-  { id: 'profile', label: 'Thông tin cá nhân', icon: 'user' },
+  { id: 'profile', label: 'Thông tin tiệm & Cá nhân', icon: 'user' },
 ] as const;
 type StoreTab = (typeof tabs)[number]['id'];
 
@@ -509,6 +512,7 @@ export default function StoreInventory({
             <strong>{tabs.find((tab) => tab.id === activeTab)?.label}</strong>
           </div>
           <div className="topbar-right">
+            <TopbarBalance onNavigateWallet={() => setActiveTab('wallet')} />
             <span className="today-label">
               {new Date().toLocaleDateString('vi-VN', {
                 day: '2-digit',
@@ -591,6 +595,8 @@ export default function StoreInventory({
             <StoreQuotes onLogout={onLogout} />
           ) : activeTab === 'orders' ? (
             <OrderList kind="store" onLogout={onLogout} />
+          ) : activeTab === 'wallet' ? (
+            <WalletPage onLogout={onLogout} />
           ) : activeTab === 'revenue' ? (
             <StoreRevenue onLogout={onLogout} />
           ) : activeTab === 'subscription' ? (

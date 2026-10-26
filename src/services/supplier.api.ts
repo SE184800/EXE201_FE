@@ -52,7 +52,13 @@ export type SupplierOrder = {
   recipientName: string | null;
   recipientPhone: string | null;
   deliveryAddress: string | null;
-  supplier?: { id: number; businessName: string };
+  supplier?: {
+    id: number;
+    businessName: string;
+    warehouseAddress?: string | null;
+    deliveryRadiusKm?: number;
+    phone?: string | null;
+  };
   id: number;
   status: string;
   statusLabel: string;
@@ -200,4 +206,28 @@ export async function uploadSupplierProductImage(file: File): Promise<string> {
     },
   );
   return response.data.imageUrl;
+}
+
+export async function rescheduleOrder(
+  orderId: number,
+  rescheduleTime: string,
+  reason?: string,
+): Promise<{ order: SupplierOrder }> {
+  const response = await api.post<{ order: SupplierOrder }>(`/orders/${orderId}/reschedule`, {
+    rescheduleTime,
+    reason,
+  });
+  return response.data;
+}
+
+export async function respondRescheduleOrder(
+  orderId: number,
+  action: 'ACCEPT' | 'REJECT',
+  note?: string,
+): Promise<{ order: SupplierOrder; message: string }> {
+  const response = await api.post<{ order: SupplierOrder; message: string }>(
+    `/orders/${orderId}/reschedule-response`,
+    { action, note },
+  );
+  return response.data;
 }
