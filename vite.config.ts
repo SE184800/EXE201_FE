@@ -9,7 +9,7 @@ export default defineConfig({
     host: 'localhost',
     port: 5173,
     strictPort: true,
-    open: '/login',
+    open: '/',
     proxy: {
       '/api': { target: 'http://localhost:5000', changeOrigin: true },
       '/uploads': { target: 'http://localhost:5000', changeOrigin: true },
