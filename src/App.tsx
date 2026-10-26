@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom';
+import LandingPage from './pages/landing/LandingPage';
 import LoginPage from './pages/login/LoginPage';
 import RegisterPage from './pages/register/RegisterPage';
 import WorkspacePage from './pages/WorkspacePage';
@@ -48,6 +49,10 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route
+          path="/"
+          element={user ? <Navigate to={destination} replace /> : <LandingPage />}
+        />
         <Route
           path="/login"
           element={user ? <Navigate to={destination} replace /> : <LoginPage onLogin={setUser} />}
