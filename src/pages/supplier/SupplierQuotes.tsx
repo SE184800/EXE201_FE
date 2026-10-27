@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import Brand from '../../components/Brand';
 import TopbarBalance from '../../components/TopbarBalance';
 import Icon from '../../components/Icon';
-import { getApiError, isUnauthenticated } from '../../services/api';
+import { api, getApiError, isUnauthenticated } from '../../services/api';
 import {
   getSupplierDashboard,
   type SupplierProduct,
@@ -62,8 +62,15 @@ export default function SupplierQuotes({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     document.title = 'SupplyMind AI · Báo giá tiếp thị';
     let active = true;
-    Promise.all([getSupplierDashboard(), getProspects(), getSupplierQuotes()])
-      .then(([dashboard, prospects, quotePage]) => {
+    Promise.all([
+      getSupplierDashboard(),
+      getProspects(),
+      getSupplierQuotes(),
+      api
+        .get<{ defaultDepositRate?: number; maxDepositRate?: number }>('/supplier/quotes/config')
+        .catch(() => ({ data: { defaultDepositRate: 10, maxDepositRate: 50 } })),
+    ])
+      .then(([dashboard, prospects, quotePage, configRes]) => {
         if (!active) return;
         if (!dashboard.profile) {
           navigate('/supplier', { replace: true });
@@ -74,10 +81,12 @@ export default function SupplierQuotes({ onLogout }: { onLogout: () => void }) {
         setProfile(dashboard.profile);
         setStores(prospects);
         setQuotes(quotePage.quotes);
+        const configuredDepositRate = configRes.data?.defaultDepositRate ?? 10;
         setForm((current) => ({
           ...current,
           deliveryFee: dashboard.profile?.deliveryFee || 0,
           buyerId: prospects[0]?.id || 0,
+          depositRate: configuredDepositRate,
         }));
         if (available[0])
           setLineForm({
@@ -342,16 +351,16 @@ export default function SupplierQuotes({ onLogout }: { onLogout: () => void }) {
                       gap: '6px',
                     }}
                   >
-                    <span>🔒</span> 10% tổng đơn hàng (Ký quỹ qua Ví hệ thống)
+                    <span>🔒</span> {form.depositRate}% tổng đơn hàng (Ký quỹ qua Ví hệ thống)
                   </div>
                   <small style={{ color: '#6b7280', fontSize: '11px', marginTop: '4px', display: 'block' }}>
-                    Áp dụng mức cọc chuẩn 10% theo quy chuẩn sàn nhằm đảm bảo trách nhiệm đơn hàng, tránh bùng đơn mà không gây đọng vốn của tiệm tạp hóa.
+                    Áp dụng mức cọc chuẩn {form.depositRate}% theo quy chuẩn sàn nhằm đảm bảo trách nhiệm đơn hàng, tránh bùng đơn mà không gây đọng vốn của tiệm tạp hóa.
                   </small>
                 </div>
                 <div className="supplier-field supplier-field-full quote-bank-summary">
                   <strong>Cơ chế ký quỹ bảo hộ</strong>
                   <span style={{ color: '#047857' }}>
-                    🔒 Tiền cọc 10% sẽ được khóa an toàn trong Ví hệ thống của tiệm tạp hóa và tự động giải ngân vào Ví của bạn ngay khi giao hàng thành công.
+                    🔒 Tiền cọc {form.depositRate}% sẽ được khóa an toàn trong Ví hệ thống của tiệm tạp hóa và tự động giải ngân vào Ví của bạn ngay khi giao hàng thành công.
                   </span>
                 </div>
                 <label className="supplier-field supplier-field-full">

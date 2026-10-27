@@ -139,3 +139,51 @@ export async function logout(): Promise<void> {
     }
   }
 }
+
+
+export type ForgotPasswordOtpResponse = {
+  success: boolean;
+  message: string;
+  email: string;
+  resetOtpToken: string;
+  expiresIn: number;
+  devOtp?: string;
+};
+
+export type ForgotPasswordVerifyResponse = {
+  success: boolean;
+  message: string;
+  resetPassToken: string;
+  email: string;
+  username: string;
+};
+
+export async function requestForgotPasswordOtp(email: string): Promise<ForgotPasswordOtpResponse> {
+  const response = await api.post<ForgotPasswordOtpResponse>('/auth/forgot-password-request-otp', { email });
+  return response.data;
+}
+
+export async function verifyForgotPasswordOtp(input: {
+  resetOtpToken: string;
+  otp: string;
+}): Promise<ForgotPasswordVerifyResponse> {
+  const response = await api.post<ForgotPasswordVerifyResponse>('/auth/forgot-password-verify-otp', input);
+  return response.data;
+}
+
+export async function resendForgotPasswordOtp(email: string): Promise<ForgotPasswordOtpResponse> {
+  const response = await api.post<ForgotPasswordOtpResponse>('/auth/forgot-password-resend-otp', { email });
+  return response.data;
+}
+
+export async function resetForgotPassword(input: {
+  resetPassToken: string;
+  password: string;
+  confirmPassword: string;
+}): Promise<{ success: boolean; message: string; username?: string }> {
+  const response = await api.post<{ success: boolean; message: string; username?: string }>(
+    '/auth/forgot-password-reset',
+    input
+  );
+  return response.data;
+}

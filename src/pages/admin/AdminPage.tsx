@@ -69,6 +69,7 @@ const navigation = [
   { path: 'holidays', label: 'Ngày lễ & AI', icon: 'sparkle' },
   { path: 'ai', label: 'Hoạt động AI', icon: 'sparkle' },
   { path: 'moderation', label: 'Duyệt bài AI', icon: 'sparkle' },
+  { path: 'ai-config', label: 'Cấu hình AI & Ký quỹ', icon: 'sparkle' },
   { path: 'audit', label: 'Nhật ký hệ thống', icon: 'lock' },
 ] as const;
 
@@ -150,6 +151,8 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
             <AiMonitoring onLogout={onLogout} />
           ) : tab === 'moderation' ? (
             <ModerationQueue onLogout={onLogout} />
+          ) : tab === 'ai-config' ? (
+            <AiSystemConfig onLogout={onLogout} />
           ) : (
             <Audit onLogout={onLogout} />
           )}
@@ -702,7 +705,7 @@ function AccountDialog({
   const [status, setStatus] = useState(user.status),
     [reason, setReason] = useState(''),
     [until, setUntil] = useState('');
-  const [showDeleteNotice, setShowDeleteNotice] = useState(false);
+  const [showDeleteNotice, setShowDeleteNotice] = useState(false);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   const lock = useRef(false);
@@ -2658,6 +2661,744 @@ function ModerationQueue({ onLogout }: Props) {
           )}
         </>
       )}
+    </>
+  );
+}
+
+
+type SystemConfig = {
+  aiModeration: {
+    autoModerationEnabled: boolean;
+    strictness: 'STANDARD' | 'STRICT' | 'LENIENT';
+    criticalForbiddenKeywords: string[];
+    restrictedKeywords: string[];
+    minSuspiciousPrice: number;
+    warningLowPrice: number;
+    maxSuspiciousPrice: number;
+    maxMoq: number;
+    warningMoq: number;
+  };
+  escrowDeposit: {
+    defaultDepositRate: number;
+    minDepositRate: number;
+    maxDepositRate: number;
+    requireDepositForHighValue: boolean;
+    highValueThreshold: number;
+    escrowHoldDays: number;
+    description: string;
+  };
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+function AiSystemConfig({ onLogout }: Props) {
+  const [revision, setRevision] = useState(0);
+  const { data, loading, error } = useAdminData<SystemConfig>(
+    '/admin/system-config',
+    {},
+    onLogout,
+    revision
+  );
+
+  const [form, setForm] = useState<SystemConfig | null>(null);
+  const [newForbiddenWord, setNewForbiddenWord] = useState('');
+  const [newRestrictedWord, setNewRestrictedWord] = useState('');
+  const [forbiddenSearch, setForbiddenSearch] = useState('');
+  const [restrictedSearch, setRestrictedSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
+  const [saveSuccess, setSaveSuccess] = useState('');
+
+  // Sync form with fetched data
+  useEffect(() => {
+    if (data) {
+      setForm(JSON.parse(JSON.stringify(data)));
+    }
+  }, [data]);
+
+  useEffect(() => {
+    if (!saveSuccess) return;
+    const timer = setTimeout(() => setSaveSuccess(''), 4000);
+    return () => clearTimeout(timer);
+  }, [saveSuccess]);
+
+  if (loading && !form) {
+    return <LoadState loading={true} error="" />;
+  }
+
+  if (error && !form) {
+    return <LoadState loading={false} error={error} />;
+  }
+
+  if (!form) return null;
+
+  function handleAddForbidden() {
+    const trimmed = newForbiddenWord.trim().toLowerCase();
+    if (!trimmed) return;
+    if (form?.aiModeration.criticalForbiddenKeywords.includes(trimmed)) {
+      alert('Từ cấm này đã có trong danh sách.');
+      return;
+    }
+    setForm((curr) => {
+      if (!curr) return curr;
+      return {
+        ...curr,
+        aiModeration: {
+          ...curr.aiModeration,
+          criticalForbiddenKeywords: [...curr.aiModeration.criticalForbiddenKeywords, trimmed],
+        },
+      };
+    });
+    setNewForbiddenWord('');
+  }
+
+  function handleRemoveForbidden(word: string) {
+    setForm((curr) => {
+      if (!curr) return curr;
+      return {
+        ...curr,
+        aiModeration: {
+          ...curr.aiModeration,
+          criticalForbiddenKeywords: curr.aiModeration.criticalForbiddenKeywords.filter(
+            (w) => w !== word
+          ),
+        },
+      };
+    });
+  }
+
+  function handleAddRestricted() {
+    const trimmed = newRestrictedWord.trim().toLowerCase();
+    if (!trimmed) return;
+    if (form?.aiModeration.restrictedKeywords.includes(trimmed)) {
+      alert('Từ khóa này đã có trong danh sách.');
+      return;
+    }
+    setForm((curr) => {
+      if (!curr) return curr;
+      return {
+        ...curr,
+        aiModeration: {
+          ...curr.aiModeration,
+          restrictedKeywords: [...curr.aiModeration.restrictedKeywords, trimmed],
+        },
+      };
+    });
+    setNewRestrictedWord('');
+  }
+
+  function handleRemoveRestricted(word: string) {
+    setForm((curr) => {
+      if (!curr) return curr;
+      return {
+        ...curr,
+        aiModeration: {
+          ...curr.aiModeration,
+          restrictedKeywords: curr.aiModeration.restrictedKeywords.filter((w) => w !== word),
+        },
+      };
+    });
+  }
+
+  async function handleSaveAll() {
+    if (!form) return;
+    setSaving(true);
+    setSaveError('');
+    setSaveSuccess('');
+    try {
+      await api.put('/admin/system-config', form);
+      setSaveSuccess('Đã lưu cấu hình AI duyệt bài và tỷ lệ ký quỹ thành công!');
+      setRevision((n) => n + 1);
+    } catch (e) {
+      setSaveError(getApiError(e));
+      if (isUnauthenticated(e)) onLogout();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleResetDefault() {
+    if (!window.confirm('Bạn có chắc muốn khôi phục toàn bộ cấu hình AI và ký quỹ về mặc định ban đầu?')) {
+      return;
+    }
+    setSaving(true);
+    setSaveError('');
+    setSaveSuccess('');
+    try {
+      await api.post('/admin/system-config/reset');
+      setSaveSuccess('Đã khôi phục toàn bộ cấu hình về mặc định ban đầu!');
+      setRevision((n) => n + 1);
+    } catch (e) {
+      setSaveError(getApiError(e));
+      if (isUnauthenticated(e)) onLogout();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const filteredForbidden = form.aiModeration.criticalForbiddenKeywords.filter((w) =>
+    !forbiddenSearch ? true : w.toLowerCase().includes(forbiddenSearch.toLowerCase())
+  );
+
+  const filteredRestricted = form.aiModeration.restrictedKeywords.filter((w) =>
+    !restrictedSearch ? true : w.toLowerCase().includes(restrictedSearch.toLowerCase())
+  );
+
+  return (
+    <>
+      <Heading
+        eyebrow="AI & ESCROW CONFIGURATION"
+        title="Cấu hình AI duyệt bài & Ký quỹ sàn"
+        description="Quản trị viên tùy chỉnh các từ cấm, từ khóa hạn chế, các ngưỡng nhạy cảm cho AI kiểm duyệt bài đăng và điều chỉnh tỷ lệ phần trăm ký quỹ (escrow) phù hợp với sàn thay vì để tự động hoàn toàn."
+        action={
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={handleResetDefault}
+              disabled={saving}
+              style={{
+                padding: '9px 16px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#ffffff',
+                color: '#475569',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+            >
+              Khôi phục mặc định
+            </button>
+            <button
+              type="button"
+              className="admin-primary"
+              onClick={handleSaveAll}
+              disabled={saving}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              {saving ? 'Đang lưu…' : '✓ Lưu cấu hình'}
+            </button>
+          </div>
+        }
+      />
+
+      {/* Metrics row */}
+      <div className="admin-metrics four">
+        <Metric
+          label="Từ cấm Mức 3 (Tự cấm)"
+          value={`${form.aiModeration.criticalForbiddenKeywords.length} từ`}
+          note="Chất cấm, vũ khí, hàng giả, cờ bạc..."
+        />
+        <Metric
+          label="Từ hạn chế Mức 2 (Duyệt)"
+          value={`${form.aiModeration.restrictedKeywords.length} từ`}
+          note="Thuốc lá, xì gà, rượu mạnh..."
+        />
+        <Metric
+          label="Tỷ lệ ký quỹ chuẩn"
+          value={`${form.escrowDeposit.defaultDepositRate}%`}
+          note={`Mức trần: ${form.escrowDeposit.maxDepositRate}%`}
+        />
+        <Metric
+          label="Trạng thái AI duyệt bài"
+          value={form.aiModeration.autoModerationEnabled ? 'Đang BẬT' : 'Đã TẮT'}
+          note={`Độ nghiêm ngặt: ${form.aiModeration.strictness}`}
+        />
+      </div>
+
+      {saveSuccess && (
+        <p
+          role="status"
+          style={{
+            backgroundColor: '#dcfce7',
+            color: '#15803d',
+            padding: '12px 18px',
+            borderRadius: '10px',
+            border: '1px solid #bbf7d0',
+            fontWeight: 600,
+            marginBottom: '20px',
+          }}
+        >
+          ✓ {saveSuccess}
+        </p>
+      )}
+
+      {saveError && (
+        <p role="alert" className="error-notice" style={{ marginBottom: '20px' }}>
+          {saveError}
+        </p>
+      )}
+
+      <div className="admin-config-container">
+        {/* CARD 1: CẤU HÌNH PHẦN TRĂM KÝ QUỸ */}
+        <section className="admin-config-card">
+          <div className="admin-config-card-header">
+            <div>
+              <span className="admin-mini-label">CHÍNH SÁCH BẢO ĐẢM TÀI CHÍNH</span>
+              <h2>Tỷ lệ phần trăm ký quỹ (Escrow Deposit Rate)</h2>
+              <p>
+                Admin điều chỉnh tỷ lệ phần trăm tiền cọc đảm bảo hợp đồng sỉ giữa tiệm tạp hóa và chủ vựa. Tiền cọc được tạm giữ an toàn trong hệ thống ký quỹ cho đến khi đơn hàng hoàn tất.
+              </p>
+            </div>
+            <span style={{ fontSize: '28px' }}>💰</span>
+          </div>
+
+          <div className="admin-config-grid">
+            <div className="admin-config-field">
+              <label htmlFor="defaultDepositRate">Tỷ lệ ký quỹ chuẩn khuyến nghị (%)</label>
+              <input
+                id="defaultDepositRate"
+                type="number"
+                min={0}
+                max={100}
+                step={0.5}
+                value={form.escrowDeposit.defaultDepositRate}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    escrowDeposit: {
+                      ...form.escrowDeposit,
+                      defaultDepositRate: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+              <small>Mức cọc chuẩn áp dụng mặc định khi chủ vựa gửi báo giá (VD: 10% hoặc 20%).</small>
+            </div>
+
+            <div className="admin-config-field">
+              <label htmlFor="maxDepositRate">Tỷ lệ ký quỹ tối đa cho phép (%)</label>
+              <input
+                id="maxDepositRate"
+                type="number"
+                min={form.escrowDeposit.minDepositRate}
+                max={100}
+                step={0.5}
+                value={form.escrowDeposit.maxDepositRate}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    escrowDeposit: {
+                      ...form.escrowDeposit,
+                      maxDepositRate: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+              <small>Mức trần tối đa, chủ vựa không được phép yêu cầu cọc vượt ngưỡng này (VD: 50%).</small>
+            </div>
+
+            <div className="admin-config-field">
+              <label htmlFor="highValueThreshold">Ngưỡng đơn giá trị cao (VNĐ)</label>
+              <input
+                id="highValueThreshold"
+                type="number"
+                min={0}
+                step={500000}
+                value={form.escrowDeposit.highValueThreshold}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    escrowDeposit: {
+                      ...form.escrowDeposit,
+                      highValueThreshold: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+              <small>Đơn hàng vượt giá trị này sẽ tự động áp dụng chính sách ký quỹ bảo đảm.</small>
+            </div>
+
+            <div className="admin-config-field">
+              <label htmlFor="escrowHoldDays">Thời gian tạm giữ ký quỹ sau khi giao (ngày)</label>
+              <input
+                id="escrowHoldDays"
+                type="number"
+                min={0}
+                max={30}
+                value={form.escrowDeposit.escrowHoldDays}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    escrowDeposit: {
+                      ...form.escrowDeposit,
+                      escrowHoldDays: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+              <small>Số ngày giữ cọc để chủ tạp hóa kiểm tra hàng hóa trước khi giải tỏa hoàn tất.</small>
+            </div>
+          </div>
+        </section>
+
+        {/* CARD 2: QUẢN LÝ TỪ CẤM NGHIÊM TRỌNG (MỨC 3) */}
+        <section className="admin-config-card">
+          <div className="admin-config-card-header">
+            <div>
+              <span className="admin-mini-label" style={{ color: '#b91c1c' }}>MỨC 3 · TỰ ĐỘNG CẤM ĐĂNG BÁN</span>
+              <h2>Quản lý Danh sách Từ cấm Nghiêm trọng</h2>
+              <p>
+                Khi sản phẩm có chứa bất kỳ từ cấm nào bên dưới (trong tên, danh mục, quy cách hoặc mô tả), AI sẽ ngay lập tức từ chối và cấm đăng bán thẳng để bảo vệ an toàn sàn.
+              </p>
+            </div>
+            <span style={{ fontSize: '28px' }}>🚫</span>
+          </div>
+
+          <div className="admin-tag-input-row">
+            <input
+              type="text"
+              placeholder="Nhập từ cấm mới (VD: tiền giả, pháo sáng, súng bắn cát...) rồi nhấn Thêm"
+              value={newForbiddenWord}
+              onChange={(e) => setNewForbiddenWord(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddForbidden();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="admin-primary"
+              onClick={handleAddForbidden}
+              disabled={!newForbiddenWord.trim()}
+              style={{ padding: '9px 18px', whiteSpace: 'nowrap' }}
+            >
+              + Thêm từ cấm
+            </button>
+          </div>
+
+          <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>
+              Tổng cộng {form.aiModeration.criticalForbiddenKeywords.length} từ cấm:
+            </span>
+            <input
+              type="text"
+              placeholder="🔍 Lọc nhanh từ cấm..."
+              value={forbiddenSearch}
+              onChange={(e) => setForbiddenSearch(e.target.value)}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                fontSize: '12px',
+                maxWidth: '200px',
+              }}
+            />
+          </div>
+
+          <div className="admin-tag-cloud">
+            {filteredForbidden.length > 0 ? (
+              filteredForbidden.map((word) => (
+                <span key={word} className="admin-tag-chip critical">
+                  <span>{word}</span>
+                  <button
+                    type="button"
+                    className="admin-tag-remove-btn"
+                    onClick={() => handleRemoveForbidden(word)}
+                    title={`Xóa từ "${word}" khỏi danh sách từ cấm`}
+                    aria-label={`Xóa ${word}`}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))
+            ) : (
+              <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '8px' }}>
+                Không tìm thấy từ cấm nào khớp với tìm kiếm.
+              </span>
+            )}
+          </div>
+        </section>
+
+        {/* CARD 3: QUẢN LÝ TỪ KHÓA HẠN CHẾ (MỨC 2) */}
+        <section className="admin-config-card">
+          <div className="admin-config-card-header">
+            <div>
+              <span className="admin-mini-label" style={{ color: '#b45309' }}>MỨC 2 · CẦN ADMIN DUYỆT</span>
+              <h2>Quản lý Danh sách Từ khóa Hạn chế / Có điều kiện</h2>
+              <p>
+                Sản phẩm chứa các từ khóa này (thuốc lá, xì gà, rượu, thực phẩm chức năng...) sẽ không bị cấm ngay mà được đưa vào Hàng chờ duyệt để Admin kiểm tra giấy phép kinh doanh.
+              </p>
+            </div>
+            <span style={{ fontSize: '28px' }}>⚠️</span>
+          </div>
+
+          <div className="admin-tag-input-row">
+            <input
+              type="text"
+              placeholder="Nhập từ khóa hạn chế mới (VD: thuốc lào, shisha, vape, rượu ngoại...) rồi nhấn Thêm"
+              value={newRestrictedWord}
+              onChange={(e) => setNewRestrictedWord(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddRestricted();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="admin-primary"
+              onClick={handleAddRestricted}
+              disabled={!newRestrictedWord.trim()}
+              style={{ padding: '9px 18px', whiteSpace: 'nowrap' }}
+            >
+              + Thêm từ hạn chế
+            </button>
+          </div>
+
+          <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>
+              Tổng cộng {form.aiModeration.restrictedKeywords.length} từ khóa hạn chế:
+            </span>
+            <input
+              type="text"
+              placeholder="🔍 Lọc từ hạn chế..."
+              value={restrictedSearch}
+              onChange={(e) => setRestrictedSearch(e.target.value)}
+              style={{
+                padding: '4px 10px',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                fontSize: '12px',
+                maxWidth: '200px',
+              }}
+            />
+          </div>
+
+          <div className="admin-tag-cloud">
+            {filteredRestricted.length > 0 ? (
+              filteredRestricted.map((word) => (
+                <span key={word} className="admin-tag-chip warning">
+                  <span>{word}</span>
+                  <button
+                    type="button"
+                    className="admin-tag-remove-btn"
+                    onClick={() => handleRemoveRestricted(word)}
+                    title={`Xóa từ "${word}" khỏi danh sách hạn chế`}
+                    aria-label={`Xóa ${word}`}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))
+            ) : (
+              <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '8px' }}>
+                Không tìm thấy từ khóa nào khớp với tìm kiếm.
+              </span>
+            )}
+          </div>
+        </section>
+
+        {/* CARD 4: CÀI ĐẶT THUẬT TOÁN & NGƯỠNG RỦI RO AI */}
+        <section className="admin-config-card">
+          <div className="admin-config-card-header">
+            <div>
+              <span className="admin-mini-label">QUY TẮC PHÁ GIÁ & SỐ LƯỢNG ẢO</span>
+              <h2>Cài đặt Thuật toán AI & Ngưỡng Rủi ro</h2>
+              <p>
+                Điều chỉnh các ngưỡng giá tối thiểu/tối đa và số lượng MOQ để AI phát hiện kịp thời các hành vi phá giá, tạo đơn ảo hoặc số lượng phi thực tế.
+              </p>
+            </div>
+            <span style={{ fontSize: '28px' }}>⚙️</span>
+          </div>
+
+          {/* Toggle Enable/Disable AI */}
+          <div className="admin-config-toggle">
+            <span>
+              <strong>Kích hoạt tính năng AI kiểm duyệt tự động</strong>
+              <small>Khi tắt, các bài đăng sản phẩm sỉ sẽ không bị AI kiểm tra hay chặn tự động.</small>
+            </span>
+            <input
+              type="checkbox"
+              style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+              checked={form.aiModeration.autoModerationEnabled}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  aiModeration: {
+                    ...form.aiModeration,
+                    autoModerationEnabled: e.target.checked,
+                  },
+                })
+              }
+            />
+          </div>
+
+          <div className="admin-config-grid">
+            <div className="admin-config-field">
+              <label htmlFor="strictness">Độ nghiêm ngặt của AI</label>
+              <select
+                id="strictness"
+                value={form.aiModeration.strictness}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    aiModeration: {
+                      ...form.aiModeration,
+                      strictness: e.target.value as 'STANDARD' | 'STRICT' | 'LENIENT',
+                    },
+                  })
+                }
+              >
+                <option value="STANDARD">Tiêu chuẩn (Khuyên dùng - Cân bằng kiểm duyệt)</option>
+                <option value="STRICT">Nghiêm ngặt (Tăng độ nhạy cảnh báo 25%, kiểm soát chặt)</option>
+                <option value="LENIENT">Linh hoạt (Nới lỏng, chỉ chặn vi phạm nặng)</option>
+              </select>
+              <small>Quyết định hệ số tính điểm rủi ro (risk score) của sản phẩm.</small>
+            </div>
+
+            <div className="admin-config-field">
+              <label htmlFor="minSuspiciousPrice">Giá sỉ tối thiểu nghi vấn giá ảo / phá giá (VNĐ)</label>
+              <input
+                id="minSuspiciousPrice"
+                type="number"
+                min={0}
+                step={100}
+                value={form.aiModeration.minSuspiciousPrice}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    aiModeration: {
+                      ...form.aiModeration,
+                      minSuspiciousPrice: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+              <small>Giá sỉ thấp hơn mức này sẽ bị coi là giá ảo phá giá (Mặc định: 500đ).</small>
+            </div>
+
+            <div className="admin-config-field">
+              <label htmlFor="warningLowPrice">Giá sỉ thấp bất thường cần xác minh (VNĐ)</label>
+              <input
+                id="warningLowPrice"
+                type="number"
+                min={form.aiModeration.minSuspiciousPrice}
+                step={500}
+                value={form.aiModeration.warningLowPrice}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    aiModeration: {
+                      ...form.aiModeration,
+                      warningLowPrice: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+              <small>Sản phẩm trong khoảng này sẽ cảnh báo Mức 2 để Admin xác minh.</small>
+            </div>
+
+            <div className="admin-config-field">
+              <label htmlFor="maxSuspiciousPrice">Giá sỉ tối đa bất thường (VNĐ)</label>
+              <input
+                id="maxSuspiciousPrice"
+                type="number"
+                min={form.aiModeration.warningLowPrice}
+                step={10000000}
+                value={form.aiModeration.maxSuspiciousPrice}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    aiModeration: {
+                      ...form.aiModeration,
+                      maxSuspiciousPrice: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+              <small>Giá sỉ vượt trần này sẽ bị AI cấm vì nghi ngờ thông tin sai lệch.</small>
+            </div>
+
+            <div className="admin-config-field">
+              <label htmlFor="maxMoq">Số lượng MOQ tối đa phi thực tế</label>
+              <input
+                id="maxMoq"
+                type="number"
+                min={1}
+                step={1000}
+                value={form.aiModeration.maxMoq}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    aiModeration: {
+                      ...form.aiModeration,
+                      maxMoq: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+              <small>Số lượng tối thiểu (MOQ) vượt ngưỡng này sẽ bị cấm (Mặc định: 50.000).</small>
+            </div>
+
+            <div className="admin-config-field">
+              <label htmlFor="warningMoq">Ngưỡng MOQ cao cần kiểm tra</label>
+              <input
+                id="warningMoq"
+                type="number"
+                min={1}
+                max={form.aiModeration.maxMoq}
+                step={500}
+                value={form.aiModeration.warningMoq}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    aiModeration: {
+                      ...form.aiModeration,
+                      warningMoq: Number(e.target.value),
+                    },
+                  })
+                }
+              />
+              <small>MOQ vượt ngưỡng này sẽ cảnh báo Admin duyệt (Mặc định: 5.000).</small>
+            </div>
+          </div>
+        </section>
+
+        {/* BOTTOM ACTION BUTTONS */}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '14px', marginTop: '10px' }}>
+          <button
+            type="button"
+            onClick={handleResetDefault}
+            disabled={saving}
+            style={{
+              padding: '11px 20px',
+              borderRadius: '8px',
+              border: '1px solid #cbd5e1',
+              backgroundColor: '#ffffff',
+              color: '#475569',
+              fontWeight: 600,
+              fontSize: '13.5px',
+              cursor: 'pointer',
+            }}
+          >
+            Khôi phục mặc định
+          </button>
+          <button
+            type="button"
+            className="admin-primary"
+            onClick={handleSaveAll}
+            disabled={saving}
+            style={{
+              padding: '11px 24px',
+              fontSize: '14px',
+              fontWeight: 650,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            {saving ? 'Đang lưu…' : '✓ Lưu toàn bộ cấu hình'}
+          </button>
+        </div>
+      </div>
     </>
   );
 }
