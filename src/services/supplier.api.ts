@@ -45,6 +45,18 @@ export type SupplierProduct = {
   };
 };
 
+export type DriverInfo = {
+  orderId?: number;
+  driverName: string;
+  driverPhone: string;
+  vehicleType: string;
+  licensePlate?: string | null;
+  estimatedDeliveryTime?: string | null;
+  deliveryNotes?: string | null;
+  assignedAt?: string;
+  updatedAt?: string;
+};
+
 export type SupplierOrder = {
   commissionRate: number | null;
   commissionAmount: number | null;
@@ -80,6 +92,7 @@ export type SupplierOrder = {
   depositRefundReference: string | null;
   note: string | null;
   rejectReason: string | null;
+  driverInfo?: DriverInfo | null;
   complaint?: {
     id: number;
     reason: string;
@@ -178,11 +191,21 @@ export async function updateSupplierOrderStatus(
   id: number,
   status: string,
   rejectReason?: string,
+  driverInfo?: Partial<DriverInfo>,
 ): Promise<SupplierOrder> {
   const response = await api.patch<{ order: SupplierOrder }>(`/supplier/orders/${id}/status`, {
     status,
     rejectReason,
+    driverInfo,
   });
+  return response.data.order;
+}
+
+export async function updateSupplierOrderDriver(
+  id: number,
+  driverInfo: Partial<DriverInfo>,
+): Promise<SupplierOrder> {
+  const response = await api.put<{ order: SupplierOrder }>(`/supplier/orders/${id}/driver-info`, driverInfo);
   return response.data.order;
 }
 

@@ -58,9 +58,10 @@ type Props = {
   revision?: number;
   busy?: boolean;
   onStatus?: (order: SupplierOrder, forcedStatus?: string) => void;
+  onEditDriver?: (order: SupplierOrder) => void;
 };
 
-export default function OrderList({ kind, onLogout, revision = 0, busy = false, onStatus }: Props) {
+export default function OrderList({ kind, onLogout, revision = 0, busy = false, onStatus, onEditDriver }: Props) {
   const [query, setQuery] = useState({ page: 1, status: '' });
   const [data, setData] = useState<{ orders: SupplierOrder[]; total: number; hasMore: boolean }>({
     orders: [],
@@ -636,14 +637,14 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                 return null;
               })()}
 
-              {order.status === 'SHIPPING' && (
+              {(order.status === 'PREPARING' || order.status === 'SHIPPING') && (
                 <div
                   style={{
                     margin: '10px 0',
                     padding: '12px 14px',
                     borderRadius: '8px',
-                    backgroundColor: '#eff6ff',
-                    border: '1px solid #bfdbfe',
+                    backgroundColor: order.status === 'PREPARING' ? '#f0fdf4' : '#eff6ff',
+                    border: `1px solid ${order.status === 'PREPARING' ? '#bbf7d0' : '#bfdbfe'}`,
                     fontSize: '12px',
                   }}
                 >
@@ -659,25 +660,32 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                   >
                     <strong
                       style={{
-                        color: '#1d4ed8',
+                        color: order.status === 'PREPARING' ? '#15803d' : '#1d4ed8',
                         display: 'flex',
                         alignItems: 'center',
                         gap: '6px',
                         fontSize: '13px',
                       }}
                     >
-                      <span>🚚</span> Đang trên đường vận chuyển
+                      <span>{order.status === 'PREPARING' ? '📦' : '🚚'}</span>
+                      {order.status === 'PREPARING'
+                        ? 'Đã chuẩn bị hàng xong · Sẵn sàng vận chuyển'
+                        : 'Đang trên đường vận chuyển'}
                     </strong>
                     <span
                       style={{
-                        color: '#1e40af',
+                        color: order.status === 'PREPARING' ? '#166534' : '#1e40af',
                         fontWeight: 600,
-                        backgroundColor: '#dbeafe',
+                        backgroundColor: order.status === 'PREPARING' ? '#dcfce7' : '#dbeafe',
                         padding: '3px 8px',
                         borderRadius: '12px',
                       }}
                     >
-                      ⏱️ Dự kiến giao: trong 30 – 45 phút tới
+                      {order.driverInfo?.estimatedDeliveryTime
+                        ? `⏱️ Dự kiến giao: ${order.driverInfo.estimatedDeliveryTime}`
+                        : order.status === 'PREPARING'
+                          ? '⏱️ Dự kiến: Sắp xếp chuyến xe sớm nhất'
+                          : '⏱️ Dự kiến giao: trong 30 – 45 phút tới'}
                     </span>
                   </div>
 
@@ -685,33 +693,70 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                     style={{
                       display: 'grid',
                       gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                      gap: '8px',
-                      color: '#1e3a8a',
+                      gap: '10px',
+                      color: order.status === 'PREPARING' ? '#14532d' : '#1e3a8a',
                       marginTop: '6px',
                     }}
                   >
                     <div>
                       <span>📍 <strong>Kho xuất phát:</strong> </span>
                       <span>{order.supplier?.warehouseAddress || 'Kho vựa phân phối'}</span>
-                      <small style={{ display: 'block', color: '#3b82f6', marginTop: '1px' }}>
-                        Khoảng cách ước tính: ~4.5 km
-                      </small>
+                      <div style={{ marginTop: '4px' }}>
+                        <span>🛵 <strong>Phương tiện:</strong> </span>
+                        <span
+                          style={{
+                            backgroundColor: '#e0e7ff',
+                            color: '#3730a3',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            fontWeight: 600,
+                            fontSize: '11px',
+                          }}
+                        >
+                          {order.driverInfo?.vehicleType || 'Xe giao hàng'}
+                        </span>
+                        {order.driverInfo?.licensePlate && (
+                          <span
+                            style={{
+                              marginLeft: '6px',
+                              backgroundColor: '#fef3c7',
+                              color: '#92400e',
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              fontWeight: 700,
+                              fontSize: '11px',
+                            }}
+                          >
+                            Biển số: {order.driverInfo.licensePlate}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <div>
                       <span>👤 <strong>Tài xế giao hàng:</strong> </span>
-                      <span>Đội giao vận {order.supplier?.businessName || 'Chủ vựa'}</span>
+                      <strong>
+                        {order.driverInfo?.driverName ||
+                          (order.supplier?.businessName
+                            ? `Đội giao vận ${order.supplier.businessName}`
+                            : 'Đội giao vận chủ vựa')}
+                      </strong>
                       <br />
-                      <span>📞 <strong>Hotline liên hệ:</strong> </span>
+                      <span>📞 <strong>Số điện thoại tài xế:</strong> </span>
                       <a
-                        href={`tel:${order.supplier?.phone || '0908123789'}`}
+                        href={`tel:${order.driverInfo?.driverPhone || order.supplier?.phone || '0908123789'}`}
                         style={{
                           color: '#1d4ed8',
                           fontWeight: 700,
                           textDecoration: 'underline',
                         }}
                       >
-                        {order.supplier?.phone || '0908 123 789'}
+                        {order.driverInfo?.driverPhone || order.supplier?.phone || '0908 123 789'}
                       </a>
+                      {order.driverInfo?.deliveryNotes && (
+                        <div style={{ marginTop: '4px', fontSize: '11px', color: '#475569' }}>
+                          <span>📝 <strong>Ghi chú chuyến xe:</strong> <em>{order.driverInfo.deliveryNotes}</em></span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -719,7 +764,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                     style={{
                       marginTop: '10px',
                       paddingTop: '8px',
-                      borderTop: '1px dashed #93c5fd',
+                      borderTop: `1px dashed ${order.status === 'PREPARING' ? '#86efac' : '#93c5fd'}`,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
@@ -728,11 +773,13 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                     }}
                   >
                     <span style={{ color: '#475569', fontSize: '11px' }}>
-                      💡 Nếu bạn có việc bận đi vắng, hãy gọi tài xế hoặc bấm <strong>Hẹn dời giờ nhận</strong> để tài xế chủ động tuyến đường.
+                      💡 {order.status === 'PREPARING'
+                        ? 'Hàng đã chuẩn bị xong. Tiệm có thể hẹn dời giờ nhận ngay trước khi xe lăn bánh để vựa chủ động sắp chuyến.'
+                        : 'Nếu bạn có việc bận đi vắng, hãy gọi tài xế hoặc bấm Hẹn dời giờ nhận để tài xế chủ động tuyến đường.'}
                     </span>
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                       <a
-                        href={`tel:${order.supplier?.phone || '0908123789'}`}
+                        href={`tel:${order.driverInfo?.driverPhone || order.supplier?.phone || '0908123789'}`}
                         className="ghost-button"
                         style={{
                           fontSize: '11px',
@@ -745,6 +792,16 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       >
                         📞 Gọi tài xế / vựa
                       </a>
+                      {kind === 'supplier' && onEditDriver && (
+                        <button
+                          type="button"
+                          className="table-button primary-small"
+                          style={{ fontSize: '11px', padding: '4px 10px', backgroundColor: '#475569' }}
+                          onClick={() => onEditDriver(order)}
+                        >
+                          ✏️ {order.driverInfo ? 'Sửa thông tin tài xế' : 'Gán tài xế'}
+                        </button>
+                      )}
                       {kind === 'store' && (
                         <button
                           type="button"
