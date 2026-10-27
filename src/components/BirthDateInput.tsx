@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from './Icon';
-import { todayInVietnam } from '../validation/registration';
+import { todayInVietnam, getBirthDateRange } from '../validation/registration';
 
 type Props = {
   value: string; // ISO format: YYYY-MM-DD
@@ -64,17 +64,15 @@ export default function BirthDateInput({
   const [isOpen, setIsOpen] = useState(false);
   const [displayText, setDisplayText] = useState(() => isoToDisplay(value));
 
-  const todayStr = todayInVietnam();
-  const maxYear = Number(todayStr.slice(0, 4));
-  const minYear = 1900;
+  const { minDate, maxDate, minDateDisplay, maxDateDisplay, minYear, maxYear } = getBirthDateRange();
 
   // View state for the calendar popover
   const [viewYear, setViewYear] = useState(() => {
     if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
       return Number(value.slice(0, 4));
     }
-    // Default to an adult birth year (2000) for fast selection
-    return Math.min(2000, maxYear - 18);
+    // Default to an adult birth year (2000 or maxYear) for fast selection
+    return Math.min(2000, maxYear);
   });
 
   const [viewMonth, setViewMonth] = useState(() => {
@@ -155,13 +153,12 @@ export default function BirthDateInput({
     const formattedDay = String(day).padStart(2, '0');
     const iso = `${viewYear}-${formattedMonth}-${formattedDay}`;
 
-    // Verify boundary
-    if (iso > todayStr || iso < `${minYear}-01-01`) return;
+    // Verify boundary: 18 to 100 years old
+    if (iso > maxDate || iso < minDate) return;
 
     onChange(iso);
     setDisplayText(isoToDisplay(iso));
     setIsOpen(false);
-    onBlur();
   }
 
   function handlePrevMonth() {
@@ -200,7 +197,7 @@ export default function BirthDateInput({
   const daysInCurrentMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const daysInPrevMonth = new Date(viewYear, viewMonth, 0).getDate();
 
-  // Year options for dropdown: from maxYear down to 1900
+  // Year options for dropdown: from maxYear down to minYear (18 to 100 years old)
   const yearOptions: number[] = [];
   for (let y = maxYear; y >= minYear; y--) {
     yearOptions.push(y);
@@ -332,10 +329,8 @@ export default function BirthDateInput({
               const iso = `${viewYear}-${formattedMonth}-${formattedDay}`;
 
               const isSelected = iso === value;
-              const isToday = iso === todayStr;
-              const isFuture = iso > todayStr;
-              const isTooOld = iso < `${minYear}-01-01`;
-              const isDisabled = isFuture || isTooOld;
+              const isToday = iso === todayInVietnam();
+              const isDisabled = iso > maxDate || iso < minDate;
 
               return (
                 <button
@@ -346,43 +341,29 @@ export default function BirthDateInput({
                   }`}
                   disabled={isDisabled}
                   onClick={() => handleSelectDate(day)}
-                  title={isDisabled ? 'Ngày không hợp lệ' : iso}
+                  title={isDisabled ? `Chỉ chọn người từ 18 đến 100 tuổi (${minDateDisplay} - ${maxDateDisplay})` : iso}
                 >
                   {day}
                 </button>
               );
             })}
-
-            {/* Fill trailing cells for a consistent 5 or 6 row layout */}
-            {Array.from({
-              length: (7 - ((startOffset + daysInCurrentMonth) % 7)) % 7,
-            }, (_, i) => (
-              <div key={`next-${i + 1}`} className="calendar-day-cell is-outside">
-                {i + 1}
-              </div>
-            ))}
           </div>
 
-          {/* Calendar Footer Actions */}
-          <div className="calendar-footer">
+          {/* Quick Info & Fast Jump Footer */}
+          <div className="calendar-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '11px', color: '#64748b' }}>
+              Quy định độ tuổi: 18 – 100 tuổi
+            </span>
             <button
               type="button"
-              className="calendar-footer-btn"
+              className="calendar-today-btn"
               onClick={() => {
-                const adultYear = Math.min(2000, maxYear - 18);
-                setViewYear(adultYear);
+                const targetYear = Math.min(2000, maxYear);
+                setViewYear(targetYear);
                 setViewMonth(0);
               }}
             >
-              Đến năm 2000
-            </button>
-
-            <button
-              type="button"
-              className="calendar-footer-btn calendar-close-action"
-              onClick={() => setIsOpen(false)}
-            >
-              Đóng
+              Về năm 2000
             </button>
           </div>
         </div>

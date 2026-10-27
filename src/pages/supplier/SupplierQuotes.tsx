@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Brand from '../../components/Brand';
 import TopbarBalance from '../../components/TopbarBalance';
 import Icon from '../../components/Icon';
@@ -37,6 +37,7 @@ const statusLabel: Record<string, string> = {
 };
 
 export default function SupplierQuotes({ onLogout }: { onLogout: () => void }) {
+  const navigate = useNavigate();
   const [products, setProducts] = useState<SupplierProduct[]>([]);
   const [profile, setProfile] = useState<SupplierProfile | null>(null);
   const [stores, setStores] = useState<StoreProspect[]>([]);
@@ -64,6 +65,10 @@ export default function SupplierQuotes({ onLogout }: { onLogout: () => void }) {
     Promise.all([getSupplierDashboard(), getProspects(), getSupplierQuotes()])
       .then(([dashboard, prospects, quotePage]) => {
         if (!active) return;
+        if (!dashboard.profile) {
+          navigate('/supplier', { replace: true });
+          return;
+        }
         const available = dashboard.products.filter((item) => item.isActive && item.stockQty > 0);
         setProducts(available);
         setProfile(dashboard.profile);

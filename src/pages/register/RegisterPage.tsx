@@ -26,9 +26,29 @@ const initialValues: RegistrationInput = {
   acceptTerms: false,
 };
 
+const REGISTRATION_DRAFT_KEY = 'supplymind_registration_draft';
+
+function loadDraftValues(): RegistrationInput {
+  try {
+    const saved = sessionStorage.getItem(REGISTRATION_DRAFT_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        ...initialValues,
+        ...parsed,
+      };
+    }
+  } catch {
+    // fallback
+  }
+  return initialValues;
+}
+
 export default function RegisterPage() {
   const navigate = useNavigate();
-  const [values, setValues] = useState(initialValues);
+  const [values, setValues] = useState<RegistrationInput>(loadDraftValues);
+  const valuesRef = useRef<RegistrationInput>(values);
+  valuesRef.current = values;
   const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -87,12 +107,19 @@ export default function RegisterPage() {
       'aria-invalid': Boolean(errors[field]),
       'aria-describedby': descriptions.join(' ') || undefined,
       onBlur: () =>
-        setErrors((current) => ({ ...current, [field]: validateRegistration(values)[field] })),
+        setErrors((current) => ({ ...current, [field]: validateRegistration(valuesRef.current)[field] })),
     };
   }
 
   function update<K extends keyof RegistrationInput>(key: K, value: RegistrationInput[K]) {
-    setValues((current) => ({ ...current, [key]: value }));
+    const next = { ...valuesRef.current, [key]: value };
+    valuesRef.current = next;
+    setValues(next);
+    try {
+      sessionStorage.setItem(REGISTRATION_DRAFT_KEY, JSON.stringify(next));
+    } catch {
+      // ignore
+    }
     setErrors((current) => ({
       ...current,
       [key]: undefined,
@@ -109,7 +136,7 @@ export default function RegisterPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
-    const nextErrors = validateRegistration(values);
+    const nextErrors = validateRegistration(valuesRef.current);
     setErrors(nextErrors);
     setServerError('');
     if (Object.keys(nextErrors).length) {
@@ -150,7 +177,7 @@ export default function RegisterPage() {
           </div>
           <p className="form-eyebrow">BẮT ĐẦU CÙNG SUPPLYMIND</p>
           <h1 id="register-title">Tạo tài khoản</h1>
-          <p className="form-description">Điền thông tin để kết nối cửa hàng và nguồn sỉ.</p>
+          <p className="form-description">Điền thông tin đăng ký</p>
         </div>
         <form
           ref={formRef}
@@ -347,6 +374,11 @@ export default function RegisterPage() {
           devOtpNotice={devOtpNotice}
           onClose={() => setShowOtpModal(false)}
           onSuccess={(user) => {
+            try {
+              sessionStorage.removeItem(REGISTRATION_DRAFT_KEY);
+            } catch {
+              // ignore
+            }
             setShowOtpModal(false);
             navigate('/login', { replace: true, state: { registeredUsername: user.username } });
           }}

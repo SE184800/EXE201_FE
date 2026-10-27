@@ -124,7 +124,10 @@ export type SupplierProfileInput = Pick<
   | 'bankName'
   | 'bankAccountNumber'
   | 'bankAccountHolder'
->;
+> & {
+  taxCode?: string | null;
+  phone?: string | null;
+};
 export type SupplierProductInput = Pick<
   SupplierProduct,
   | 'category'

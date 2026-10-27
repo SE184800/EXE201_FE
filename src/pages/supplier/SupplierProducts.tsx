@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import Brand from '../../components/Brand';
 import TopbarBalance from '../../components/TopbarBalance';
 import Icon from '../../components/Icon';
@@ -143,6 +143,7 @@ const money = (value: number) => value.toLocaleString('vi-VN') + ' ₫';
 const PAGE_SIZE = 10;
 
 export default function SupplierProducts({ onLogout }: { onLogout: () => void }) {
+  const navigate = useNavigate();
   const [products, setProducts] = useState<SupplierProduct[]>([]);
   const [profile, setProfile] = useState<SupplierProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -237,6 +238,10 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
     getSupplierDashboard()
       .then((data) => {
         if (active) {
+          if (!data.profile) {
+            navigate('/supplier', { replace: true });
+            return;
+          }
           setProducts(data.products);
           setProfile(data.profile);
           setLoadError('');

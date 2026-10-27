@@ -31,6 +31,44 @@ export function todayInVietnam(now = new Date()): string {
   return `${value('year')}-${value('month')}-${value('day')}`;
 }
 
+export function getBirthDateRange(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const getPart = (type: string) => parts.find((part) => part.type === type)!.value;
+  const currentYear = Number(getPart('year'));
+  const currentMonth = getPart('month');
+  const currentDay = getPart('day');
+
+  const maxYear = currentYear - 18;
+  const minYear = currentYear - 100;
+
+  function safeDate(year: number, month: string, day: string) {
+    if (month === '02' && day === '29') {
+      const isLeap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+      if (!isLeap) day = '28';
+    }
+    return `${year}-${month}-${day}`;
+  }
+
+  const maxDate = safeDate(maxYear, currentMonth, currentDay);
+  const minDate = safeDate(minYear, currentMonth, currentDay);
+  const [maxY, maxM, maxD] = maxDate.split('-');
+  const [minY, minM, minD] = minDate.split('-');
+
+  return {
+    minDate,
+    maxDate,
+    minDateDisplay: `${minD}/${minM}/${minY}`,
+    maxDateDisplay: `${maxD}/${maxM}/${maxY}`,
+    minYear,
+    maxYear,
+  };
+}
+
 export function normalizeRegistration(values: RegistrationInput): RegistrationInput {
   return {
     ...values,
@@ -49,11 +87,12 @@ export function validateRegistration(values: RegistrationInput, now = new Date()
     normalizeRegistration(values);
   const errors: FieldErrors = {};
 
-  const nameLetters = name.replace(/[\s.'-]/gu, '');
-  if (!/^[\p{L}\p{M} .'-]{2,100}$/u.test(name) || !/\p{L}/u.test(name) || nameLetters.length < 2)
-    errors.name =
-      'Họ tên cần 2–100 ký tự (không tính khoảng trắng), gồm chữ cái, dấu chấm, nháy hoặc gạch ngang.';
+  // 1. Cho phép họ tên chứa ký tự đặc biệt, độ dài 2-100 ký tự (không tính khoảng trắng)
+  const nameWithoutSpaces = name.replace(/\s/g, '');
+  if (nameWithoutSpaces.length < 2 || name.length > 100)
+    errors.name = 'Họ tên cần 2–100 ký tự (không tính khoảng trắng).';
 
+  // 2. Tên đăng nhập dùng 3-50 ký tự không tính khoảng trắng
   const usernameChars = username.replace(/\s/g, '');
   if (
     !/^[a-zA-Z0-9._-]{3,50}$/.test(username) ||
@@ -61,8 +100,7 @@ export function validateRegistration(values: RegistrationInput, now = new Date()
     usernameChars.length > 50 ||
     /\s/.test(username)
   )
-    errors.username =
-      'Username dùng 3–50 ký tự không tính khoảng trắng, gồm chữ không dấu, số, chấm, gạch dưới hoặc gạch ngang.';
+    errors.username = 'Tên đăng nhập cần 3–50 ký tự (không tính khoảng trắng).';
 
   const localPart = email.split('@')[0] || '';
   if (
@@ -81,15 +119,17 @@ export function validateRegistration(values: RegistrationInput, now = new Date()
   if (!['STORE_OWNER', 'SUPPLIER'].includes(role))
     errors.role = 'Chọn vai trò Chủ tạp hóa hoặc Chủ vựa.';
 
+  // 3. Ngày tháng năm sinh chỉ lấy trong khoảng 18 đến 100 tuổi tính từ thời điểm hiện tại
+  const { minDate, maxDate, minDateDisplay, maxDateDisplay } = getBirthDateRange(now);
   const birth = new Date(`${dateOfBirth}T00:00:00.000Z`);
   if (
     !/^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth) ||
     Number.isNaN(birth.valueOf()) ||
-    dateOfBirth < '1900-01-01' ||
-    dateOfBirth > todayInVietnam(now) ||
+    dateOfBirth < minDate ||
+    dateOfBirth > maxDate ||
     birth.toISOString().slice(0, 10) !== dateOfBirth
   )
-    errors.dateOfBirth = 'Chọn ngày sinh có thật, từ 01/01/1900 đến hôm nay.';
+    errors.dateOfBirth = `Vui lòng chọn ngày sinh trong khoảng ${minDateDisplay} đến ${maxDateDisplay} (từ 18 đến 100 tuổi).`;
 
   const passwordWithoutSpaces = password.replace(/\s/g, '');
   if (new TextEncoder().encode(password).length > 72)

@@ -5,6 +5,8 @@ export type AuthUser = {
   username: string;
   name: string;
   role: Role;
+  email?: string | null;
+  phone?: string | null;
 };
 
 export const ROLE_DETAILS = {

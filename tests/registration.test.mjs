@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeRegistration, todayInVietnam, validateRegistration } from '../src/validation/registration.ts';
+import { getBirthDateRange, normalizeRegistration, todayInVietnam, validateRegistration } from '../src/validation/registration.ts';
 
 const base = {
   name: 'Nguyễn Văn An', username: 'nguyen.an', email: 'an@example.com',
@@ -18,9 +18,34 @@ test('chuẩn hóa username, email, họ tên và số điện thoại giống p
   }
 });
 
-test('báo lỗi đúng ô trước khi gửi tên, email, phone, role và xác nhận mật khẩu không hợp lệ', () => {
+test('họ tên cho phép ký tự đặc biệt, chặn độ dài < 2 hoặc > 100', () => {
+  // Cho phép ký tự đặc biệt
+  assert.deepEqual(validateRegistration({ ...base, name: 'Nguyễn Văn An #@! 123' }, now), {});
+  assert.deepEqual(validateRegistration({ ...base, name: 'An-Tiệm & Tạp Hóa' }, now), {});
+
+  // Chặn độ dài < 2 không tính khoảng trắng hoặc > 100
+  assert.ok(validateRegistration({ ...base, name: 'A' }, now).name);
+  assert.ok(validateRegistration({ ...base, name: '   A   ' }, now).name);
+  assert.ok(validateRegistration({ ...base, name: 'A'.repeat(101) }, now).name);
+  assert.equal(
+    validateRegistration({ ...base, name: 'A' }, now).name,
+    'Họ tên cần 2–100 ký tự (không tính khoảng trắng).'
+  );
+});
+
+test('tên đăng nhập báo lỗi đúng định dạng không chứa mô tả đuôi', () => {
+  assert.ok(validateRegistration({ ...base, username: 'ab' }, now).username);
+  assert.ok(validateRegistration({ ...base, username: 'a'.repeat(51) }, now).username);
+  assert.ok(validateRegistration({ ...base, username: 'user name' }, now).username);
+  assert.ok(validateRegistration({ ...base, username: 'user@123' }, now).username);
+  assert.equal(
+    validateRegistration({ ...base, username: 'ab' }, now).username,
+    'Tên đăng nhập cần 3–50 ký tự (không tính khoảng trắng).'
+  );
+});
+
+test('báo lỗi đúng ô trước khi gửi email, phone, role và xác nhận mật khẩu không hợp lệ', () => {
   for (const [field, value] of [
-    ['name', 'An123'], ['name', '...'], ['name', 'A'.repeat(101)], ['username', 'ab'],
     ['email', 'a@@example.com'], ['email', `${'a'.repeat(250)}@example.com`],
     ['phone', '12345'], ['role', 'ADMIN'], ['confirmPassword', ''], ['confirmPassword', 'different'],
     ['acceptTerms', false],
@@ -37,12 +62,21 @@ test('mật khẩu đủ độ dài và ký tự; giới hạn tính byte, khôn
   assert.deepEqual(validateRegistration({ ...base, password, confirmPassword: password }, now), {});
 });
 
-test('ngày thật, giới hạn 1900 và ngày hiện tại theo múi giờ Việt Nam', () => {
+test('ngày sinh giới hạn trong khoảng 18 đến 100 tuổi theo múi giờ Việt Nam', () => {
   assert.equal(todayInVietnam(now), '2026-09-21');
-  for (const dateOfBirth of ['1899-12-31', '2001-02-29', '2026-09-22', '2000-13-01', '']) {
+  const range = getBirthDateRange(now);
+  assert.equal(range.maxDate, '2008-09-21');
+  assert.equal(range.minDate, '1926-09-21');
+  assert.equal(range.maxDateDisplay, '21/09/2008');
+  assert.equal(range.minDateDisplay, '21/09/1926');
+
+  // Ngày sai định dạng hoặc ngoài khoảng 18-100 tuổi
+  for (const dateOfBirth of ['1926-09-20', '2008-09-22', '2026-09-21', '2001-02-29', '2000-13-01', '']) {
     assert.ok(validateRegistration({ ...base, dateOfBirth }, now).dateOfBirth);
   }
-  for (const dateOfBirth of ['1900-01-01', '2000-02-29', '2026-09-21']) {
+
+  // Ngày hợp lệ (trong khoảng 18 - 100 tuổi)
+  for (const dateOfBirth of ['1926-09-21', '2000-02-29', '2008-09-21']) {
     assert.deepEqual(validateRegistration({ ...base, dateOfBirth }, now), {});
   }
 });

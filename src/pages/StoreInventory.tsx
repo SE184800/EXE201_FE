@@ -4,7 +4,8 @@ import { api, getApiError, isUnauthenticated } from '../services/api';
 import './store-inventory.css';
 import StockActivity from './StockActivity';
 import StoreRevenue from './StoreRevenue';
-import ProfilePage from './ProfilePage';
+import ProfilePage, { type StoreProfile, type Profile } from './ProfilePage';
+import StoreOnboarding from '../components/StoreOnboarding';
 import RestockPage from './RestockPage';
 import SalesCalendar from './SalesCalendar';
 import VoiceQuickSale from './VoiceQuickSale';
@@ -88,6 +89,8 @@ export default function StoreInventory({
 }) {
   const navigate = useNavigate();
   const [displayName, setDisplayName] = useState(user.name);
+  const [storeProfile, setStoreProfile] = useState<StoreProfile | null>(null);
+  const [checkingStore, setCheckingStore] = useState(true);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -194,6 +197,27 @@ export default function StoreInventory({
       })
       .finally(() => {
         if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [onLogout]);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get<{ profile: Profile }>('/profile')
+      .then(({ data }) => {
+        if (active) {
+          setStoreProfile(data.profile.storeProfile || null);
+          if (data.profile.name) setDisplayName(data.profile.name);
+        }
+      })
+      .catch((issue: unknown) => {
+        if (active && isUnauthenticated(issue)) onLogout();
+      })
+      .finally(() => {
+        if (active) setCheckingStore(false);
       });
     return () => {
       active = false;
@@ -414,6 +438,24 @@ export default function StoreInventory({
     setSearch('');
     setActiveTab('inventory');
   }
+  const needsOnboarding = !checkingStore && Boolean(storeProfile && !storeProfile.isConfigured);
+
+  if (needsOnboarding) {
+    return (
+      <StoreOnboarding
+        user={user}
+        initialPhone={storeProfile?.storePhone || user.phone || ''}
+        onCompleted={(savedStoreProfile) => {
+          setStoreProfile(savedStoreProfile);
+          setNotice('Đăng ký thông tin cửa hàng thành công! Chào mừng bạn đến với SupplyMind AI.');
+          setActiveTab('overview');
+        }}
+        onSignOut={onSignOut}
+        signingOut={signingOut}
+      />
+    );
+  }
+
   if (!activeTab) return <Navigate to="/store" replace />;
   return (
     <main className="store-dashboard">
@@ -444,7 +486,7 @@ export default function StoreInventory({
             <Icon name="store" />
           </span>
           <div>
-            <strong>Cửa hàng của bạn</strong>
+            <strong>{storeProfile?.storeName || 'Cửa hàng của bạn'}</strong>
             <small>Không gian chủ tạp hóa</small>
           </div>
           <span className="online-dot" />
@@ -1100,7 +1142,18 @@ export default function StoreInventory({
             <RestockPage revision={revision} onLogout={onLogout} />
           </div>
           <div hidden={activeTab !== 'profile'}>
-            <ProfilePage onSaved={setDisplayName} onLogout={onLogout} />
+            <ProfilePage
+              onSaved={(name) => {
+                setDisplayName(name);
+                api
+                  .get<{ profile: Profile }>('/profile')
+                  .then(({ data }) => {
+                    if (data.profile.storeProfile) setStoreProfile(data.profile.storeProfile);
+                  })
+                  .catch(() => {});
+              }}
+              onLogout={onLogout}
+            />
           </div>
           <footer className="dashboard-footer">
             <span>

@@ -5,6 +5,7 @@ import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
 import TopbarBalance from '../../components/TopbarBalance';
 import SupplierVerification from './SupplierVerification';
+import SupplierOnboarding from '../../components/SupplierOnboarding';
 import { getApiError, getApiFieldErrors, isUnauthenticated } from '../../services/api';
 import { logout } from '../../services/auth.api';
 import {
@@ -23,6 +24,8 @@ const EMPTY_PROFILE: SupplierProfileInput = {
   bankName: '',
   bankAccountNumber: '',
   bankAccountHolder: '',
+  taxCode: '',
+  phone: '',
 };
 
 function money(value: number) {
@@ -66,6 +69,8 @@ export default function SupplierDashboard({
           bankName: next.profile.bankName || '',
           bankAccountNumber: next.profile.bankAccountNumber || '',
           bankAccountHolder: next.profile.bankAccountHolder || '',
+          taxCode: next.profile.taxCode || '',
+          phone: next.profile.phone || user.phone || '',
         });
       setError('');
     } catch (issue) {
@@ -149,6 +154,47 @@ export default function SupplierDashboard({
         </div>
       </main>
     );
+
+  if (!data?.profile) {
+    return (
+      <SupplierOnboarding
+        user={user}
+        initialPhone={user.phone || ''}
+        onCompleted={(savedProfile) => {
+          setData((current) =>
+            current
+              ? { ...current, profile: savedProfile }
+              : {
+                  profile: savedProfile,
+                  products: [],
+                  orders: [],
+                  summary: {
+                    productCount: 0,
+                    lowStockCount: 0,
+                    pendingOrders: 0,
+                    pendingDepositConfirmations: 0,
+                    deliveredRevenue: 0,
+                  },
+                }
+          );
+          setProfile({
+            businessName: savedProfile.businessName,
+            warehouseAddress: savedProfile.warehouseAddress,
+            deliveryRadiusKm: savedProfile.deliveryRadiusKm,
+            deliveryFee: savedProfile.deliveryFee,
+            bankName: savedProfile.bankName || '',
+            bankAccountNumber: savedProfile.bankAccountNumber || '',
+            bankAccountHolder: savedProfile.bankAccountHolder || '',
+            taxCode: savedProfile.taxCode || '',
+            phone: savedProfile.phone || user.phone || '',
+          });
+          setNotice('Đăng ký thông tin kho vựa thành công! Chào mừng bạn đến với SupplyMind AI.');
+        }}
+        onLogout={handleLogout}
+        loggingOut={busy}
+      />
+    );
+  }
 
   return (
     <main className="supplier-page">
@@ -260,6 +306,16 @@ export default function SupplierDashboard({
                 <p>
                   {data.profile.warehouseAddress} · Bán kính giao {data.profile.deliveryRadiusKm} km
                 </p>
+                {data.profile.taxCode && (
+                  <p style={{ margin: '2px 0', fontSize: '13px', color: '#4b5563' }}>
+                    Mã số thuế: <strong>{data.profile.taxCode}</strong>
+                  </p>
+                )}
+                {data.profile.phone && (
+                  <p style={{ margin: '2px 0', fontSize: '13px', color: '#4b5563' }}>
+                    Hotline kho: <strong>{data.profile.phone}</strong>
+                  </p>
+                )}
                 <p>
                   {data.profile.bankAccountNumber
                     ? `Nhận cọc: ${data.profile.bankName} · ${data.profile.bankAccountNumber} · ${data.profile.bankAccountHolder}`
@@ -332,7 +388,7 @@ function Kpi({
   note,
   tone,
 }: {
-  label: string;
+  label: ReactNode;
   value: string | number;
   note: string;
   tone?: 'warning';
@@ -377,6 +433,44 @@ function ProfileForm({
             disabled={busy}
           />
         </Field>
+        <Field label="Số điện thoại nhận đơn / hotline kho" error={errors.phone}>
+          <input
+            type="tel"
+            value={value.phone || ''}
+            onChange={(event) => onChange({ ...value, phone: event.target.value })}
+            placeholder="Số điện thoại liên hệ"
+            disabled={busy}
+          />
+        </Field>
+        <Field
+          label={
+            <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+              <span>Mã số thuế / Mã ĐKKD</span>
+              <a
+                href="https://masothue.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  fontSize: '11px',
+                  color: '#2563eb',
+                  textDecoration: 'underline',
+                  marginLeft: 'auto',
+                  fontWeight: 500,
+                }}
+              >
+                🔍 Tra cứu (masothue.com)
+              </a>
+            </span>
+          }
+          error={errors.taxCode}
+        >
+          <input
+            value={value.taxCode || ''}
+            onChange={(event) => onChange({ ...value, taxCode: event.target.value })}
+            placeholder="Ví dụ: 0312345678"
+            disabled={busy}
+          />
+        </Field>
         <Field label="Bán kính nhận giao hàng (km)" error={errors.deliveryRadiusKm}>
           <input
             type="number"
@@ -401,13 +495,16 @@ function ProfileForm({
             disabled={busy}
           />
         </Field>
-        <Field label="Địa chỉ kho bãi" error={errors.warehouseAddress} full>
+        <Field label="Địa chỉ kho bãi (Đo khoảng cách & Tránh địa chỉ ma)" error={errors.warehouseAddress} full>
           <input
             value={value.warehouseAddress}
             onChange={(event) => onChange({ ...value, warehouseAddress: event.target.value })}
             placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành"
             disabled={busy}
           />
+          <small style={{ color: '#64748b', display: 'block', marginTop: '4px', fontSize: '11px' }}>
+            Địa chỉ kho dùng để đo khoảng cách giao hàng đến các tiệm tạp hóa và đối chiếu bán kính giao hàng.
+          </small>
         </Field>
         <div className="supplier-field-full deposit-account-heading">
           <strong>Tài khoản nhận cọc</strong>
@@ -467,7 +564,7 @@ function Field({
   full,
   children,
 }: {
-  label: string;
+  label: ReactNode;
   error?: string;
   full?: boolean;
   children: ReactNode;

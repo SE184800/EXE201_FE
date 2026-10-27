@@ -15,6 +15,80 @@ import SubscriptionPage from './pages/SubscriptionPage';
 import { getMe } from './services/auth.api';
 import { ROLE_DETAILS, type AuthUser } from './types/auth';
 
+
+function LogoutToast() {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    function checkLogoutNotice() {
+      try {
+        if (sessionStorage.getItem('just_logged_out')) {
+          sessionStorage.removeItem('just_logged_out');
+          setShow(true);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    checkLogoutNotice();
+    window.addEventListener('app:logged_out', checkLogoutNotice);
+    return () => {
+      window.removeEventListener('app:logged_out', checkLogoutNotice);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (show) {
+      const timer = setTimeout(() => setShow(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [show]);
+
+  if (!show) return null;
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        position: 'fixed',
+        top: '20px',
+        right: '20px',
+        zIndex: 99999,
+        backgroundColor: '#10B981',
+        color: '#FFFFFF',
+        padding: '12px 20px',
+        borderRadius: '12px',
+        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        fontWeight: 600,
+        fontSize: '14px',
+        pointerEvents: 'none',
+        transition: 'opacity 0.3s ease, transform 0.3s ease',
+      }}
+    >
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '22px',
+          height: '22px',
+          borderRadius: '50%',
+          backgroundColor: 'rgba(255, 255, 255, 0.25)',
+          fontSize: '12px',
+        }}
+      >
+        ✓
+      </span>
+      <span>Đã đăng xuất thành công. Hẹn gặp lại bạn!</span>
+    </div>
+  );
+}
+
 export default function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
@@ -38,7 +112,7 @@ export default function App() {
     };
   }, []);
 
-  const destination = user ? ROLE_DETAILS[user.role].path : '/login';
+  const destination = user ? ROLE_DETAILS[user.role].path : '/';
   // Keep protected deep links while /me restores the session; login stays usable
   // immediately even when a cold server is waking up.
   const restoreSession = (
@@ -49,6 +123,7 @@ export default function App() {
   );
   return (
     <BrowserRouter>
+      <LogoutToast />
       <Routes>
         <Route
           path="/"

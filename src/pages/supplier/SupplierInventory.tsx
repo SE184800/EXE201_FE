@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
 import '../store-inventory.css';
 import Brand from '../../components/Brand';
@@ -68,6 +68,7 @@ function resolveImage(url: string | null | undefined): string | undefined {
 }
 
 export default function SupplierInventory({ onLogout }: { onLogout: () => void }) {
+  const navigate = useNavigate();
   const [items, setItems] = useState<SupplierProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -96,7 +97,14 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
       if (res.data.products) setItems(res.data.products);
     } catch (issue) {
       if (isUnauthenticated(issue)) onLogout();
-      else setError(getApiError(issue));
+      else {
+        const msg = getApiError(issue);
+        if (msg.includes('gian hàng') || msg.includes('SUPPLIER_PROFILE_REQUIRED')) {
+          navigate('/supplier', { replace: true });
+          return;
+        }
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -165,7 +173,14 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
       await load();
     } catch (issue) {
       if (isUnauthenticated(issue)) onLogout();
-      else setError(getApiError(issue));
+      else {
+        const msg = getApiError(issue);
+        if (msg.includes('gian hàng') || msg.includes('SUPPLIER_PROFILE_REQUIRED')) {
+          navigate('/supplier', { replace: true });
+          return;
+        }
+        setError(msg);
+      }
     } finally {
       setSaving(false);
     }

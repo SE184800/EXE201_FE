@@ -124,5 +124,18 @@ export async function getMe(): Promise<AuthUser> {
 }
 
 export async function logout(): Promise<void> {
-  await api.post('/auth/logout');
+  try {
+    await api.post('/auth/logout');
+  } finally {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+      sessionStorage.setItem('just_logged_out', 'true');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('app:logged_out'));
+      }
+    } catch {
+      // ignore
+    }
+  }
 }
