@@ -4,19 +4,26 @@ import './wallet.css';
 import Icon from '../../components/Icon';
 import { getApiError, isUnauthenticated } from '../../services/api';
 import {
-  createDepositRequest,
-  createWithdrawalRequest,
+  confirmQrDeposit,
+  createQrDepositRequest,
+  createSandboxDepositRequest,
+  createSandboxWithdrawalRequest,
   getDepositRequests,
+  getQrConfig,
   getWallet,
   getWalletPayments,
   getWalletTransactions,
   getWithdrawalRequests,
   type DepositRequest,
   type OrderPayment,
+  type QrCode,
+  type QrConfig,
   type WalletOverview,
   type WalletTransaction,
   type WithdrawalRequest,
 } from '../../services/wallet.api';
+import WalletQrCode from './WalletQrCode';
+import { dateTime, money } from './walletFormat';
 
 type Tab = 'overview' | 'deposit' | 'withdraw' | 'transactions' | 'payments';
 
@@ -37,28 +44,10 @@ const TRANSACTION_LABELS: Record<string, string> = {
   ORDER_RECEIVE: 'Nhận tiền đơn hàng',
   REFUND: 'Hoàn tiền',
   REFUND_RECEIVED: 'Thu hồi tiền hoàn',
+  SANDBOX_DEPOSIT: 'Nạp tiền ảo',
+  SANDBOX_WITHDRAWAL: 'Rút tiền ảo',
+  QR_DEPOSIT: 'Nạp tiền qua QR',
 };
-
-const money = (value: number) =>
-  new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-    maximumFractionDigits: 0,
-  }).format(value || 0);
-
-const dateTime = (value: string | null) =>
-  value
-    ? new Date(value).toLocaleString('vi-VN', {
-        timeZone: 'Asia/Ho_Chi_Minh',
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
-    : '—';
-
-const EMPTY_BANK = { bankName: '', bankAccountNumber: '', bankAccountHolder: '' };
 
 export default function WalletPage({
   onLogout,
@@ -80,16 +69,16 @@ export default function WalletPage({
 
   const [depositForm, setDepositForm] = useState({
     amount: '',
-    ...EMPTY_BANK,
-    reference: '',
     note: '',
   });
   const [withdrawForm, setWithdrawForm] = useState({
     amount: '',
-    ...EMPTY_BANK,
     note: '',
   });
   const [formError, setFormError] = useState('');
+  const [qrConfig, setQrConfig] = useState<QrConfig | null>(null);
+  const [qr, setQr] = useState<QrCode | null>(null);
+  const [qrTicketId, setQrTicketId] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,8 +112,23 @@ export default function WalletPage({
     return () => window.clearTimeout(timer);
   }, [load]);
 
-  async function submitDeposit(event: FormEvent) {
-    event.preventDefault();
+  // The QR account lives on the server so it can be rotated without a rebuild.
+  useEffect(() => {
+    let active = true;
+    getQrConfig()
+      .then(config => {
+        if (active) setQrConfig(config);
+      })
+      .catch(() => {
+        if (active) setQrConfig(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  /** Builds a QR ticket for the entered amount so the user can scan and pay. */
+  async function createQr() {
     setFormError('');
     const amount = Number(depositForm.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -133,16 +137,57 @@ export default function WalletPage({
     }
     setBusy(true);
     try {
-      await createDepositRequest({
+      const result = await createQrDepositRequest({
         amount,
-        bankName: depositForm.bankName.trim(),
-        bankAccountNumber: depositForm.bankAccountNumber.trim(),
-        bankAccountHolder: depositForm.bankAccountHolder.trim(),
-        reference: depositForm.reference.trim() || undefined,
         note: depositForm.note.trim() || undefined,
       });
-      setDepositForm({ amount: '', ...EMPTY_BANK, reference: '', note: '' });
-      setNotice('Đã gửi yêu cầu nạp tiền. Quản trị viên sẽ xác nhận sau khi kiểm tra tài khoản.');
+      setQr(result.qr);
+      setQrTicketId(result.request.id);
+      setNotice('Đã tạo mã QR. Quét mã bằng ứng dụng ngân hàng rồi bấm "Tôi đã chuyển khoản".');
+    } catch (issue) {
+      if (isUnauthenticated(issue)) onLogout();
+      else setFormError(getApiError(issue));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Confirms the transfer and credits the wallet. */
+  async function confirmQrTransfer() {
+    if (qrTicketId === null) return;
+    setBusy(true);
+    setFormError('');
+    try {
+      const request = await confirmQrDeposit(qrTicketId);
+      setQr(null);
+      setQrTicketId(null);
+      setDepositForm({ amount: '', note: '' });
+      setNotice(`Đã nạp ${money(request.amount)} vào ví. Số dư được cập nhật ngay lập tức.`);
+      await load();
+      setTab('deposit');
+    } catch (issue) {
+      if (isUnauthenticated(issue)) onLogout();
+      else setFormError(getApiError(issue));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitDeposit() {
+    setFormError('');
+    const amount = Number(depositForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setFormError('Nhập số tiền lớn hơn 0.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await createSandboxDepositRequest({
+        amount,
+        note: depositForm.note.trim() || undefined,
+      });
+      setDepositForm({ amount: '', note: '' });
+      setNotice(`Đã nạp ${money(amount)} vào ví. Số dư được cập nhật ngay lập tức.`);
       await load();
       setTab('deposit');
     } catch (issue) {
@@ -163,15 +208,12 @@ export default function WalletPage({
     }
     setBusy(true);
     try {
-      await createWithdrawalRequest({
+      await createSandboxWithdrawalRequest({
         amount,
-        bankName: withdrawForm.bankName.trim(),
-        bankAccountNumber: withdrawForm.bankAccountNumber.trim(),
-        bankAccountHolder: withdrawForm.bankAccountHolder.trim(),
         note: withdrawForm.note.trim() || undefined,
       });
-      setWithdrawForm({ amount: '', ...EMPTY_BANK, note: '' });
-      setNotice('Đã gửi yêu cầu rút tiền. Số tiền được giữ lại cho tới khi quản trị viên xử lý.');
+      setWithdrawForm({ amount: '', note: '' });
+      setNotice(`Đã rút ${money(amount)} khỏi ví. Số dư được cập nhật ngay lập tức.`);
       await load();
       setTab('withdraw');
     } catch (issue) {
@@ -274,108 +316,98 @@ export default function WalletPage({
 
       {tab === 'deposit' && (
         <div className="wallet-two-column">
-          <form className="wallet-form" onSubmit={submitDeposit}>
-            <h3>Gửi yêu cầu nạp tiền</h3>
-            <p className="catalog-hint">
-              Chuyển tiền vào tài khoản của hệ thống rồi ghi mã giao dịch. Quản trị viên sẽ xác
-              nhận và cộng tiền vào ví của bạn.
+          <div className="wallet-form">
+            <h3>Nạp tiền vào ví</h3>
+            <p className="wallet-virtual-note">
+              Toàn bộ tiền trong hệ thống là tiền ảo. Số tiền được cộng vào số dư khả dụng ngay lập
+              tức, không cần chờ quản trị viên xác nhận.
             </p>
-            <label className="supplier-field">
-              <span>Số tiền nạp (VNĐ)</span>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                required
-                value={depositForm.amount}
-                disabled={busy}
-                onChange={(event) => setDepositForm({ ...depositForm, amount: event.target.value })}
+            {qr ? (
+              <WalletQrCode
+                payload={qr.payload}
+                amount={qr.amount}
+                bankName={qr.bankName}
+                accountNumber={qr.accountNumber}
+                accountHolder={qr.accountHolder}
+                billNumber={qr.billNumber}
+                onConfirm={() => void confirmQrTransfer()}
+                busy={busy}
               />
-            </label>
-            <label className="supplier-field">
-              <span>Ngân hàng</span>
-              <input
-                required
-                maxLength={100}
-                value={depositForm.bankName}
-                disabled={busy}
-                onChange={(event) => setDepositForm({ ...depositForm, bankName: event.target.value })}
-                placeholder="Ví dụ: Vietcombank"
-              />
-            </label>
-            <label className="supplier-field">
-              <span>Số tài khoản nhận tiền</span>
-              <input
-                required
-                maxLength={34}
-                value={depositForm.bankAccountNumber}
-                disabled={busy}
-                onChange={(event) =>
-                  setDepositForm({ ...depositForm, bankAccountNumber: event.target.value })
-                }
-                placeholder="Số tài khoản bạn sẽ nhận tiền"
-              />
-            </label>
-            <label className="supplier-field">
-              <span>Chủ tài khoản</span>
-              <input
-                required
-                maxLength={100}
-                value={depositForm.bankAccountHolder}
-                disabled={busy}
-                onChange={(event) =>
-                  setDepositForm({ ...depositForm, bankAccountHolder: event.target.value })
-                }
-                placeholder="NGUYEN VAN A"
-              />
-            </label>
-            <label className="supplier-field">
-              <span>Mã giao dịch / nội dung chuyển khoản</span>
-              <input
-                maxLength={100}
-                value={depositForm.reference}
-                disabled={busy}
-                onChange={(event) =>
-                  setDepositForm({ ...depositForm, reference: event.target.value })
-                }
-                placeholder="Ví dụ: NAP 001234"
-              />
-            </label>
-            <label className="supplier-field">
-              <span>Ghi chú</span>
-              <input
-                maxLength={500}
-                value={depositForm.note}
-                disabled={busy}
-                onChange={(event) => setDepositForm({ ...depositForm, note: event.target.value })}
-                placeholder="Ghi chú cho quản trị viên (không bắt buộc)"
-              />
-            </label>
-            {formError && (
-              <p className="error-notice" role="alert">
-                {formError}
-              </p>
+            ) : (
+              <form
+                onSubmit={event => {
+                  event.preventDefault();
+                  if (qrConfig?.enabled) void createQr();
+                  else void submitDeposit();
+                }}
+                style={{ display: 'grid', gap: 14 }}
+              >
+                <label className="supplier-field">
+                  <span>Số tiền nạp (VNĐ)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    required
+                    value={depositForm.amount}
+                    disabled={busy}
+                    onChange={(event) =>
+                      setDepositForm({ ...depositForm, amount: event.target.value })
+                    }
+                    placeholder="Ví dụ: 1000000"
+                  />
+                </label>
+                <label className="supplier-field">
+                  <span>Ghi chú</span>
+                  <input
+                    maxLength={500}
+                    value={depositForm.note}
+                    disabled={busy}
+                    onChange={(event) =>
+                      setDepositForm({ ...depositForm, note: event.target.value })
+                    }
+                    placeholder="Ghi chú cho lịch sử giao dịch (không bắt buộc)"
+                  />
+                </label>
+                {formError && (
+                  <p className="error-notice" role="alert">
+                    {formError}
+                  </p>
+                )}
+                <button className="primary-button" type="submit" disabled={busy}>
+                  {busy
+                    ? 'Đang xử lý…'
+                    : qrConfig?.enabled
+                      ? 'Tạo mã QR nạp tiền'
+                      : 'Nạp tiền'}
+                </button>
+                {qrConfig?.enabled && (
+                  <button
+                    className="ghost-button"
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void submitDeposit()}
+                  >
+                    Nạp tiền nhanh (không dùng QR)
+                  </button>
+                )}
+              </form>
             )}
-            <button className="primary-button" type="submit" disabled={busy}>
-              {busy ? 'Đang gửi…' : 'Gửi yêu cầu nạp tiền'}
-            </button>
-          </form>
+          </div>
           <div className="wallet-list">
-            <h3>Lịch sử yêu cầu nạp tiền</h3>
+            <h3>Lịch sử nạp tiền</h3>
             {!deposits.length ? (
-              <p className="inventory-empty">Chưa có yêu cầu nạp tiền nào.</p>
+              <p className="inventory-empty">Chưa có giao dịch nạp tiền nào.</p>
             ) : (
               deposits.map((request) => (
                 <article className="wallet-row" key={request.id}>
                   <div>
                     <strong>{money(request.amount)}</strong>
-                    <small>
-                      {dateTime(request.createdAt)} · {request.method}
-                    </small>
+                    <small>{dateTime(request.createdAt)}</small>
                     {request.reference && <small>Mã giao dịch: {request.reference}</small>}
                   </div>
                   <span className={`wallet-status wallet-status-${request.status.toLowerCase()}`}>
-                    {request.statusLabel}
+                    {request.status === 'PENDING' ? 'Chờ xác nhận' : request.isSandbox ? 'Đã nạp' : request.statusLabel}
                   </span>
                 </article>
               ))
@@ -387,10 +419,10 @@ export default function WalletPage({
       {tab === 'withdraw' && (
         <div className="wallet-two-column">
           <form className="wallet-form" onSubmit={submitWithdrawal}>
-            <h3>Gửi yêu cầu rút tiền</h3>
-            <p className="catalog-hint">
-              Số tiền được giữ lại ngay khi gửi yêu cầu và hoàn lại nếu bị từ chối hoặc chuyển khoản
-              thất bại.
+            <h3>Rút tiền từ ví</h3>
+            <p className="wallet-virtual-note">
+              Toàn bộ tiền trong hệ thống là tiền ảo. Số tiền được trừ khỏi số dư khả dụng ngay lập
+              tức, không cần chờ quản trị viên xử lý.
             </p>
             <label className="supplier-field">
               <span>Số tiền rút (VNĐ)</span>
@@ -403,43 +435,10 @@ export default function WalletPage({
                 value={withdrawForm.amount}
                 disabled={busy}
                 onChange={(event) => setWithdrawForm({ ...withdrawForm, amount: event.target.value })}
+                placeholder="Ví dụ: 500000"
               />
             </label>
             <small className="catalog-hint">Số dư khả dụng: {money(balance)}</small>
-            <label className="supplier-field">
-              <span>Ngân hàng nhận tiền</span>
-              <input
-                required
-                maxLength={100}
-                value={withdrawForm.bankName}
-                disabled={busy}
-                onChange={(event) => setWithdrawForm({ ...withdrawForm, bankName: event.target.value })}
-              />
-            </label>
-            <label className="supplier-field">
-              <span>Số tài khoản</span>
-              <input
-                required
-                maxLength={34}
-                value={withdrawForm.bankAccountNumber}
-                disabled={busy}
-                onChange={(event) =>
-                  setWithdrawForm({ ...withdrawForm, bankAccountNumber: event.target.value })
-                }
-              />
-            </label>
-            <label className="supplier-field">
-              <span>Chủ tài khoản</span>
-              <input
-                required
-                maxLength={100}
-                value={withdrawForm.bankAccountHolder}
-                disabled={busy}
-                onChange={(event) =>
-                  setWithdrawForm({ ...withdrawForm, bankAccountHolder: event.target.value })
-                }
-              />
-            </label>
             <label className="supplier-field">
               <span>Ghi chú</span>
               <input
@@ -447,7 +446,7 @@ export default function WalletPage({
                 value={withdrawForm.note}
                 disabled={busy}
                 onChange={(event) => setWithdrawForm({ ...withdrawForm, note: event.target.value })}
-                placeholder="Ghi chú cho quản trị viên (không bắt buộc)"
+                placeholder="Ghi chú cho lịch sử giao dịch (không bắt buộc)"
               />
             </label>
             {formError && (
@@ -456,26 +455,23 @@ export default function WalletPage({
               </p>
             )}
             <button className="primary-button" type="submit" disabled={busy}>
-              {busy ? 'Đang gửi…' : 'Gửi yêu cầu rút tiền'}
+              {busy ? 'Đang rút…' : 'Rút tiền'}
             </button>
           </form>
           <div className="wallet-list">
-            <h3>Lịch sử yêu cầu rút tiền</h3>
+            <h3>Lịch sử rút tiền</h3>
             {!withdrawals.length ? (
-              <p className="inventory-empty">Chưa có yêu cầu rút tiền nào.</p>
+              <p className="inventory-empty">Chưa có giao dịch rút tiền nào.</p>
             ) : (
               withdrawals.map((request) => (
                 <article className="wallet-row" key={request.id}>
                   <div>
                     <strong>{money(request.amount)}</strong>
-                    <small>
-                      {dateTime(request.createdAt)} · {request.bankName} ·{' '}
-                      {request.bankAccountNumber}
-                    </small>
+                    <small>{dateTime(request.createdAt)}</small>
                     {request.adminNote && <small>Ý kiến quản trị: {request.adminNote}</small>}
                   </div>
                   <span className={`wallet-status wallet-status-${request.status.toLowerCase()}`}>
-                    {request.statusLabel}
+                    {request.isSandbox ? 'Đã rút' : request.statusLabel}
                   </span>
                 </article>
               ))
@@ -497,6 +493,7 @@ export default function WalletPage({
                     <th>Loại</th>
                     <th>Số tiền</th>
                     <th>Số dư sau</th>
+                    <th>Nguồn</th>
                     <th>Mã giao dịch</th>
                     <th>Thời gian</th>
                   </tr>
@@ -521,6 +518,15 @@ export default function WalletPage({
                         </span>
                       </td>
                       <td>{money(transaction.balanceAfter)}</td>
+                      <td>
+                        <span
+                          className={`wallet-status wallet-status-${
+                            transaction.method === 'SANDBOX' ? 'approved' : 'pending'
+                          }`}
+                        >
+                          {transaction.method === 'SANDBOX' ? 'Tiền ảo' : 'Thường'}
+                        </span>
+                      </td>
                       <td>
                         <small>{transaction.reference}</small>
                       </td>

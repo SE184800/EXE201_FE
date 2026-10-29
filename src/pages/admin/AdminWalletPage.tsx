@@ -315,6 +315,7 @@ function DepositRequests({ onLogout }: Props) {
                 <tr>
                   <th>Người dùng</th>
                   <th>Số tiền</th>
+                  <th>Nguồn</th>
                   <th>Tài khoản nhận</th>
                   <th>Mã giao dịch</th>
                   <th>Trạng thái</th>
@@ -331,6 +332,13 @@ function DepositRequests({ onLogout }: Props) {
                     </td>
                     <td>
                       <strong>{money(request.amount)}</strong>
+                    </td>
+                    <td>
+                      <span
+                        className={`admin-badge ${request.isSandbox ? 'good' : ''}`}
+                      >
+                        {request.isSandbox ? 'Tiền ảo' : 'Thường'}
+                      </span>
                     </td>
                     <td>
                       <strong>{request.bankName}</strong>
@@ -669,6 +677,7 @@ function WithdrawalRequests({ onLogout }: Props) {
                 <tr>
                   <th>Người dùng</th>
                   <th>Số tiền</th>
+                  <th>Nguồn</th>
                   <th>Tài khoản nhận</th>
                   <th>Trạng thái</th>
                   <th>Ngày tạo</th>
@@ -684,6 +693,13 @@ function WithdrawalRequests({ onLogout }: Props) {
                     </td>
                     <td>
                       <strong>{money(request.amount)}</strong>
+                    </td>
+                    <td>
+                      <span
+                        className={`admin-badge ${request.isSandbox ? 'good' : ''}`}
+                      >
+                        {request.isSandbox ? 'Tiền ảo' : 'Thường'}
+                      </span>
                     </td>
                     <td>
                       <strong>{request.bankName}</strong>

@@ -23,6 +23,8 @@ export type WalletTransaction = {
   balanceAfter: number;
   reference: string;
   status: string;
+  /** REAL money needs an admin review, SANDBOX money settles instantly. */
+  method: 'REAL' | 'SANDBOX';
   orderId: number | null;
   note: string | null;
   createdAt: string;
@@ -42,6 +44,8 @@ export type DepositRequest = {
   username: string | null;
   amount: number;
   method: string;
+  /** True when the request was created through the sandbox flow. */
+  isSandbox: boolean;
   bankName: string | null;
   bankAccountNumber: string | null;
   bankAccountHolder: string | null;
@@ -60,6 +64,8 @@ export type WithdrawalRequest = {
   userName: string | null;
   username: string | null;
   amount: number;
+  /** True when the request was created through the sandbox flow. */
+  isSandbox: boolean;
   bankName: string;
   bankAccountNumber: string;
   bankAccountHolder: string;
@@ -141,14 +147,77 @@ export async function createDepositRequest(input: DepositInput): Promise<Deposit
   return (await api.post<{ request: DepositRequest }>('/wallet/deposits', input)).data.request;
 }
 
+/** Credits simulated money instantly. No admin review, no real transfer. */
+export async function createSandboxDepositRequest(
+  input: { amount: number; note?: string },
+): Promise<DepositRequest> {
+  return (
+    await api.post<{ request: DepositRequest }>('/wallet/deposits/sandbox', input)
+  ).data.request;
+}
+
 export async function getDepositRequests(
   params: { page?: number; status?: string } = {},
 ): Promise<RequestList<DepositRequest>> {
   return (await api.get<RequestList<DepositRequest>>('/wallet/deposits', { params })).data;
 }
 
+/** Bank account that receives the VietQR deposits. */
+export type QrConfig = {
+  enabled: boolean;
+  bankCode: string;
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+};
+
+/** Details of a generated VietQR code. */
+export type QrCode = {
+  payload: string;
+  bankCode: string;
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
+  amount: number;
+  billNumber: string;
+};
+
+export async function getQrConfig(): Promise<QrConfig> {
+  return (await api.get<QrConfig>('/wallet/qr-config')).data;
+}
+
+/** Creates a QR deposit ticket and returns the code to scan. */
+export async function createQrDepositRequest(input: {
+  amount: number;
+  note?: string;
+}): Promise<{ request: DepositRequest; qr: QrCode }> {
+  return (
+    await api.post<{ request: DepositRequest; qr: QrCode }>('/wallet/deposits/qr', input)
+  ).data;
+}
+
+/** Confirms the transfer so the money is credited to the wallet. */
+export async function confirmQrDeposit(
+  id: number,
+  input: { reference?: string } = {},
+): Promise<DepositRequest> {
+  return (
+    await api.post<{ request: DepositRequest }>(`/wallet/deposits/qr/${id}/confirm`, input)
+  ).data.request;
+}
+
 export async function createWithdrawalRequest(input: WithdrawalInput): Promise<WithdrawalRequest> {
-  return (await api.post<{ request: WithdrawalRequest }>('/wallet/withdrawals', input)).data.request;
+  return (await api.post<{ request: WithdrawalRequest }>('/wallet/withdrawals', input)).data
+    .request;
+}
+
+/** Debits simulated money instantly. No admin review, no real transfer. */
+export async function createSandboxWithdrawalRequest(
+  input: { amount: number; note?: string },
+): Promise<WithdrawalRequest> {
+  return (
+    await api.post<{ request: WithdrawalRequest }>('/wallet/withdrawals/sandbox', input)
+  ).data.request;
 }
 
 export async function getWithdrawalRequests(
