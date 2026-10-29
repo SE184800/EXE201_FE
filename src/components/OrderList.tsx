@@ -4,6 +4,7 @@ import type { SupplierOrder } from '../services/supplier.api';
 import Icon from './Icon';
 import ExportDropdown from './ExportDropdown';
 import { exportSupplierOrdersToExcel, exportSupplierOrdersToPdf } from '../utils/exportSupplier';
+import { payOrderWithWallet } from '../services/wallet.api';
 import './complaint-dialog.css';
 
 const statuses = {
@@ -188,6 +189,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
   const [supplierPlan, setSupplierPlan] = useState<string>('AGREE_REFUND');
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [depositBusy, setDepositBusy] = useState<number | null>(null);
+  const [payingOrderId, setPayingOrderId] = useState<number | null>(null);
   const [depositDraft, setDepositDraft] = useState<{ orderId: number; reference: string } | null>(
     null,
   );
@@ -231,6 +233,26 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
       if (isUnauthenticated(issue)) onLogout();
     } finally {
       setDepositBusy(null);
+    }
+  }
+
+  /** Pays an order with the store wallet. The amount comes from the backend. */
+  async function payWithWallet(order: SupplierOrder) {
+    if (payingOrderId !== null) return;
+    setPayingOrderId(order.id);
+    setError('');
+    setDepositNotice('');
+    try {
+      const payment = await payOrderWithWallet(order.id);
+      setDepositNotice(
+        `Đã thanh toán ${money(payment.amount)} cho đơn #${order.id} bằng ví. Chủ vựa sẽ nhận tiền khi đơn được giao.`,
+      );
+      setReload((value) => value + 1);
+    } catch (issue) {
+      setError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      setPayingOrderId(null);
     }
   }
 
@@ -540,6 +562,16 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                   {order.statusLabel}
                 </span>
               </div>
+
+              {order.walletPayment && (
+                <p className="catalog-hint" style={{ marginTop: 8 }}>
+                  {order.walletPayment.refunded
+                    ? `Đã thanh toán bằng ví ${money(order.walletPayment.amount)} · đã hoàn tiền`
+                    : order.walletPayment.status === 'SETTLED'
+                      ? `Đã thanh toán bằng ví ${money(order.walletPayment.amount)} · chủ vựa đã nhận tiền`
+                      : `Đã thanh toán bằng ví ${money(order.walletPayment.amount)} · chờ giao hàng`}
+                </p>
+              )}
 
               <div className="order-items">
                 {order.items.map((item) => (
@@ -994,6 +1026,21 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       : order.total,
                   )}
                 </strong>
+                {kind === 'store' && !['REJECTED', 'DELIVERED'].includes(order.status) && (
+                  <div className="order-actions">
+                    <button
+                      className="table-button primary-small"
+                      disabled={busy || payingOrderId === order.id || Boolean(order.walletPayment)}
+                      onClick={() => void payWithWallet(order)}
+                    >
+                      {payingOrderId === order.id
+                        ? 'Đang thanh toán…'
+                        : order.walletPayment
+                          ? 'Đã thanh toán bằng ví'
+                          : 'Thanh toán bằng ví'}
+                    </button>
+                  </div>
+                )}
                 {kind === 'supplier' && actions[order.status] && (
                   <div className="order-actions">
                     <button
