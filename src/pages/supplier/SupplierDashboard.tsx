@@ -172,6 +172,7 @@ export default function SupplierDashboard({
           <Link to="/supplier/quotes">Báo giá tiếp thị</Link>
           <Link to="/supplier/orders">Đơn hàng</Link>
           <Link to="/supplier/inventory">Kho hàng</Link>
+          <Link to="/supplier/wallet">Ví tiền</Link>
           <Link to="/supplier/subscription">Gói sử dụng</Link>
         </nav>
         <div className="supplier-heading">
