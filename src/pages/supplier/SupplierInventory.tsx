@@ -187,6 +187,7 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
           <Link to="/supplier/inventory" aria-current="page">
             Kho hàng
           </Link>
+          <Link to="/supplier/wallet">Ví tiền</Link>
           <Link to="/supplier/subscription">Gói sử dụng</Link>
         </nav>
 
