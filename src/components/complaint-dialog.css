@@ -1,0 +1,638 @@
+/* Complaint Dialog & Workflow Styles - SupplyMind Design System */
+
+.complaint-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(22, 36, 26, 0.52);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: complaintFadeIn 0.16s ease-out;
+}
+
+@keyframes complaintFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.complaint-dialog-card {
+  background: #ffffff;
+  border-radius: 18px;
+  border: 1px solid #dfe6dc;
+  box-shadow: 0 24px 44px -8px rgba(22, 38, 27, 0.22), 0 8px 18px -4px rgba(22, 38, 27, 0.08);
+  width: 100%;
+  max-width: 580px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  animation: complaintPopUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes complaintPopUp {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.complaint-dialog-header {
+  padding: 20px 24px 16px;
+  background: #fbfdfa;
+  border-bottom: 1px solid #ebf1e9;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.complaint-dialog-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #55725e;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.complaint-dialog-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  color: #1a2b20;
+}
+
+.complaint-dialog-subtitle {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  color: #627568;
+  line-height: 1.45;
+}
+
+.complaint-dialog-close {
+  background: transparent;
+  border: none;
+  font-size: 18px;
+  color: #697a6f;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s ease;
+  flex-shrink: 0;
+}
+
+.complaint-dialog-close:hover {
+  background: #edf3ea;
+  color: #172b1e;
+}
+
+.complaint-dialog-body {
+  padding: 22px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.complaint-section-group {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.complaint-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.complaint-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #2b4536;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.complaint-label-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: #728477;
+}
+
+.complaint-select,
+.complaint-input,
+.complaint-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d5e0d3;
+  border-radius: 9px;
+  background: #ffffff;
+  color: #1b3527;
+  font-size: 13.5px;
+  padding: 10px 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.complaint-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2355725e' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+  cursor: pointer;
+}
+
+.complaint-textarea {
+  resize: vertical;
+  line-height: 1.5;
+  min-height: 80px;
+}
+
+.complaint-select:focus,
+.complaint-input:focus,
+.complaint-textarea:focus {
+  border-color: #235c3e;
+  box-shadow: 0 0 0 3px rgba(35, 92, 62, 0.14);
+}
+
+.complaint-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 520px) {
+  .complaint-grid-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Damaged goods card */
+.complaint-calc-box {
+  background: #f4faf4;
+  border: 1px solid #cfe2ce;
+  border-radius: 9px;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.complaint-calc-title {
+  font-size: 12px;
+  color: #3b5f49;
+  font-weight: 500;
+}
+
+.complaint-calc-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #166534;
+}
+
+/* Custom upload dropzone */
+.complaint-upload-zone {
+  border: 1.5px dashed #c8d8c6;
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: #fbfdfa;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.complaint-upload-zone:hover {
+  background: #f2f7f0;
+  border-color: #4b8b67;
+}
+
+.complaint-upload-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #ebf3e9;
+  color: #255b3d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.complaint-upload-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.complaint-upload-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #234734;
+}
+
+.complaint-upload-sub {
+  font-size: 11.5px;
+  color: #697d6e;
+}
+
+/* Attached Image Card */
+.complaint-attached-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #f7faf6;
+  border: 1px solid #dbe6da;
+  border-radius: 9px;
+  padding: 8px 12px;
+}
+
+.complaint-preview-thumb {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid #c8d7c6;
+  cursor: pointer;
+}
+
+.complaint-preview-details {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.complaint-preview-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #234734;
+}
+
+.complaint-preview-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.complaint-preview-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #255b3d;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.complaint-preview-btn.delete {
+  color: #c2410c;
+}
+
+/* Supplier dispute card review */
+.complaint-review-panel {
+  background: #fbfdfa;
+  border: 1px solid #e1ebe0;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.complaint-review-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.complaint-review-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.complaint-review-desc {
+  font-size: 13px;
+  color: #314a3c;
+  line-height: 1.5;
+  background: #ffffff;
+  border: 1px solid #e5ede3;
+  border-radius: 7px;
+  padding: 10px 12px;
+}
+
+/* Dialog Footer */
+.complaint-dialog-footer {
+  padding: 16px 24px;
+  background: #fbfdfa;
+  border-top: 1px solid #ebf1e9;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.complaint-btn-ghost {
+  background: transparent;
+  color: #496353;
+  border: 1px solid #d5e0d3;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.complaint-btn-ghost:hover {
+  background: #edf4eb;
+  color: #172d20;
+}
+
+.complaint-btn-primary {
+  background: #1e4634;
+  color: #ffffff;
+  border: 1px solid #1e4634;
+  border-radius: 8px;
+  padding: 9px 20px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(30, 70, 52, 0.2);
+  transition: all 0.12s ease;
+}
+
+.complaint-btn-primary:hover:not(:disabled) {
+  background: #173829;
+  border-color: #173829;
+}
+
+.complaint-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.complaint-btn-danger {
+  background: #ffffff;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  padding: 9px 16px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.complaint-btn-danger:hover:not(:disabled) {
+  background: #fef2f2;
+}
+
+/* Order card report button */
+.complaint-card-report-btn {
+  border: 1px solid #fcd34d !important;
+  background: #fffbeb !important;
+  color: #b45309 !important;
+  font-weight: 600 !important;
+  border-radius: 7px !important;
+  padding: 6px 12px !important;
+  transition: all 0.12s ease !important;
+}
+
+.complaint-card-report-btn:hover {
+  background: #fef3c7 !important;
+  border-color: #f59e0b !important;
+  color: #92400e !important;
+}
+
+
+/* Multi-Item Checklist Styles */
+.complaint-checklist-box {
+  border: 1px solid #d5e0d3;
+  border-radius: 10px;
+  background: #ffffff;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.complaint-checklist-header {
+  padding: 10px 14px;
+  background: #f7faf6;
+  border-bottom: 1px solid #ebf1e9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #2b4536;
+}
+
+.complaint-select-all-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.complaint-checklist-body {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.complaint-checklist-row {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f0f4ef;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  transition: background 0.12s ease;
+}
+
+.complaint-checklist-row:last-child {
+  border-bottom: none;
+}
+
+.complaint-checklist-row:hover {
+  background: #fafdf9;
+}
+
+.complaint-checklist-row.checked {
+  background: #f4faf4;
+}
+
+.complaint-row-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.complaint-item-check {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #1e4634;
+}
+
+.complaint-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.complaint-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1b3527;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.complaint-item-meta {
+  font-size: 11.5px;
+  color: #637768;
+}
+
+.complaint-row-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.complaint-qty-control {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.complaint-qty-input {
+  width: 56px;
+  height: 32px;
+  padding: 2px 6px;
+  border: 1px solid #c8d8c6;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+  color: #1a2b20;
+}
+
+.complaint-qty-input:focus {
+  border-color: #235c3e;
+  outline: none;
+}
+
+.complaint-row-subtotal {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #166534;
+  min-width: 75px;
+  text-align: right;
+}
+
+.complaint-checklist-footer {
+  padding: 10px 14px;
+  background: #fbfdfa;
+  border-top: 1px solid #ebf1e9;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+}
+
+.complaint-total-badge {
+  font-size: 13px;
+  font-weight: 700;
+  color: #166534;
+  background: #dcfce7;
+  padding: 3px 10px;
+  border-radius: 12px;
+}
+
+/* Multi-Image Gallery */
+.complaint-gallery-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.complaint-gallery-thumb {
+  position: relative;
+  width: 68px;
+  height: 68px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #cbd5e1;
+  background: #000;
+}
+
+.complaint-gallery-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.complaint-gallery-thumb img:hover {
+  transform: scale(1.05);
+}
+
+.complaint-thumb-remove {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s ease;
+}
+
+.complaint-thumb-remove:hover {
+  background: #dc2626;
+}

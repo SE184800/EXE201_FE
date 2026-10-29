@@ -1,8 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import type { SupplierOrder } from '../services/supplier.api';
+import Icon from './Icon';
 import ExportDropdown from './ExportDropdown';
 import { exportSupplierOrdersToExcel, exportSupplierOrdersToPdf } from '../utils/exportSupplier';
+import './complaint-dialog.css';
 
 const statuses = {
   PENDING: 'Chờ duyệt',
@@ -50,6 +52,110 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 const money = (n: number) => n.toLocaleString('vi-VN') + ' ₫';
+
+const DESIRED_RESOLUTIONS: { code: string; label: string }[] = [
+  { code: 'REFUND', label: 'Hoàn tiền / Trừ cọc tương ứng' },
+  { code: 'REPLACE', label: 'Giao bù hàng mới chuyến sau' },
+  { code: 'RETURN', label: 'Đổi trả toàn bộ hàng lỗi' },
+  { code: 'DISCOUNT', label: 'Giảm giá / Cấn trừ công nợ' },
+];
+
+const SUPPLIER_RESOLUTIONS: { code: string; label: string }[] = [
+  { code: 'AGREE_REFUND', label: 'Đồng ý hoàn tiền / Trừ cọc' },
+  { code: 'AGREE_REPLACE', label: 'Đồng ý giao bù hàng mới chuyến sau' },
+  { code: 'AGREE_RETURN', label: 'Đồng ý thu hồi đổi trả hàng' },
+  { code: 'DISCUSS', label: 'Đang liên hệ trao đổi phương án với cửa hàng' },
+  { code: 'REJECT', label: 'Từ chối (Hàng giao đúng và đảm bảo tiêu chuẩn)' },
+];
+
+async function compressImageFile(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
+        let width = img.width;
+        let height = img.height;
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        const base64 = canvas.toDataURL('image/jpeg', 0.7);
+        const key =
+          'https://local.supplymind.vn/img_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+        try {
+          localStorage.setItem(key, base64);
+          resolve(key);
+        } catch {
+          resolve(base64);
+        }
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function resolveComplaintImage(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith('https://local.supplymind.vn/img_')) return localStorage.getItem(url) || url;
+  return url;
+}
+
+function resolveComplaintImages(url: string | null | undefined): string[] {
+  if (!url) return [];
+  try {
+    if (url.startsWith('[') && url.endsWith(']')) {
+      const parsed = JSON.parse(url);
+      if (Array.isArray(parsed)) {
+        return parsed.map((u) => resolveComplaintImage(u)).filter(Boolean) as string[];
+      }
+    }
+  } catch {}
+  if (url.includes('|||')) {
+    return url
+      .split('|||')
+      .map((u) => resolveComplaintImage(u.trim()))
+      .filter(Boolean) as string[];
+  }
+  const single = resolveComplaintImage(url);
+  return single ? [single] : [];
+}
+
+function parseComplaintDescription(desc: string) {
+  const match = desc.match(
+    /^\[Sự cố:\s*([^|\]]+)(?:\s*\|\s*Bồi hoàn ước tính:\s*([^|\]]+))?(?:\s*\|\s*Đề xuất:\s*([^|\]]+))?\]\s*\n?([\s\S]*)$/,
+  );
+  if (match) {
+    return {
+      itemInfo: match[1]?.trim(),
+      claimValue: match[2]?.trim(),
+      resolution: match[3]?.trim(),
+      details: match[4]?.trim(),
+    };
+  }
+  return {
+    itemInfo: null,
+    claimValue: null,
+    resolution: null,
+    details: desc,
+  };
+}
+
 type Props = {
   kind: 'store' | 'supplier';
   onLogout: () => void;
@@ -76,6 +182,11 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
   const [complaintMessage, setComplaintMessage] = useState('');
   const [complaintResponse, setComplaintResponse] = useState('');
   const [complaintActionBusy, setComplaintActionBusy] = useState(false);
+  const [complaintSelectedItems, setComplaintSelectedItems] = useState<Record<number, number>>({});
+  const [complaintResolution, setComplaintResolution] = useState<string>('REFUND');
+  const [complaintImages, setComplaintImages] = useState<string[]>([]);
+  const [supplierPlan, setSupplierPlan] = useState<string>('AGREE_REFUND');
+  const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [depositBusy, setDepositBusy] = useState<number | null>(null);
   const [depositDraft, setDepositDraft] = useState<{ orderId: number; reference: string } | null>(
     null,
@@ -195,13 +306,20 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
     }
   }
 
-  async function updateComplaint(status: string) {
+    async function updateComplaint(status: string) {
     if (!complaintOrder?.complaint || complaintActionBusy) return;
     setComplaintActionBusy(true);
+
+    const planLabel =
+      SUPPLIER_RESOLUTIONS.find((p) => p.code === supplierPlan)?.label || supplierPlan;
+    const finalResponse = complaintResponse.trim()
+      ? `[Phương án: ${planLabel}] ${complaintResponse.trim()}`
+      : `[Phương án: ${planLabel}]`;
+
     try {
       await api.patch(`/complaints/${complaintOrder.complaint.id}`, {
         status,
-        response: complaintResponse,
+        response: finalResponse,
       });
       setComplaintOrder(null);
       setComplaintResponse('');
@@ -217,17 +335,51 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
   async function submitComplaint(event: FormEvent) {
     event.preventDefault();
     if (!complaintOrder || complaintBusy) return;
+
+    const selectedEntries = Object.entries(complaintSelectedItems).filter(([_, qty]) => qty > 0);
+    if (selectedEntries.length === 0) {
+      setComplaintMessage('Vui lòng tích chọn ít nhất 1 mặt hàng gặp sự cố.');
+      return;
+    }
+
     setComplaintBusy(true);
     setComplaintMessage('');
+
+    let totalDamage = 0;
+    const itemSummaries = selectedEntries
+      .map(([idStr, qty]) => {
+        const it = complaintOrder.items.find((item) => item.id === Number(idStr));
+        if (!it) return '';
+        const lineCost = qty * it.unitPrice;
+        totalDamage += lineCost;
+        return `${it.productName} (x${qty} ${it.packaging || 'phần'}: ${money(lineCost)})`;
+      })
+      .filter(Boolean);
+
+    const itemInfo = itemSummaries.join('; ');
+    const claimValueText = ` | Bồi hoàn ước tính: ${money(totalDamage)}`;
+    const resolutionLabel =
+      DESIRED_RESOLUTIONS.find((r) => r.code === complaintResolution)?.label || complaintResolution;
+
+    const structuredHeader = `[Sự cố: ${itemInfo}${claimValueText} | Đề xuất: ${resolutionLabel}]`;
+    const finalDescription = complaintDescription.trim()
+      ? `${structuredHeader}\n${complaintDescription.trim()}`
+      : structuredHeader;
+
+    const serializedImages = complaintImages.length > 0 ? complaintImages.join('|||') : undefined;
+
     try {
       await api.post('/complaints', {
         orderId: complaintOrder.id,
         reason: complaintReason,
-        description: complaintDescription,
+        description: finalDescription,
+        ...(serializedImages ? { imageUrl: serializedImages } : {}),
       });
-      setComplaintMessage('Đã gửi báo cáo về nhà cung cấp. Supplier sẽ tiếp nhận xử lý.');
+      setComplaintMessage('Đã gửi khiếu nại thành công đến nhà cung cấp.');
       setTimeout(() => {
         setComplaintOrder(null);
+        setComplaintImages([]);
+        setComplaintSelectedItems({});
         setReload((n) => n + 1);
       }, 900);
     } catch (issue) {
@@ -237,6 +389,27 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
       setComplaintBusy(false);
     }
   }
+
+  const openStoreComplaint = (order: SupplierOrder) => {
+    setComplaintOrder(order);
+    setComplaintReason(COMPLAINT_REASONS[0].code);
+    setComplaintDescription('');
+    const initialMap: Record<number, number> = {};
+    order.items.forEach((it) => {
+      initialMap[it.id] = it.quantity;
+    });
+    setComplaintSelectedItems(initialMap);
+    setComplaintResolution(DESIRED_RESOLUTIONS[0].code);
+    setComplaintImages([]);
+    setComplaintMessage('');
+  };
+
+  const openSupplierComplaint = (order: SupplierOrder) => {
+    setComplaintOrder(order);
+    setComplaintResponse(order.complaint?.response || '');
+    setSupplierPlan(SUPPLIER_RESOLUTIONS[0].code);
+    setComplaintMessage('');
+  };
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -592,12 +765,12 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
               {order.complaint && (
                 <div
                   style={{
-                    margin: '10px 0',
-                    padding: '12px 14px',
-                    borderRadius: '8px',
-                    backgroundColor: '#fff8f0',
+                    margin: '12px 0',
+                    padding: '14px 16px',
+                    borderRadius: '10px',
+                    backgroundColor: '#fffaf5',
                     border: '1px solid #fed7aa',
-                    fontSize: '12px',
+                    fontSize: '13px',
                   }}
                 >
                   <div
@@ -605,9 +778,9 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      marginBottom: '6px',
+                      marginBottom: '8px',
                       flexWrap: 'wrap',
-                      gap: '6px',
+                      gap: '8px',
                     }}
                   >
                     <strong
@@ -616,16 +789,17 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                         display: 'flex',
                         alignItems: 'center',
                         gap: '6px',
+                        fontSize: '13.5px',
                       }}
                     >
-                      <span>⚠️</span> Báo cáo đơn hàng:{' '}
+                      <Icon name="shield" /> Khiếu nại sự cố:{' '}
                       {REASON_LABELS[order.complaint.reason] || order.complaint.reason}
                     </strong>
                     <span
                       style={{
                         fontSize: '11px',
                         fontWeight: 600,
-                        padding: '2px 8px',
+                        padding: '3px 10px',
                         borderRadius: '12px',
                         color: COMPLAINT_STATUS_MAP[order.complaint.status]?.color || '#c2410c',
                         backgroundColor:
@@ -637,21 +811,134 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                         order.complaint.status}
                     </span>
                   </div>
-                  <p style={{ margin: '4px 0', color: '#431407' }}>
-                    <strong>Nội dung báo cáo:</strong> {order.complaint.description}
-                  </p>
+
+                  {(() => {
+                    const parsed = parseComplaintDescription(order.complaint.description);
+                    return (
+                      <div>
+                        {parsed.itemInfo && (
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: '8px',
+                              margin: '8px 0',
+                            }}
+                          >
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                background: '#ffedd5',
+                                color: '#9a3412',
+                                padding: '4px 8px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: 600,
+                              }}
+                            >
+                              Mặt hàng: {parsed.itemInfo}
+                            </span>
+                            {parsed.claimValue && (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  background: '#dcfce7',
+                                  color: '#166534',
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '12px',
+                                  fontWeight: 650,
+                                }}
+                              >
+                                Thiệt hại: {parsed.claimValue}
+                              </span>
+                            )}
+                            {parsed.resolution && (
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  background: '#e0f2fe',
+                                  color: '#0369a1',
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Đề xuất: {parsed.resolution}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        {parsed.details && (
+                          <p style={{ margin: '6px 0', color: '#431407', lineHeight: 1.5 }}>
+                            <strong>Mô tả chi tiết:</strong> {parsed.details}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {order.complaint.imageUrl && (() => {
+                    const images = resolveComplaintImages(order.complaint.imageUrl);
+                    if (!images.length) return null;
+                    return (
+                      <div style={{ marginTop: '10px' }}>
+                        <span
+                          style={{
+                            fontSize: '12px',
+                            fontWeight: 600,
+                            color: '#9a3412',
+                            display: 'block',
+                            marginBottom: '6px',
+                          }}
+                        >
+                          Ảnh chụp bằng chứng ({images.length} ảnh):
+                        </span>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                          {images.map((imgSrc, idx) => (
+                            <img
+                              key={idx}
+                              src={imgSrc}
+                              alt={`Ảnh bằng chứng ${idx + 1}`}
+                              style={{
+                                width: '80px',
+                                height: '65px',
+                                objectFit: 'cover',
+                                borderRadius: '6px',
+                                border: '1px solid #fed7aa',
+                                cursor: 'pointer',
+                              }}
+                              onClick={() => setViewingImage(imgSrc)}
+                              title="Bấm vào để xem ảnh phóng to"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   {order.complaint.response ? (
                     <div
                       style={{
-                        marginTop: '8px',
-                        padding: '8px 10px',
+                        marginTop: '10px',
+                        padding: '10px 12px',
                         borderRadius: '6px',
                         backgroundColor: '#f0fdf4',
                         border: '1px solid #bbf7d0',
                         color: '#166534',
                       }}
                     >
-                      <strong>💬 Phản hồi từ Supplier:</strong> {order.complaint.response}
+                      <strong style={{ display: 'block', marginBottom: '3px' }}>
+                        Phản hồi từ Nhà cung cấp:
+                      </strong>
+                      <span>{order.complaint.response}</span>
                     </div>
                   ) : (
                     <small
@@ -659,27 +946,30 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                         color: '#9a3412',
                         fontStyle: 'italic',
                         display: 'block',
-                        marginTop: '4px',
+                        marginTop: '6px',
                       }}
                     >
                       {kind === 'store'
-                        ? 'Đang chờ nhà cung cấp (supplier) phản hồi.'
+                        ? 'Đang chờ nhà cung cấp tiếp nhận và phản hồi.'
                         : 'Chưa có phản hồi cho cửa hàng.'}
                     </small>
                   )}
+
                   {kind === 'supplier' && (
-                    <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end' }}>
+                    <div
+                      style={{
+                        marginTop: '10px',
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                      }}
+                    >
                       <button
                         className="table-button"
                         type="button"
                         disabled={busy}
-                        onClick={() => {
-                          setComplaintOrder(order);
-                          setComplaintResponse(order.complaint?.response || '');
-                          setComplaintMessage('');
-                        }}
+                        onClick={() => openSupplierComplaint(order)}
                       >
-                        ✍️ Xử lý báo cáo
+                        Xử lý khiếu nại
                       </button>
                     </div>
                   )}
@@ -758,19 +1048,14 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                 >
                   <p className="catalog-hint" style={{ margin: 0 }}>
                     Đơn hàng đang ở bước <strong>tiếp nhận xử lý</strong>. Nếu phát hiện sự cố hoặc
-                    lỗi hàng, bạn có thể báo cáo về nhà cung cấp.
+                    lỗi hàng, bạn có thể gửi báo cáo khiếu nại.
                   </p>
                   <button
-                    className="table-button danger"
+                    className="table-button complaint-card-report-btn"
                     type="button"
-                    onClick={() => {
-                      setComplaintOrder(order);
-                      setComplaintReason(COMPLAINT_REASONS[0].code);
-                      setComplaintDescription('');
-                      setComplaintMessage('');
-                    }}
+                    onClick={() => openStoreComplaint(order)}
                   >
-                    ⚠️ Báo cáo đơn hàng
+                    Báo cáo sự cố
                   </button>
                 </div>
               )}
@@ -786,16 +1071,11 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                     khiếu nại.
                   </p>
                   <button
-                    className="table-button danger"
+                    className="table-button complaint-card-report-btn"
                     type="button"
-                    onClick={() => {
-                      setComplaintOrder(order);
-                      setComplaintReason(COMPLAINT_REASONS[0].code);
-                      setComplaintDescription('');
-                      setComplaintMessage('');
-                    }}
+                    onClick={() => openStoreComplaint(order)}
                   >
-                    ⚠️ Báo cáo đơn hàng
+                    Báo cáo sự cố
                   </button>
                 </div>
               )}
@@ -829,140 +1109,565 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
       </div>
 
       {complaintOrder && (
-        <div className="supplier-dialog-backdrop">
-          <form
-            className="supplier-dialog"
-            onSubmit={
-              kind === 'store'
-                ? submitComplaint
-                : (e) => {
-                    e.preventDefault();
-                    void updateComplaint('RESOLVED');
-                  }
-            }
-          >
-            <h2>
-              {kind === 'store'
-                ? `Báo cáo sự cố đơn hàng #${complaintOrder.id}`
-                : `Xử lý báo cáo đơn #${complaintOrder.id}`}
-            </h2>
-
-            {kind === 'store' ? (
-              <>
-                <p className="catalog-hint" style={{ marginTop: 0 }}>
-                  Báo cáo này sẽ được gửi trực tiếp đến nhà cung cấp (
-                  {complaintOrder.supplier?.businessName || 'Supplier'}) để tiếp nhận và xử lý.
-                </p>
-                <label className="supplier-dialog-field">
-                  <span>Lý do báo cáo</span>
-                  <select
-                    value={complaintReason}
-                    onChange={(e) => setComplaintReason(e.target.value)}
-                  >
-                    {COMPLAINT_REASONS.map((r) => (
-                      <option key={r.code} value={r.code}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="supplier-dialog-field">
-                  <span>Chi tiết sự cố / lỗi gặp phải</span>
-                  <textarea
-                    required
-                    minLength={3}
-                    maxLength={1000}
-                    rows={4}
-                    placeholder="Mô tả cụ thể hàng hóa bị lỗi, số lượng chênh lệch hoặc vấn đề cần supplier giải quyết..."
-                    value={complaintDescription}
-                    onChange={(e) => setComplaintDescription(e.target.value)}
-                  />
-                </label>
-              </>
-            ) : (
-              <>
-                <div
-                  style={{
-                    marginBottom: '14px',
-                    padding: '10px 12px',
-                    background: '#f8fafc',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                  }}
-                >
-                  <p style={{ margin: '0 0 6px 0' }}>
-                    <strong>Lý do từ cửa hàng:</strong>{' '}
-                    {REASON_LABELS[complaintOrder.complaint?.reason || ''] ||
-                      complaintOrder.complaint?.reason}
-                  </p>
-                  <p style={{ margin: 0 }}>
-                    <strong>Nội dung:</strong> {complaintOrder.complaint?.description}
-                  </p>
+        <div
+          className="complaint-dialog-backdrop"
+          onClick={() => setComplaintOrder(null)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="complaint-dialog-card" onClick={(e) => e.stopPropagation()}>
+            <div className="complaint-dialog-header">
+              <div>
+                <div className="complaint-dialog-eyebrow">
+                  {kind === 'store' ? 'HỖ TRỢ & KHIẾU NẠI ĐƠN HÀNG' : 'TIẾP NHẬN XỬ LÝ SỰ CỐ'}
                 </div>
-                <label className="supplier-dialog-field">
-                  <span>Phản hồi cho cửa hàng</span>
-                  <textarea
-                    required
-                    minLength={3}
-                    maxLength={1000}
-                    rows={4}
-                    value={complaintResponse}
-                    onChange={(e) => setComplaintResponse(e.target.value)}
-                    placeholder="Nhập phương án xử lý hoặc phản hồi gửi đến cửa hàng (ví dụ: đổi trả hàng, hoàn tiền, bổ sung kiện hàng...)..."
-                  />
-                </label>
-              </>
-            )}
-
-            {complaintMessage && (
-              <p
-                className={
-                  complaintMessage.includes('Lỗi') || complaintMessage.includes('không')
-                    ? 'error-notice'
-                    : 'supplier-success'
-                }
-              >
-                {complaintMessage}
-              </p>
-            )}
-
-            <div className="supplier-dialog-actions">
+                <h2 className="complaint-dialog-title">
+                  {kind === 'store'
+                    ? `Báo cáo sự cố đơn hàng #${complaintOrder.id}`
+                    : `Xử lý khiếu nại đơn #${complaintOrder.id}`}
+                </h2>
+                <p className="complaint-dialog-subtitle">
+                  {kind === 'store'
+                    ? `Gửi trực tiếp đến nhà cung cấp: ${complaintOrder.supplier?.businessName || 'Nhà cung cấp'}`
+                    : `Cửa hàng gửi khiếu nại: ${complaintOrder.recipientName || 'Cửa hàng tạp hóa'}`}
+                </p>
+              </div>
               <button
                 type="button"
-                className="ghost-button"
+                className="complaint-dialog-close"
                 onClick={() => setComplaintOrder(null)}
+                aria-label="Đóng"
               >
-                Đóng
+                <Icon name="close" />
               </button>
-              {kind === 'store' ? (
-                <button className="table-button danger" disabled={complaintBusy}>
-                  {complaintBusy ? 'Đang gửi…' : 'Gửi báo cáo về Supplier'}
-                </button>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    className="table-button"
-                    disabled={complaintActionBusy}
-                    onClick={() => void updateComplaint('IN_REVIEW')}
-                  >
-                    Tiếp nhận xử lý
-                  </button>
-                  <button className="table-button primary-small" disabled={complaintActionBusy}>
-                    Đã giải quyết
-                  </button>
-                  <button
-                    type="button"
-                    className="table-button danger"
-                    disabled={complaintActionBusy}
-                    onClick={() => void updateComplaint('REJECTED')}
-                  >
-                    Từ chối báo cáo
-                  </button>
-                </>
-              )}
             </div>
-          </form>
+
+            <form
+              onSubmit={
+                kind === 'store'
+                  ? submitComplaint
+                  : (e) => {
+                      e.preventDefault();
+                      void updateComplaint('RESOLVED');
+                    }
+              }
+            >
+              <div className="complaint-dialog-body">
+                {kind === 'store' ? (
+                  <div className="complaint-section-group">
+                    {/* 1. Danh sách mặt hàng gặp sự cố (Chọn nhiều món) */}
+                    <div className="complaint-field">
+                      <label className="complaint-label">
+                        <span>Danh sách mặt hàng gặp sự cố</span>
+                        <span className="complaint-label-hint">Tích chọn các món bị hỏng, lỗi, thiếu</span>
+                      </label>
+
+                      <div className="complaint-checklist-box">
+                        <div className="complaint-checklist-header">
+                          <label className="complaint-select-all-label">
+                            <input
+                              type="checkbox"
+                              className="complaint-item-check"
+                              checked={
+                                complaintOrder.items.length > 0 &&
+                                complaintOrder.items.every(
+                                  (it) => (complaintSelectedItems[it.id] || 0) > 0,
+                                )
+                              }
+                              onChange={(e) => {
+                                const isAll = e.target.checked;
+                                const nextMap: Record<number, number> = {};
+                                if (isAll) {
+                                  complaintOrder.items.forEach((it) => {
+                                    nextMap[it.id] = it.quantity;
+                                  });
+                                }
+                                setComplaintSelectedItems(nextMap);
+                              }}
+                            />
+                            <span>Chọn tất cả ({complaintOrder.items.length} mặt hàng)</span>
+                          </label>
+                          <span className="complaint-label-hint">
+                            Đã chọn{' '}
+                            {
+                              Object.values(complaintSelectedItems).filter((q) => q > 0)
+                                .length
+                            }{' '}
+                            / {complaintOrder.items.length} món
+                          </span>
+                        </div>
+
+                        <div className="complaint-checklist-body">
+                          {complaintOrder.items.map((item) => {
+                            const isChecked = (complaintSelectedItems[item.id] || 0) > 0;
+                            const currentQty = complaintSelectedItems[item.id] || 0;
+                            const itemSubtotal = currentQty * item.unitPrice;
+
+                            return (
+                              <div
+                                key={item.id}
+                                className={`complaint-checklist-row ${isChecked ? 'checked' : ''}`}
+                              >
+                                <div className="complaint-row-left">
+                                  <input
+                                    type="checkbox"
+                                    className="complaint-item-check"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      setComplaintSelectedItems((prev) => {
+                                        const next = { ...prev };
+                                        if (e.target.checked) {
+                                          next[item.id] = item.quantity;
+                                        } else {
+                                          delete next[item.id];
+                                        }
+                                        return next;
+                                      });
+                                    }}
+                                  />
+                                  <div className="complaint-item-info">
+                                    <span className="complaint-item-name">
+                                      {item.productName}
+                                    </span>
+                                    <span className="complaint-item-meta">
+                                      Đơn giá: {money(item.unitPrice)} / {item.packaging || 'phần'} (Tổng mua: {item.quantity})
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="complaint-row-right">
+                                  {isChecked ? (
+                                    <>
+                                      <div className="complaint-qty-control">
+                                        <span style={{ fontSize: '11.5px', color: '#55725e' }}>
+                                          SL lỗi:
+                                        </span>
+                                        <input
+                                          type="number"
+                                          className="complaint-qty-input"
+                                          min={1}
+                                          max={item.quantity}
+                                          value={currentQty}
+                                          onChange={(e) => {
+                                            const val = Math.max(
+                                              1,
+                                              Math.min(item.quantity, Number(e.target.value) || 1),
+                                            );
+                                            setComplaintSelectedItems((prev) => ({
+                                              ...prev,
+                                              [item.id]: val,
+                                            }));
+                                          }}
+                                        />
+                                        <span style={{ fontSize: '11px', color: '#728477' }}>
+                                          /{item.quantity}
+                                        </span>
+                                      </div>
+                                      <span className="complaint-row-subtotal">
+                                        {money(itemSubtotal)}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                                      Chưa chọn
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="complaint-checklist-footer">
+                          <span>Tổng thiệt hại ước tính:</span>
+                          <span className="complaint-total-badge">
+                            {money(
+                              Object.entries(complaintSelectedItems).reduce(
+                                (sum, [id, qty]) => {
+                                  const it = complaintOrder.items.find(
+                                    (i) => i.id === Number(id),
+                                  );
+                                  return sum + (it ? it.unitPrice * qty : 0);
+                                },
+                                0,
+                              ),
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2. Lý do & Phương án mong muốn */}
+                    <div className="complaint-grid-2">
+                      <div className="complaint-field">
+                        <label className="complaint-label">
+                          <span>Lý do khiếu nại</span>
+                        </label>
+                        <select
+                          className="complaint-select"
+                          value={complaintReason}
+                          onChange={(e) => setComplaintReason(e.target.value)}
+                        >
+                          {COMPLAINT_REASONS.map((r) => (
+                            <option key={r.code} value={r.code}>
+                              {r.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="complaint-field">
+                        <label className="complaint-label">
+                          <span>Phương án mong muốn</span>
+                        </label>
+                        <select
+                          className="complaint-select"
+                          value={complaintResolution}
+                          onChange={(e) => setComplaintResolution(e.target.value)}
+                        >
+                          {DESIRED_RESOLUTIONS.map((res) => (
+                            <option key={res.code} value={res.code}>
+                              {res.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* 3. Đính kèm ảnh bằng chứng (Cho phép nhiều ảnh) */}
+                    <div className="complaint-field">
+                      <label className="complaint-label">
+                        <span>Ảnh chụp bằng chứng hiện trạng</span>
+                        <span className="complaint-label-hint">Tối đa 5 ảnh (Thùng vỡ, tem date, các món lỗi...)</span>
+                      </label>
+
+                      <input
+                        id="complaint-file-input"
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        style={{ display: 'none' }}
+                        onChange={async (e) => {
+                          const files = Array.from(e.target.files || []);
+                          if (!files.length) return;
+                          const remainingSlots = 5 - complaintImages.length;
+                          if (remainingSlots <= 0) return;
+                          const filesToProcess = files.slice(0, remainingSlots);
+                          const newCompressedList: string[] = [];
+                          for (const file of filesToProcess) {
+                            const compressed = await compressImageFile(file);
+                            newCompressedList.push(compressed);
+                          }
+                          setComplaintImages((prev) => [...prev, ...newCompressedList]);
+                          e.target.value = '';
+                        }}
+                      />
+
+                      {complaintImages.length > 0 && (
+                        <div className="complaint-gallery-grid">
+                          {complaintImages.map((imgSrc, idx) => (
+                            <div key={idx} className="complaint-gallery-thumb">
+                              <img
+                                src={resolveComplaintImage(imgSrc)}
+                                alt={`Ảnh bằng chứng ${idx + 1}`}
+                                onClick={() => setViewingImage(resolveComplaintImage(imgSrc) || null)}
+                                title="Bấm để xem ảnh to"
+                              />
+                              <button
+                                type="button"
+                                className="complaint-thumb-remove"
+                                onClick={() => setComplaintImages((prev) => prev.filter((_, i) => i !== idx))}
+                                title="Gỡ ảnh này"
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {complaintImages.length < 5 && (
+                        <div
+                          className="complaint-upload-zone"
+                          style={{ marginTop: complaintImages.length > 0 ? '8px' : 0 }}
+                          onClick={() => document.getElementById('complaint-file-input')?.click()}
+                        >
+                          <div className="complaint-upload-icon">
+                            <svg
+                              width="20"
+                              height="20"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                              <circle cx="12" cy="13" r="4" />
+                            </svg>
+                          </div>
+                          <div className="complaint-upload-info">
+                            <span className="complaint-upload-title">
+                              {complaintImages.length === 0
+                                ? 'Tải lên hoặc chụp ảnh kiện hàng / các món lỗi'
+                                : `Thêm ảnh bằng chứng khác (${complaintImages.length}/5 ảnh)`}
+                            </span>
+                            <span className="complaint-upload-sub">
+                              Định dạng JPG, PNG • Chọn nhiều ảnh cùng lúc • Hệ thống tự nén dung lượng
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 4. Mô tả chi tiết */}
+                    <div className="complaint-field">
+                      <label className="complaint-label">
+                        <span>Mô tả chi tiết sự cố</span>
+                      </label>
+                      <textarea
+                        className="complaint-textarea"
+                        required
+                        minLength={3}
+                        maxLength={1000}
+                        rows={3}
+                        placeholder="Mô tả cụ thể sự cố để nhà cung cấp xác minh và hỗ trợ xử lý nhanh chóng..."
+                        value={complaintDescription}
+                        onChange={(e) => setComplaintDescription(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  /* Supplier review */
+                  <div className="complaint-section-group">
+                    <div className="complaint-review-panel">
+                      <div className="complaint-review-row">
+                        <span
+                          className="complaint-review-tag"
+                          style={{ background: '#ffedd5', color: '#9a3412' }}
+                        >
+                          Lý do: {REASON_LABELS[complaintOrder.complaint?.reason || ''] ||
+                            complaintOrder.complaint?.reason}
+                        </span>
+                        <span
+                          className="complaint-review-tag"
+                          style={{
+                            color:
+                              COMPLAINT_STATUS_MAP[complaintOrder.complaint?.status || 'OPEN']
+                                ?.color || '#c2410c',
+                            background:
+                              COMPLAINT_STATUS_MAP[complaintOrder.complaint?.status || 'OPEN']
+                                ?.bg || '#fff7ed',
+                          }}
+                        >
+                          {COMPLAINT_STATUS_MAP[complaintOrder.complaint?.status || 'OPEN']?.label}
+                        </span>
+                      </div>
+
+                      {(() => {
+                        const parsed = parseComplaintDescription(
+                          complaintOrder.complaint?.description || '',
+                        );
+                        return (
+                          <>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                              {parsed.itemInfo && (
+                                <span
+                                  className="complaint-review-tag"
+                                  style={{ background: '#f1f5f9', color: '#334155' }}
+                                >
+                                  Sản phẩm: {parsed.itemInfo}
+                                </span>
+                              )}
+                              {parsed.claimValue && (
+                                <span
+                                  className="complaint-review-tag"
+                                  style={{ background: '#dcfce7', color: '#166534' }}
+                                >
+                                  Ước tính: {parsed.claimValue}
+                                </span>
+                              )}
+                              {parsed.resolution && (
+                                <span
+                                  className="complaint-review-tag"
+                                  style={{ background: '#e0f2fe', color: '#0369a1' }}
+                                >
+                                  Đề xuất: {parsed.resolution}
+                                </span>
+                              )}
+                            </div>
+                            {parsed.details && (
+                              <div className="complaint-review-desc">
+                                <strong style={{ color: '#1a2b20' }}>Ghi chú của cửa hàng:</strong>{' '}
+                                {parsed.details}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
+
+                      {complaintOrder.complaint?.imageUrl && (() => {
+                        const images = resolveComplaintImages(complaintOrder.complaint?.imageUrl);
+                        if (!images.length) return null;
+                        return (
+                          <div style={{ marginTop: '8px' }}>
+                            <strong style={{ fontSize: '12px', display: 'block', marginBottom: '6px', color: '#2b4536' }}>
+                              Ảnh bằng chứng từ cửa hàng ({images.length} ảnh):
+                            </strong>
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                              {images.map((imgSrc, idx) => (
+                                <img
+                                  key={idx}
+                                  src={imgSrc}
+                                  alt={`Bằng chứng ${idx + 1}`}
+                                  className="complaint-preview-thumb"
+                                  onClick={() => setViewingImage(imgSrc)}
+                                  title="Bấm để xem ảnh phóng to"
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="complaint-field">
+                      <label className="complaint-label">
+                        <span>Phương án giải quyết (Chủ vựa xác nhận)</span>
+                      </label>
+                      <select
+                        className="complaint-select"
+                        value={supplierPlan}
+                        onChange={(e) => setSupplierPlan(e.target.value)}
+                      >
+                        {SUPPLIER_RESOLUTIONS.map((p) => (
+                          <option key={p.code} value={p.code}>
+                            {p.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="complaint-field">
+                      <label className="complaint-label">
+                        <span>Phản hồi chi tiết gửi đến cửa hàng</span>
+                      </label>
+                      <textarea
+                        className="complaint-textarea"
+                        required
+                        minLength={3}
+                        maxLength={1000}
+                        rows={3}
+                        value={complaintResponse}
+                        onChange={(e) => setComplaintResponse(e.target.value)}
+                        placeholder="Ghi rõ phương án giải quyết, thời gian hoàn cọc hoặc lịch giao bù..."
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {complaintMessage && (
+                  <p
+                    className={
+                      complaintMessage.includes('Lỗi') || complaintMessage.includes('không')
+                        ? 'error-notice'
+                        : 'supplier-success'
+                    }
+                  >
+                    {complaintMessage}
+                  </p>
+                )}
+              </div>
+
+              <div className="complaint-dialog-footer">
+                <button
+                  type="button"
+                  className="complaint-btn-ghost"
+                  onClick={() => setComplaintOrder(null)}
+                >
+                  Hủy bỏ
+                </button>
+                {kind === 'store' ? (
+                  <button
+                    type="submit"
+                    className="complaint-btn-primary"
+                    disabled={complaintBusy}
+                  >
+                    {complaintBusy ? 'Đang gửi…' : 'Gửi khiếu nại'}
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="complaint-btn-danger"
+                      disabled={complaintActionBusy}
+                      onClick={() => void updateComplaint('REJECTED')}
+                    >
+                      Từ chối
+                    </button>
+                    <button
+                      type="button"
+                      className="complaint-btn-ghost"
+                      disabled={complaintActionBusy}
+                      onClick={() => void updateComplaint('IN_REVIEW')}
+                    >
+                      Tiếp nhận xử lý
+                    </button>
+                    <button
+                      type="button"
+                      className="complaint-btn-primary"
+                      disabled={complaintActionBusy}
+                      onClick={() => void updateComplaint('RESOLVED')}
+                    >
+                      Xác nhận giải quyết
+                    </button>
+                  </>
+                )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Lightbox phóng to ảnh bằng chứng */}
+      {viewingImage && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+            cursor: 'pointer',
+          }}
+          onClick={() => setViewingImage(null)}
+        >
+          <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '90vh' }}>
+            <img
+              src={viewingImage}
+              alt="Bằng chứng khiếu nại phóng to"
+              style={{
+                maxWidth: '100%',
+                maxHeight: '85vh',
+                borderRadius: '8px',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+              }}
+            />
+            <div
+              style={{
+                textAlign: 'center',
+                color: '#fff',
+                marginTop: '10px',
+                fontSize: '13px',
+              }}
+            >
+              (Bấm vào bất kỳ đâu để đóng)
+            </div>
+          </div>
         </div>
       )}
     </section>
