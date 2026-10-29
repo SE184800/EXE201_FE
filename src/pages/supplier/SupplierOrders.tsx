@@ -123,6 +123,7 @@ export default function SupplierOrders({
             Đơn hàng
           </Link>
           <Link to="/supplier/inventory">Kho hàng</Link>
+          <Link to="/supplier/wallet">Ví tiền</Link>
           <Link to="/supplier/subscription">Gói sử dụng</Link>
         </nav>
         <div className="supplier-heading">
