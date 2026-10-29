@@ -12,6 +12,7 @@ import StoreCatalog from './StoreCatalog';
 import OrderList from '../components/OrderList';
 import StoreQuotes from './StoreQuotes';
 import SubscriptionPage from './SubscriptionPage';
+import WalletPage from './wallet/WalletPage';
 import Brand from '../components/Brand';
 import Icon from '../components/Icon';
 import ExportSalesDialog from '../components/ExportSalesDialog';
@@ -63,6 +64,7 @@ const tabs = [
   { id: 'catalog', label: 'Tìm nguồn sỉ', icon: 'store' },
   { id: 'quotes', label: 'Báo giá nhận được', icon: 'sparkle' },
   { id: 'orders', label: 'Đơn mua hàng', icon: 'box' },
+  { id: 'wallet', label: 'Ví tiền', icon: 'chart' },
   { id: 'history', label: 'Lịch sử giao dịch', icon: 'check' },
   { id: 'revenue', label: 'Doanh thu', icon: 'chart' },
   { id: 'calendar', label: 'Lịch nhập dự kiến', icon: 'sparkle' },
@@ -593,6 +595,8 @@ export default function StoreInventory({
             <StoreQuotes onLogout={onLogout} />
           ) : activeTab === 'orders' ? (
             <OrderList kind="store" onLogout={onLogout} />
+          ) : activeTab === 'wallet' ? (
+            <WalletPage onLogout={onLogout} role="STORE_OWNER" />
           ) : activeTab === 'revenue' ? (
             <StoreRevenue onLogout={onLogout} />
           ) : activeTab === 'subscription' ? (
