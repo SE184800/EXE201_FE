@@ -3,11 +3,15 @@ import { Link, useNavigate } from 'react-router-dom';
 import Brand from '../../components/Brand';
 import TopbarBalance from '../../components/TopbarBalance';
 import Icon from '../../components/Icon';
+import SupplierHeader from '../../components/SupplierHeader';
+import type { AuthUser } from '../../types/auth';
 import { PRODUCT_CATEGORIES } from '../../services/catalog.api';
 import { getApiError, getApiFieldErrors, isUnauthenticated } from '../../services/api';
 import {
   createSupplierProduct,
+  createSupplierProductsBatch,
   getSupplierDashboard,
+  quickVerifySupplier,
   updateSupplierProduct,
   uploadSupplierProductImage,
   type SupplierProduct,
@@ -142,7 +146,7 @@ const empty: SupplierProductInput = {
 const money = (value: number) => value.toLocaleString('vi-VN') + ' ₫';
 const PAGE_SIZE = 10;
 
-export default function SupplierProducts({ onLogout }: { onLogout: () => void }) {
+export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; onLogout: () => void }) {
   const navigate = useNavigate();
   const [products, setProducts] = useState<SupplierProduct[]>([]);
   const [profile, setProfile] = useState<SupplierProfile | null>(null);
@@ -174,6 +178,36 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
     setShowFilterModal(true);
   }
   const [editing, setEditing] = useState<SupplierProduct | null>(null);
+  const [productEntryMode, setProductEntryMode] = useState<'SINGLE' | 'BATCH'>('SINGLE');
+  const [batchRows, setBatchRows] = useState<Array<{
+    key: string;
+    name: string;
+    category: string;
+    packaging: string;
+    wholesalePrice: string;
+    stockQty: string;
+    moq: string;
+  }>>([
+    {
+      key: 'row_1',
+      name: '',
+      category: PRODUCT_CATEGORIES[0] || 'Đồ uống',
+      packaging: 'Thùng 24 lon',
+      wholesalePrice: '',
+      stockQty: '100',
+      moq: '1',
+    },
+    {
+      key: 'row_2',
+      name: '',
+      category: PRODUCT_CATEGORIES[0] || 'Đồ uống',
+      packaging: 'Thùng 24 chai',
+      wholesalePrice: '',
+      stockQty: '100',
+      moq: '1',
+    },
+  ]);
+  const [batchError, setBatchError] = useState('');
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
@@ -181,6 +215,161 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
   const lock = useRef(false);
   const nameInput = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleAddBatchRow() {
+    setBatchRows((prev) => [
+      ...prev,
+      {
+        key: 'row_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        name: '',
+        category: PRODUCT_CATEGORIES[0] || 'Đồ uống',
+        packaging: 'Thùng 24 lon',
+        wholesalePrice: '',
+        stockQty: '100',
+        moq: '1',
+      },
+    ]);
+  }
+
+  function handleAddBatchRowsQuick(count: number) {
+    const newItems: Array<{
+      key: string;
+      name: string;
+      category: string;
+      packaging: string;
+      wholesalePrice: string;
+      stockQty: string;
+      moq: string;
+    }> = [];
+    for (let i = 0; i < count; i++) {
+      newItems.push({
+        key: 'row_' + Date.now() + '_' + i + '_' + Math.random().toString(36).substring(2, 6),
+        name: '',
+        category: PRODUCT_CATEGORIES[0] || 'Đồ uống',
+        packaging: 'Thùng 24 lon',
+        wholesalePrice: '',
+        stockQty: '100',
+        moq: '1',
+      });
+    }
+    setBatchRows((prev) => [...prev, ...newItems]);
+  }
+
+  function handleRemoveBatchRow(key: string) {
+    setBatchRows((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== key) : prev));
+  }
+
+  function handleBatchChange(key: string, field: 'name' | 'category' | 'packaging' | 'wholesalePrice' | 'stockQty' | 'moq', value: string) {
+    setBatchRows((prev) =>
+      prev.map((r) => (r.key === key ? { ...r, [field]: value } : r))
+    );
+  }
+
+  async function handleSubmitBatch(event: FormEvent) {
+    event.preventDefault();
+    if (lock.current) return;
+
+    const activeRows = batchRows.filter((r) => r.name.trim() !== '');
+    if (activeRows.length === 0) {
+      setBatchError('Vui lòng nhập tên cho ít nhất một mặt hàng.');
+      return;
+    }
+
+    const validatedProducts: SupplierProductInput[] = [];
+    for (let i = 0; i < activeRows.length; i++) {
+      const r = activeRows[i];
+      const name = r.name.trim();
+      if (name.length < 2 || name.length > 150) {
+        setBatchError(`Dòng ${i + 1} ("${name}"): Tên mặt hàng cần từ 2 đến 150 ký tự.`);
+        return;
+      }
+      const packaging = r.packaging.trim();
+      if (!packaging || packaging.length > 50) {
+        setBatchError(`Dòng ${i + 1} ("${name}"): Quy cách đóng gói không được để trống (tối đa 50 ký tự).`);
+        return;
+      }
+      const numbersInPackaging = packaging.match(/\d+/g);
+      if (numbersInPackaging && numbersInPackaging.some((n) => Number(n) > 100)) {
+        setBatchError(`Dòng ${i + 1} ("${name}"): Số lượng đơn vị trong quy cách đóng gói tối đa là 100.`);
+        return;
+      }
+      const price = parseFloat(r.wholesalePrice);
+      if (isNaN(price) || price <= 0 || price > 1000000000) {
+        setBatchError(`Dòng ${i + 1} ("${name}"): Giá sỉ chưa hợp lệ (phải lớn hơn 0 và tối đa 1 tỷ đồng).`);
+        return;
+      }
+      const stock = parseInt(r.stockQty, 10);
+      if (isNaN(stock) || stock < 0 || stock > 50000) {
+        setBatchError(`Dòng ${i + 1} ("${name}"): Tồn kho phải là số nguyên từ 0 đến 50.000.`);
+        return;
+      }
+      const moq = parseInt(r.moq, 10);
+      if (isNaN(moq) || moq < 1 || moq > 50000) {
+        setBatchError(`Dòng ${i + 1} ("${name}"): Đặt tối thiểu (MOQ) phải từ 1 đến 50.000.`);
+        return;
+      }
+      if (stock > 0 && moq > stock) {
+        setBatchError(`Dòng ${i + 1} ("${name}"): MOQ (${moq}) không được lớn hơn tồn kho (${stock}).`);
+        return;
+      }
+      validatedProducts.push({
+        name,
+        category: r.category,
+        packaging,
+        wholesalePrice: price,
+        stockQty: stock,
+        moq,
+        imageUrl: null,
+        isActive: true,
+      });
+    }
+
+    lock.current = true;
+    setBusy(true);
+    setBatchError('');
+    setError('');
+    setNotice('');
+    try {
+      const createdProducts = await createSupplierProductsBatch(validatedProducts);
+      setProducts((current) => [...createdProducts, ...current]);
+      setNotice(`Đã đăng thành công ${createdProducts.length} mặt hàng lên gian hàng.`);
+      setBatchRows([
+        {
+          key: 'row_' + Date.now(),
+          name: '',
+          category: PRODUCT_CATEGORIES[0] || 'Đồ uống',
+          packaging: 'Thùng 24 lon',
+          wholesalePrice: '',
+          stockQty: '100',
+          moq: '1',
+        },
+      ]);
+    } catch (issue) {
+      setBatchError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function handleQuickActivate() {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      const updatedProfile = await quickVerifySupplier();
+      setProfile(updatedProfile);
+      setNotice('Gian hàng đã được kích hoạt thành công! Tất cả sản phẩm đang mở bán hiện đã hiển thị trên Tìm nguồn sỉ.');
+    } catch (issue) {
+      setError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  }
 
   function updatePackagingState(
     newType: PackagingType,
@@ -266,6 +455,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
     setPage(1);
   }
   function edit(item: SupplierProduct) {
+    setProductEntryMode('SINGLE');
     setEditing(item);
     setForm({
       category: item.category,
@@ -390,11 +580,11 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
       cancel();
       if (saved.moderation?.status === 'AUTO_REJECTED') {
         setNotice(
-          '🚫 Bài đăng vi phạm nghiêm trọng (từ cấm hoặc nhiều lỗi) và đã bị AI cấm thẳng. Vui lòng bấm "Sửa sản phẩm" để chỉnh sửa hợp lệ.',
+          'Bài đăng vi phạm nghiêm trọng (từ cấm hoặc nhiều lỗi) và đã bị AI cấm thẳng. Vui lòng bấm "Sửa sản phẩm" để chỉnh sửa hợp lệ.',
         );
       } else if (saved.moderation?.status === 'NEEDS_REVIEW') {
         setNotice(
-          '⚠️ Bài đăng có cảnh báo nhẹ (mặt hàng có điều kiện/giá lệch) và đang chờ Quản trị viên duyệt để mở bán.',
+          'Bài đăng có cảnh báo nhẹ (mặt hàng có điều kiện/giá lệch) và đang chờ Quản trị viên duyệt để mở bán.',
         );
       } else {
         setNotice(
@@ -542,15 +732,23 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
 
   return (
     <main className="supplier-page">
-      <header className="supplier-header">
-        <Brand />
-        <div className="supplier-header-actions">
-          <TopbarBalance linkTo="/supplier/wallet" />
-          <Link className="ghost-button catalog-link" to="/supplier">
-            ← Tổng quan chủ vựa
-          </Link>
-        </div>
-      </header>
+      {user ? (
+        <SupplierHeader
+          user={user}
+          activeNav="products"
+          onLogout={onLogout}
+        />
+      ) : (
+        <header className="supplier-header">
+          <Brand />
+          <div className="supplier-header-actions">
+            <TopbarBalance linkTo="/supplier/wallet" />
+            <Link className="ghost-button catalog-link" to="/supplier">
+              ← Tổng quan chủ vựa
+            </Link>
+          </div>
+        </header>
+      )}
       <section className="supplier-main">
         <nav className="catalog-nav" aria-label="Chủ vựa">
           <Link to="/supplier">Tổng quan</Link>
@@ -611,14 +809,78 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                   {error}
                 </p>
               )}
-              {profile?.verificationStatus !== 'APPROVED' && (
-                <p className="catalog-hint">
-                  Gian hàng chưa được xác minh. Sản phẩm được lưu để chuẩn bị; hãy gửi hồ sơ tại
-                  Tổng quan chủ vựa.
-                </p>
+              {profile && profile.verificationStatus !== 'APPROVED' && (
+                <div
+                  style={{
+                    margin: '0 0 16px 0',
+                    padding: '14px 18px',
+                    backgroundColor: '#fffbeb',
+                    border: '1px solid #fef3c7',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                    flexWrap: 'wrap',
+                  }}
+                >
+                  <div style={{ fontSize: '13px', color: '#92400e', lineHeight: 1.5 }}>
+                    <strong>Gian hàng chưa kích hoạt mở bán:</strong> Các sản phẩm bạn đăng hiện chỉ lưu nội bộ và đang ẩn với các chủ tiệm tạp hóa trên trang "Tìm nguồn sỉ".
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleQuickActivate()}
+                    disabled={busy}
+                    style={{
+                      padding: '7px 16px',
+                      backgroundColor: '#16a34a',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '12.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      boxShadow: '0 1px 2px rgba(22, 163, 74, 0.25)',
+                    }}
+                  >
+                    Kích hoạt mở bán ngay
+                  </button>
+                </div>
               )}
               <div className="publish-layout">
-                <form className="supplier-panel publish-form" onSubmit={save}>
+                <div className="supplier-panel publish-form">
+                  {!editing && (
+                    <div className="supplier-mode-tabs" role="tablist">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={productEntryMode === 'SINGLE'}
+                        className={`supplier-mode-tab ${productEntryMode === 'SINGLE' ? 'active' : ''}`}
+                        onClick={() => {
+                          setProductEntryMode('SINGLE');
+                          setBatchError('');
+                        }}
+                      >
+                        Đăng từng mặt hàng
+                      </button>
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={productEntryMode === 'BATCH'}
+                        className={`supplier-mode-tab ${productEntryMode === 'BATCH' ? 'active' : ''}`}
+                        onClick={() => {
+                          setProductEntryMode('BATCH');
+                          setBatchError('');
+                        }}
+                      >
+                        Đăng nhiều mặt hàng cùng lúc
+                      </button>
+                    </div>
+                  )}
+
+                  {productEntryMode === 'SINGLE' || editing ? (
+                    <form onSubmit={save}>
                   <div className="supplier-panel-title">
                     <div>
                       <span className="supplier-panel-label">
@@ -655,7 +917,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                         <div className="image-upload-preview">
                           <img src={form.imageUrl} alt="Ảnh sản phẩm" />
                           <div className="image-upload-info">
-                            <span className="image-upload-status">✓ Đã tải ảnh lên</span>
+                            <span className="image-upload-status">Đã tải ảnh lên</span>
                             <div className="image-upload-actions">
                               <button
                                 type="button"
@@ -906,6 +1168,162 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                     )}
                   </div>
                 </form>
+                  ) : (
+                    <form onSubmit={handleSubmitBatch}>
+                      <div className="supplier-panel-title">
+                        <div>
+                          <span className="supplier-panel-label">ĐĂNG HÀNG LOẠT</span>
+                          <h2>Đăng nhiều mặt hàng cùng lúc</h2>
+                        </div>
+                        <Icon name="box" />
+                      </div>
+                      <p className="form-description" style={{ fontSize: '12px', margin: '4px 0 14px' }}>
+                        Nhập nhanh danh sách các mặt hàng bạn muốn đăng bán. Hệ thống sẽ tự động tạo và kiểm duyệt toàn bộ cùng lúc.
+                      </p>
+
+                      {batchError && (
+                        <p className="error-notice" role="alert" style={{ marginBottom: '14px' }}>
+                          {batchError}
+                        </p>
+                      )}
+
+                      <div className="batch-items-container">
+                        {batchRows.map((row, idx) => (
+                          <div key={row.key} className="batch-item-card">
+                            <div className="batch-item-header">
+                              <strong>Mặt hàng #{idx + 1}</strong>
+                              {batchRows.length > 1 && (
+                                <button
+                                  type="button"
+                                  className="batch-item-remove"
+                                  onClick={() => handleRemoveBatchRow(row.key)}
+                                >
+                                  Xóa dòng
+                                </button>
+                              )}
+                            </div>
+                            <div className="supplier-form-grid">
+                              <label className="supplier-field supplier-field-full">
+                                Tên sản phẩm *
+                                <input
+                                  required
+                                  type="text"
+                                  maxLength={150}
+                                  value={row.name}
+                                  disabled={busy}
+                                  onChange={(e) => handleBatchChange(row.key, 'name', e.target.value)}
+                                  placeholder="Ví dụ: Nước ngọt Sprite 330ml, Mì Hảo Hảo tôm chua cay…"
+                                />
+                              </label>
+                              <label className="supplier-field">
+                                Danh mục
+                                <select
+                                  value={row.category}
+                                  disabled={busy}
+                                  onChange={(e) => handleBatchChange(row.key, 'category', e.target.value)}
+                                >
+                                  {PRODUCT_CATEGORIES.map((cat) => (
+                                    <option key={cat} value={cat}>
+                                      {cat}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="supplier-field">
+                                Quy cách đóng gói *
+                                <input
+                                  required
+                                  type="text"
+                                  maxLength={50}
+                                  value={row.packaging}
+                                  disabled={busy}
+                                  onChange={(e) => handleBatchChange(row.key, 'packaging', e.target.value)}
+                                  placeholder="Thùng 24 lon, Két 24 chai, Bao 50kg…"
+                                />
+                              </label>
+                              <div className="supplier-field supplier-field-full batch-quick-grid">
+                                <label className="supplier-field">
+                                  Giá sỉ (₫) *
+                                  <input
+                                    required
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    value={row.wholesalePrice}
+                                    disabled={busy}
+                                    onChange={(e) => handleBatchChange(row.key, 'wholesalePrice', e.target.value)}
+                                    placeholder="Ví dụ: 250000"
+                                  />
+                                </label>
+                                <label className="supplier-field">
+                                  Tồn kho *
+                                  <input
+                                    required
+                                    type="number"
+                                    min="0"
+                                    max="50000"
+                                    step="1"
+                                    value={row.stockQty}
+                                    disabled={busy}
+                                    onChange={(e) => handleBatchChange(row.key, 'stockQty', e.target.value)}
+                                    placeholder="100"
+                                  />
+                                </label>
+                                <label className="supplier-field">
+                                  Đặt tối thiểu (MOQ) *
+                                  <input
+                                    required
+                                    type="number"
+                                    min="1"
+                                    max="50000"
+                                    step="1"
+                                    value={row.moq}
+                                    disabled={busy}
+                                    onChange={(e) => handleBatchChange(row.key, 'moq', e.target.value)}
+                                    placeholder="1"
+                                  />
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '8px', margin: '12px 0 16px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          style={{ fontSize: '12px', padding: '6px 12px' }}
+                          disabled={busy}
+                          onClick={handleAddBatchRow}
+                        >
+                          + Thêm dòng mặt hàng
+                        </button>
+                        <button
+                          type="button"
+                          className="ghost-button"
+                          style={{ fontSize: '12px', padding: '6px 12px' }}
+                          disabled={busy}
+                          onClick={() => handleAddBatchRowsQuick(3)}
+                        >
+                          + Thêm nhanh 3 dòng
+                        </button>
+                      </div>
+
+                      <div className="product-form-actions">
+                        <button
+                          type="submit"
+                          className="primary-button"
+                          disabled={busy}
+                        >
+                          {busy
+                            ? 'Đang tạo danh sách…'
+                            : `Đăng ${batchRows.filter((r) => r.name.trim()).length || batchRows.length} mặt hàng lên gian hàng`}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
                 <section aria-label="Sản phẩm của gian hàng" className="publish-list">
                   <div className="supplier-panel-title" style={{ alignItems: 'center' }}>
                     <div>
@@ -946,7 +1364,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                               setSearchQuery(e.target.value);
                               setPage(1);
                             }}
-                            placeholder="🔍 Tìm theo tên, quy cách…"
+                            placeholder="Tìm theo tên, quy cách…"
                             style={{
                               width: '100%',
                               padding: '10px 14px',
@@ -977,7 +1395,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                               }}
                               title="Xóa tìm kiếm"
                             >
-                              ✕
+                              ×
                             </button>
                           )}
                         </div>
@@ -1072,7 +1490,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                                 }}
                                 title="Bỏ lọc danh mục này"
                               >
-                                ✕
+                                ×
                               </button>
                             </span>
                           )}
@@ -1109,7 +1527,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                                 }}
                                 title="Bỏ lọc mức độ này"
                               >
-                                ✕
+                                ×
                               </button>
                             </span>
                           )}
@@ -1141,7 +1559,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                                 }}
                                 title="Bỏ sắp xếp"
                               >
-                                ✕
+                                ×
                               </button>
                             </span>
                           )}
@@ -1233,7 +1651,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                                     borderRadius: '12px',
                                   }}
                                 >
-                                  🚫 Vi phạm nghiêm trọng
+                                  Vi phạm nghiêm trọng
                                 </span>
                               ) : item.moderation?.status === 'NEEDS_REVIEW' ? (
                                 <>
@@ -1261,7 +1679,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                                       borderRadius: '12px',
                                     }}
                                   >
-                                    ⚠️ Chờ Admin duyệt
+                                    Chờ Admin duyệt
                                   </span>
                                 </>
                               ) : (
@@ -1286,7 +1704,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                                         borderRadius: '12px',
                                       }}
                                     >
-                                      🟢 AI Tự Động Duyệt
+                                      AI Tự Động Duyệt
                                     </span>
                                   )}
                                 </>
@@ -1315,7 +1733,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                           )}
                           {item.moderation?.reasons && item.moderation.reasons.length > 0 && (
                             <div style={{ fontSize: '12px', color: '#d93025', background: '#fce8e6', padding: '6px 10px', borderRadius: '6px', margin: '6px 0' }}>
-                              <strong>⚠️ Lý do AI cảnh báo:</strong> {item.moderation.reasons.join(' · ')}
+                              <strong>Lý do AI cảnh báo:</strong> {item.moderation.reasons.join(' · ')}
                             </div>
                           )}
                           <p className="catalog-hint">
@@ -1543,7 +1961,7 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                 }}
                 title="Đóng"
               >
-                ✕
+                ×
               </button>
             </div>
 
@@ -1609,9 +2027,9 @@ export default function SupplierProducts({ onLogout }: { onLogout: () => void })
                   }}
                 >
                   <option value="ALL">Tất cả mức độ</option>
-                  <option value="AUTO_APPROVED">🟢 Đã duyệt (AI Tự Động Duyệt - Hợp lệ)</option>
-                  <option value="NEEDS_REVIEW">⚠️ Cần kiểm tra (Chờ Admin duyệt - Cảnh báo nhẹ)</option>
-                  <option value="AUTO_REJECTED">🚫 Vi phạm (Vi phạm nghiêm trọng - Đã cấm)</option>
+                  <option value="AUTO_APPROVED">Đã duyệt (AI Tự Động Duyệt - Hợp lệ)</option>
+                  <option value="NEEDS_REVIEW">Cần kiểm tra (Chờ Admin duyệt - Cảnh báo nhẹ)</option>
+                  <option value="AUTO_REJECTED">Vi phạm (Vi phạm nghiêm trọng - Đã cấm)</option>
                 </select>
               </div>
 

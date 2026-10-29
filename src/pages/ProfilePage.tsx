@@ -3,6 +3,10 @@ import BirthDateInput from '../components/BirthDateInput';
 import { api, getApiError, getApiFieldErrors, isUnauthenticated } from '../services/api';
 import { ROLE_DETAILS, type Role } from '../types/auth';
 import { getBirthDateRange, normalizePhone } from '../validation/registration';
+import { getMyContract, type UserContract } from '../services/contract.api';
+import type { SupplierProfile } from '../services/supplier.api';
+import ContractSigningModal from '../components/ContractSigningModal';
+import ContractViewModal from '../components/ContractViewModal';
 
 export type StoreProfile = {
   userId: number;
@@ -20,6 +24,7 @@ export type StoreProfile = {
 };
 
 export type Profile = {
+  id?: number;
   username: string;
   name: string;
   email: string | null;
@@ -28,6 +33,7 @@ export type Profile = {
   role: Role;
   createdAt: string;
   storeProfile?: StoreProfile | null;
+  supplierProfile?: SupplierProfile | null;
 };
 
 export type ProfileFieldErrors = Partial<
@@ -39,7 +45,9 @@ export type ProfileFieldErrors = Partial<
     | 'storeName'
     | 'storeAddress'
     | 'storePhone'
-    | 'taxCode',
+    | 'taxCode'
+    | 'businessName'
+    | 'warehouseAddress',
     string
   >
 >;
@@ -53,6 +61,8 @@ const profileFields: (keyof ProfileFieldErrors)[] = [
   'storeAddress',
   'storePhone',
   'taxCode',
+  'businessName',
+  'warehouseAddress',
 ];
 
 export function validateProfileForm(
@@ -65,8 +75,11 @@ export function validateProfileForm(
     storeAddress: string;
     storePhone: string;
     taxCode: string;
+    businessName?: string;
+    warehouseAddress?: string;
   },
-  isStoreOwner: boolean
+  isStoreOwner: boolean,
+  isSupplier: boolean = false
 ): ProfileFieldErrors {
   const errors: ProfileFieldErrors = {};
 
@@ -151,17 +164,51 @@ export function validateProfileForm(
     }
   }
 
+  // 6. Supplier information for SUPPLIER
+  if (isSupplier) {
+    const businessName = (values.businessName || '').trim().replace(/\s+/g, ' ');
+    if (!businessName || businessName.length < 2 || businessName.length > 150) {
+      errors.businessName = 'Tên gian hàng / vựa sỉ cần từ 2 đến 150 ký tự.';
+    }
+
+    const warehouseAddress = (values.warehouseAddress || '').trim().replace(/\s+/g, ' ');
+    if (!warehouseAddress || warehouseAddress.length < 10 || warehouseAddress.length > 255) {
+      errors.warehouseAddress =
+        'Địa chỉ kho bãi cần chi tiết từ 10 đến 255 ký tự (Số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành).';
+    } else {
+      const hasAdmin =
+        /(phường|xã|thị trấn|quận|huyện|thị xã|thành phố|tỉnh|tp\.|q\.|h\.|p\.|x\.)/i.test(warehouseAddress) ||
+        warehouseAddress.includes(',') ||
+        warehouseAddress.split(/\s+/).length >= 5;
+      if (!hasAdmin) {
+        errors.warehouseAddress =
+          'Địa chỉ cần ghi rõ cấu trúc: Số nhà, tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố.';
+      }
+    }
+
+    const taxCode = values.taxCode.trim().replace(/\s+/g, '');
+    if (taxCode && !/^[A-Za-z0-9-]{5,30}$/.test(taxCode)) {
+      errors.taxCode = 'Mã số thuế / ĐKKD gồm 5–30 ký tự (chữ, số hoặc gạch ngang).';
+    }
+  }
+
   return errors;
 }
 
 export default function ProfilePage({
   onSaved,
   onLogout,
+  contractRefreshKey,
 }: {
   onSaved: (name: string) => void;
   onLogout: () => void;
+  contractRefreshKey?: number;
 }) {
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [contract, setContract] = useState<UserContract | null>(null);
+  const [canonicalText, setCanonicalText] = useState('');
+  const [showSigningModal, setShowSigningModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -177,6 +224,9 @@ export default function ProfilePage({
     latitude: null as number | null,
     longitude: null as number | null,
     isAddressVerified: false,
+    businessName: '',
+    warehouseAddress: '',
+    deliveryRadiusKm: 10,
   });
 
   const [verifyingMap, setVerifyingMap] = useState(false);
@@ -192,6 +242,7 @@ export default function ProfilePage({
 
   function fill(value: Profile) {
     const sp = value.storeProfile;
+    const supp = value.supplierProfile;
     const isAlley = sp?.locationType === 'ALLEY';
     let alleyType: 'TRUCK' | 'MOTORBIKE' = 'MOTORBIKE';
     let alleyNoteStr = '';
@@ -213,13 +264,16 @@ export default function ProfilePage({
         sp?.storeAddress ||
         '123 Đường Số 4, Phường Bình Trị Đông B, Quận Bình Tân, TP. Hồ Chí Minh',
       storePhone: sp?.storePhone || value.phone || '',
-      taxCode: sp?.taxCode || '',
+      taxCode: sp?.taxCode || supp?.taxCode || '',
       locationType: isAlley ? 'ALLEY' : 'STREET_FRONT',
       alleyDetail: alleyType,
       alleyNote: alleyNoteStr,
       latitude: sp?.latitude || null,
       longitude: sp?.longitude || null,
       isAddressVerified: Boolean(sp?.isAddressVerified),
+      businessName: supp?.businessName || '',
+      warehouseAddress: supp?.warehouseAddress || '',
+      deliveryRadiusKm: supp?.deliveryRadiusKm || 10,
     });
     setFieldErrors({});
     setMapStatus(sp?.isAddressVerified ? 'success' : 'idle');
@@ -246,19 +300,38 @@ export default function ProfilePage({
       .finally(() => {
         if (active) setLoading(false);
       });
+
     return () => {
       active = false;
     };
   }, [retry, onLogout]);
 
+  useEffect(() => {
+    let active = true;
+    getMyContract()
+      .then((res) => {
+        if (active) {
+          setContract(res.contract);
+          setCanonicalText(res.canonicalText);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [retry, contractRefreshKey]);
+
   const isStoreOwner = profile?.role === 'STORE_OWNER';
+  const isSupplier = profile?.role === 'SUPPLIER';
 
   async function verifyAddressOnMap() {
-    const trimmed = form.storeAddress.trim();
+    const addressToVerify = isSupplier ? form.warehouseAddress : form.storeAddress;
+    const fieldKey: keyof ProfileFieldErrors = isSupplier ? 'warehouseAddress' : 'storeAddress';
+    const trimmed = addressToVerify.trim();
     if (!trimmed || trimmed.length < 5) {
       setFieldErrors((prev) => ({
         ...prev,
-        storeAddress: 'Vui lòng nhập địa chỉ trước khi định vị bản đồ.',
+        [fieldKey]: 'Vui lòng nhập địa chỉ trước khi định vị bản đồ.',
       }));
       return;
     }
@@ -284,7 +357,7 @@ export default function ProfilePage({
         }));
         setMapVerifiedAddress(first.display_name || trimmed);
         setMapStatus('success');
-        setFieldErrors((prev) => ({ ...prev, storeAddress: undefined }));
+        setFieldErrors((prev) => ({ ...prev, [fieldKey]: undefined }));
       } else {
         setMapStatus('not_found');
         setForm((prev) => ({ ...prev, isAddressVerified: false }));
@@ -304,7 +377,7 @@ export default function ProfilePage({
     setNotice('');
 
     // Client-side validation
-    const nextErrors = validateProfileForm(form, Boolean(isStoreOwner));
+    const nextErrors = validateProfileForm(form, Boolean(isStoreOwner), Boolean(isSupplier));
     if (Object.keys(nextErrors).length > 0) {
       setFieldErrors(nextErrors);
       setError('Vui lòng kiểm tra và sửa các thông tin chưa hợp lệ bên dưới.');
@@ -339,13 +412,21 @@ export default function ProfilePage({
               isAddressVerified: form.isAddressVerified,
             }
           : {}),
+        ...(isSupplier
+          ? {
+              businessName: form.businessName.trim().replace(/\s+/g, ' '),
+              warehouseAddress: form.warehouseAddress.trim().replace(/\s+/g, ' '),
+              taxCode: form.taxCode.trim().replace(/\s+/g, '') || null,
+              deliveryRadiusKm: form.deliveryRadiusKm,
+            }
+          : {}),
       };
 
       const { data } = await api.put<{ profile: Profile; message?: string }>('/profile', payload);
       setProfile(data.profile);
       fill(data.profile);
       onSaved(data.profile.name);
-      setNotice(data.message || 'Đã lưu thông tin cá nhân và cửa hàng thành công.');
+      setNotice(data.message || 'Đã lưu thông tin cá nhân và cơ sở kinh doanh thành công.');
     } catch (issue) {
       const apiErrors = getApiFieldErrors(issue, profileFields);
       if (Object.keys(apiErrors).length > 0) {
@@ -382,6 +463,104 @@ export default function ProfilePage({
         <p>@{profile.username}</p>
         <span className="status-pill available">{ROLE_DETAILS[profile.role].label}</span>
         <small>Tham gia {new Date(profile.createdAt).toLocaleDateString('vi-VN')}</small>
+
+        {/* Platform Electronic Agreement / Contract Card */}
+        <div
+          style={{
+            marginTop: '16px',
+            padding: '14px',
+            background: '#ffffff',
+            borderRadius: '10px',
+            border: `1px solid ${contract?.isSigned ? '#bbf7d0' : '#fed7aa'}`,
+            textAlign: 'left',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: contract?.isSigned ? '#166534' : '#c2410c', textTransform: 'uppercase' }}>
+              HỢP ĐỒNG LIÊN KẾT
+            </span>
+            <span
+              style={{
+                fontSize: '11px',
+                padding: '2px 8px',
+                borderRadius: '9999px',
+                backgroundColor: contract?.isSigned ? '#dcfce7' : '#ffedd5',
+                color: contract?.isSigned ? '#15803d' : '#c2410c',
+                fontWeight: 600,
+              }}
+            >
+              {contract?.isSigned ? 'ĐÃ KÝ KẾT' : 'CHƯA KÝ'}
+            </span>
+          </div>
+
+          <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
+            Thỏa thuận dịch vụ SupplyMind
+          </div>
+          <p style={{ margin: 0, fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>
+            {contract?.isSigned
+              ? `Hợp đồng số ${contract.contractNumber} đã được ký số điện tử ngày ${new Date(contract.signedAt || '').toLocaleDateString('vi-VN')}.`
+              : 'Chưa hoàn tất ký số hợp đồng liên kết và thỏa thuận luồng tiền ký quỹ 10%.'}
+          </p>
+
+          <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {contract?.isSigned ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setShowViewModal(true)}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#ffffff',
+                    color: '#334155',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Xem nội dung hợp đồng
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowViewModal(true)}
+                  style={{
+                    padding: '6px 12px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    borderRadius: '6px',
+                    border: '1px solid #16a34a',
+                    backgroundColor: '#f0fdf4',
+                    color: '#166534',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Tải file PDF & In hợp đồng
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowSigningModal(true)}
+                style={{
+                  padding: '7px 12px',
+                  fontSize: '12.5px',
+                  fontWeight: 600,
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: '#ea580c',
+                  color: '#ffffff',
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 2px rgba(234, 88, 12, 0.3)',
+                }}
+              >
+                Ký hợp đồng điện tử ngay
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Store Owner identity card */}
         {isStoreOwner && (
           <div
             style={{
@@ -394,7 +573,7 @@ export default function ProfilePage({
             }}
           >
             <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
-              🏪 {form.storeName || 'Tiệm Tạp Hóa'}
+              {form.storeName || 'Tiệm Tạp Hóa'}
             </div>
             <p style={{ margin: 0, fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>
               {form.storeAddress || 'Chưa cập nhật địa chỉ tiệm'}
@@ -410,7 +589,7 @@ export default function ProfilePage({
                   fontWeight: 600,
                 }}
               >
-                {form.locationType === 'ALLEY' ? '🏘️ Trong hẻm' : '🏢 Mặt tiền đường'}
+                {form.locationType === 'ALLEY' ? 'Trong hẻm' : 'Mặt tiền đường'}
               </span>
               {form.isAddressVerified && (
                 <span
@@ -423,7 +602,7 @@ export default function ProfilePage({
                     fontWeight: 600,
                   }}
                 >
-                  ✓ Bản đồ đã định vị
+                  Bản đồ đã định vị
                 </span>
               )}
             </div>
@@ -434,13 +613,44 @@ export default function ProfilePage({
             )}
           </div>
         )}
+
+        {/* Supplier identity card */}
+        {isSupplier && (
+          <div
+            style={{
+              marginTop: '16px',
+              padding: '12px',
+              background: '#f8fafc',
+              borderRadius: '8px',
+              border: '1px solid #e2e8f0',
+              textAlign: 'left',
+            }}
+          >
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
+              {form.businessName || 'Gian hàng sỉ / Kho vựa'}
+            </div>
+            <p style={{ margin: 0, fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>
+              {form.warehouseAddress || 'Chưa cập nhật địa chỉ kho'}
+            </p>
+            {form.taxCode && (
+              <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#64748b' }}>
+                MST/ĐKKD: <strong>{form.taxCode}</strong>
+              </p>
+            )}
+            <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#166534' }}>
+              Bán kính phục vụ: <strong>{form.deliveryRadiusKm} km</strong>
+            </p>
+          </div>
+        )}
       </aside>
 
       <section className="dashboard-card">
         <span className="section-kicker">TÀI KHOẢN CỦA BẠN</span>
-        <h2>Thông tin cá nhân & Cửa hàng</h2>
+        <h2>Thông tin cá nhân & Cơ sở kinh doanh</h2>
         <p className="stock-help">
-          Cập nhật thông tin liên hệ và địa chỉ tiệm tạp hóa chính thức để phục vụ giao nhận hàng.
+          {isSupplier
+            ? 'Cập nhật thông tin liên hệ và cơ sở kho bãi của bạn để kết nối với các cửa hàng tạp hóa.'
+            : 'Cập nhật thông tin liên hệ và địa chỉ tiệm tạp hóa chính thức để phục vụ giao nhận hàng.'}
         </p>
 
         <form className="inventory-form profile-form" onSubmit={save} noValidate>
@@ -482,7 +692,7 @@ export default function ProfilePage({
               maxLength={255}
               autoComplete="email"
               disabled={busy}
-              placeholder="ví dụ: email@domain.com"
+              placeholder="ban@example.com"
               value={form.email}
               onChange={(e) => {
                 setForm({ ...form, email: e.target.value });
@@ -499,13 +709,13 @@ export default function ProfilePage({
             )}
           </label>
           <label>
-            Số điện thoại cá nhân
+            Số điện thoại cá nhân (Hotline)
             <input
               type="tel"
-              maxLength={30}
+              maxLength={20}
               autoComplete="tel"
               disabled={busy}
-              placeholder="Số điện thoại cá nhân"
+              placeholder="0912345678"
               value={form.phone}
               onChange={(e) => {
                 setForm({ ...form, phone: e.target.value });
@@ -522,16 +732,17 @@ export default function ProfilePage({
             )}
           </label>
           <label className="inventory-name">
-            Ngày sinh (Ngày / Tháng / Năm)
+            Ngày tháng năm sinh
             <BirthDateInput
               disabled={busy}
-              invalid={Boolean(fieldErrors.dateOfBirth)}
               value={form.dateOfBirth}
               onChange={(val) => {
                 setForm({ ...form, dateOfBirth: val });
-                if (fieldErrors.dateOfBirth) setFieldErrors({ ...fieldErrors, dateOfBirth: undefined });
+                if (fieldErrors.dateOfBirth)
+                  setFieldErrors({ ...fieldErrors, dateOfBirth: undefined });
               }}
               onBlur={() => {}}
+              invalid={Boolean(fieldErrors.dateOfBirth)}
             />
             {fieldErrors.dateOfBirth && (
               <span
@@ -543,40 +754,14 @@ export default function ProfilePage({
             )}
           </label>
 
+          {/* Store Owner specific fields */}
           {isStoreOwner && (
-            <div
-              className="inventory-name"
-              style={{
-                marginTop: '16px',
-                paddingTop: '20px',
-                borderTop: '1px solid #e2e8f0',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  marginBottom: '8px',
-                }}
-              >
-                <span style={{ fontSize: '18px' }}>🏪</span>
-                <h3
-                  style={{
-                    margin: 0,
-                    fontSize: '15px',
-                    fontWeight: 700,
-                    color: '#0f172a',
-                  }}
-                >
-                  Thông tin Tiệm tạp hóa & Địa chỉ nhận hàng mặc định (Bắt buộc)
-                </h3>
-              </div>
-              <p
-                className="stock-help"
-                style={{ marginBottom: '14px', fontSize: '13px', color: '#64748b' }}
-              >
-                Địa chỉ này sẽ dùng làm <strong>địa chỉ mặc định khi tạo đơn mua sỉ</strong> từ các vựa,
+            <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>
+                Thông tin Cửa hàng / Tiệm tạp hóa của bạn
+              </h3>
+              <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b' }}>
+                Thông tin này được dùng khi đặt đơn hàng sỉ với các chủ vựa trên SupplyMind,
                 đảm bảo cửa hàng có địa chỉ hợp lệ tránh địa chỉ ma và dùng để đo khoảng cách giao hàng.
               </p>
 
@@ -661,7 +846,7 @@ export default function ProfilePage({
                     />
                     <div>
                       <strong style={{ display: 'block', fontSize: '14px', color: '#0f172a' }}>
-                        🏢 Mặt tiền đường lớn
+                        Mặt tiền đường lớn
                       </strong>
                       <small style={{ color: '#64748b', fontSize: '12px' }}>Xe tải giao hàng đỗ tận cửa tiệm</small>
                     </div>
@@ -687,7 +872,7 @@ export default function ProfilePage({
                     />
                     <div>
                       <strong style={{ display: 'block', fontSize: '14px', color: '#0f172a' }}>
-                        🏘️ Trong hẻm / ngõ
+                        Trong hẻm / ngõ
                       </strong>
                       <small style={{ color: '#64748b', fontSize: '12px' }}>Đường hẹp, chuyển hàng bằng xe máy / ba gác</small>
                     </div>
@@ -767,7 +952,7 @@ export default function ProfilePage({
                       fontWeight: 500,
                     }}
                   >
-                    🔍 Tra cứu mã số thuế (masothue.com)
+                    Tra cứu mã số thuế (masothue.com)
                   </a>
                 </div>
                 <input
@@ -819,7 +1004,7 @@ export default function ProfilePage({
                       gap: '4px',
                     }}
                   >
-                    {verifyingMap ? '⏳ Đang định vị…' : '📍 Kiểm tra trên bản đồ số'}
+                    {verifyingMap ? 'Đang định vị…' : 'Kiểm tra trên bản đồ số'}
                   </button>
                 </div>
                 <input
@@ -852,7 +1037,7 @@ export default function ProfilePage({
                       color: '#166534',
                     }}
                   >
-                    <strong>✓ Đã tìm thấy trên bản đồ số:</strong> {mapVerifiedAddress}
+                    <strong>Đã tìm thấy trên bản đồ số:</strong> {mapVerifiedAddress}
                     {form.latitude && form.longitude && (
                       <div style={{ fontSize: '11px', color: '#15803d', marginTop: '2px' }}>
                         Tọa độ: {form.latitude.toFixed(6)}, {form.longitude.toFixed(6)} (Sẵn sàng đo khoảng cách đến chủ vựa)
@@ -873,7 +1058,7 @@ export default function ProfilePage({
                       color: '#92400e',
                     }}
                   >
-                    <strong>⚠️ Chưa tìm thấy vị trí chính xác trên bản đồ.</strong> Vui lòng ghi rõ: <em>Số nhà, Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố</em> (ví dụ: 123 Đường Số 4, Phường Bình Trị Đông B, Quận Bình Tân, TP. Hồ Chí Minh).
+                    <strong>Chưa tìm thấy vị trí chính xác trên bản đồ.</strong> Vui lòng ghi rõ: <em>Số nhà, Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố</em> (ví dụ: 123 Đường Số 4, Phường Bình Trị Đông B, Quận Bình Tân, TP. Hồ Chí Minh).
                   </div>
                 )}
 
@@ -889,7 +1074,7 @@ export default function ProfilePage({
                       color: '#64748b',
                     }}
                   >
-                    ℹ️ Tạm thời không kết nối được dịch vụ bản đồ số, hệ thống sẽ lưu địa chỉ và xác thực qua cấu trúc hành chính.
+                    Lưu ý: Tạm thời không kết nối được dịch vụ bản đồ số, hệ thống sẽ lưu địa chỉ và xác thực qua cấu trúc hành chính.
                   </div>
                 )}
 
@@ -904,6 +1089,137 @@ export default function ProfilePage({
                     {fieldErrors.storeAddress}
                   </span>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Supplier specific fields */}
+          {isSupplier && (
+            <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>
+                Thông tin Gian hàng & Kho bãi của bạn
+              </h3>
+              <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b' }}>
+                Thông tin này giúp các cửa hàng tạp hóa tìm kiếm nguồn sỉ và tính khoảng cách giao hàng.
+              </p>
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                  gap: '14px',
+                  marginBottom: '14px',
+                }}
+              >
+                <label>
+                  Tên gian hàng / vựa sỉ <span style={{ color: '#dc2626' }}>*</span>
+                  <input
+                    required
+                    minLength={2}
+                    maxLength={150}
+                    disabled={busy}
+                    placeholder="Ví dụ: Vựa Gạo Phúc Thịnh, Đại Lý Nông Sản Ba Tri..."
+                    value={form.businessName}
+                    onChange={(e) => {
+                      setForm({ ...form, businessName: e.target.value });
+                      if (fieldErrors.businessName) setFieldErrors({ ...fieldErrors, businessName: undefined });
+                    }}
+                  />
+                  {fieldErrors.businessName && (
+                    <span className="field-error" style={{ color: '#dc2626', fontSize: '13px', marginTop: '4px', display: 'block' }}>
+                      {fieldErrors.businessName}
+                    </span>
+                  )}
+                </label>
+
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                    <label htmlFor="supplierTaxCode" style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+                      Mã số thuế / Mã số ĐKKD
+                    </label>
+                    <a
+                      href="https://masothue.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ fontSize: '12px', color: '#2563eb', textDecoration: 'underline', fontWeight: 600 }}
+                    >
+                      Tra cứu (masothue.com)
+                    </a>
+                  </div>
+                  <input
+                    id="supplierTaxCode"
+                    type="text"
+                    maxLength={30}
+                    disabled={busy}
+                    placeholder="Ví dụ: 0312345678"
+                    value={form.taxCode}
+                    onChange={(e) => {
+                      setForm({ ...form, taxCode: e.target.value });
+                      if (fieldErrors.taxCode) setFieldErrors({ ...fieldErrors, taxCode: undefined });
+                    }}
+                  />
+                  {fieldErrors.taxCode && (
+                    <span className="field-error" style={{ color: '#dc2626', fontSize: '13px', marginTop: '4px', display: 'block' }}>
+                      {fieldErrors.taxCode}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label htmlFor="warehouseAddress" style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
+                    Địa chỉ kho bãi chi tiết <span style={{ color: '#dc2626' }}>*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={verifyAddressOnMap}
+                    disabled={verifyingMap || !form.warehouseAddress.trim()}
+                    style={{
+                      fontSize: '12px',
+                      color: '#1d4ed8',
+                      background: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      cursor: verifyingMap || !form.warehouseAddress.trim() ? 'not-allowed' : 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    {verifyingMap ? 'Đang định vị…' : 'Kiểm tra trên bản đồ số'}
+                  </button>
+                </div>
+                <input
+                  id="warehouseAddress"
+                  required
+                  disabled={busy}
+                  placeholder="Số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành..."
+                  value={form.warehouseAddress}
+                  onChange={(e) => {
+                    setForm({ ...form, warehouseAddress: e.target.value });
+                    if (fieldErrors.warehouseAddress) setFieldErrors({ ...fieldErrors, warehouseAddress: undefined });
+                    setMapStatus('idle');
+                  }}
+                />
+                {fieldErrors.warehouseAddress && (
+                  <span className="field-error" style={{ color: '#dc2626', fontSize: '13px', marginTop: '4px', display: 'block' }}>
+                    {fieldErrors.warehouseAddress}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ maxWidth: '240px', marginBottom: '14px' }}>
+                <label>
+                  Bán kính phục vụ giao hàng (km)
+                  <input
+                    type="number"
+                    min={1}
+                    max={200}
+                    disabled={busy}
+                    value={form.deliveryRadiusKm}
+                    onChange={(e) => setForm({ ...form, deliveryRadiusKm: Number(e.target.value) || 10 })}
+                  />
+                </label>
               </div>
             </div>
           )}
@@ -937,6 +1253,37 @@ export default function ProfilePage({
           </div>
         </form>
       </section>
+
+      {profile && (
+        <>
+          <ContractSigningModal
+            isOpen={showSigningModal}
+            onClose={() => setShowSigningModal(false)}
+            onSignedSuccess={(updated) => {
+              setContract((prev) => (prev ? { ...prev, ...updated, isSigned: true } : (updated as any)));
+              setShowSigningModal(false);
+              setNotice('Đã ký kết hợp đồng điện tử thành công!');
+              getMyContract().then((res) => {
+                setContract(res.contract);
+                setCanonicalText(res.canonicalText);
+              }).catch(() => {});
+            }}
+            user={{
+              id: profile.id ?? 1,
+              username: profile.username,
+              name: profile.name,
+              role: profile.role,
+              phone: profile.phone || '',
+            }}
+          />
+          <ContractViewModal
+            isOpen={showViewModal}
+            onClose={() => setShowViewModal(false)}
+            contract={contract}
+            canonicalText={canonicalText}
+          />
+        </>
+      )}
     </div>
   );
 }

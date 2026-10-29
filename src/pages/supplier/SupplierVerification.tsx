@@ -1,6 +1,7 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
 import type { SupplierProfile } from '../../services/supplier.api';
+import { quickVerifySupplier } from '../../services/supplier.api';
 
 export default function SupplierVerification({
   profile,
@@ -131,15 +132,43 @@ export default function SupplierVerification({
               {error}
             </p>
           )}
-          <button className="ghost-button" type="submit">
-            {busy
-              ? 'Đang gửi…'
-              : profile.verificationStatus === 'PENDING'
-                ? 'Đã gửi, chờ duyệt'
-                : profile.verificationStatus === 'APPROVED'
-                  ? 'Cập nhật và gửi duyệt lại nếu thay đổi'
-                  : 'Lưu và gửi hồ sơ xác minh'}
-          </button>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '12px', flexWrap: 'wrap' }}>
+            <button className="ghost-button" type="submit">
+              {busy
+                ? 'Đang gửi…'
+                : profile.verificationStatus === 'PENDING'
+                  ? 'Đã gửi, chờ duyệt'
+                  : profile.verificationStatus === 'APPROVED'
+                    ? 'Cập nhật và gửi duyệt lại nếu thay đổi'
+                    : 'Lưu và gửi hồ sơ xác minh'}
+            </button>
+            {profile.verificationStatus !== 'APPROVED' && (
+              <button
+                type="button"
+                className="primary-button"
+                disabled={busy}
+                onClick={async () => {
+                  if (lock.current) return;
+                  lock.current = true;
+                  setBusy(true);
+                  setError('');
+                  try {
+                    const verified = await quickVerifySupplier();
+                    onSaved(verified);
+                  } catch (e) {
+                    setError(getApiError(e));
+                    if (isUnauthenticated(e)) onLogout();
+                  } finally {
+                    lock.current = false;
+                    setBusy(false);
+                  }
+                }}
+                style={{ backgroundColor: '#16a34a', borderColor: '#16a34a' }}
+              >
+                Kích hoạt mở bán ngay
+              </button>
+            )}
+          </div>
         </fieldset>
       </form>
     </section>

@@ -4,6 +4,7 @@ import '../catalog.css';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
 import TopbarBalance from '../../components/TopbarBalance';
+import SupplierHeader from '../../components/SupplierHeader';
 import WalletPage from '../WalletPage';
 import { logout } from '../../services/auth.api';
 import type { AuthUser } from '../../types/auth';
@@ -35,24 +36,24 @@ export default function SupplierWallet({
 
   return (
     <main className="supplier-page">
-      <header className="supplier-header">
-        <Brand />
-        <div className="supplier-header-actions">
-          <TopbarBalance linkTo="/supplier/wallet" />
-          {user && (
-            <span>
-              <strong>{user.name}</strong>
-              <small>Chủ vựa / Đại lý bỏ mối</small>
-            </span>
-          )}
-          <Link className="ghost-button catalog-link" to="/supplier">
-            ← Tổng quan chủ vựa
-          </Link>
-          <button className="secondary-button" onClick={handleLogout} disabled={busy}>
-            <Icon name="logout" /> Đăng xuất
-          </button>
-        </div>
-      </header>
+      {user ? (
+        <SupplierHeader
+          user={user}
+          activeNav="wallet"
+          onLogout={handleLogout}
+          loggingOut={busy}
+        />
+      ) : (
+        <header className="supplier-header">
+          <Brand />
+          <div className="supplier-header-actions">
+            <TopbarBalance linkTo="/supplier/wallet" />
+            <button className="secondary-button" onClick={handleLogout} disabled={busy}>
+              <Icon name="logout" /> Đăng xuất
+            </button>
+          </div>
+        </header>
+      )}
 
       <section className="supplier-main">
         <nav className="catalog-nav" aria-label="Chủ vựa">

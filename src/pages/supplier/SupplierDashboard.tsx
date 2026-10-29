@@ -3,13 +3,16 @@ import { Link } from 'react-router-dom';
 import '../catalog.css';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
-import TopbarBalance from '../../components/TopbarBalance';
+import SupplierHeader from '../../components/SupplierHeader';
 import SupplierVerification from './SupplierVerification';
 import SupplierOnboarding from '../../components/SupplierOnboarding';
+import ContractSigningModal from '../../components/ContractSigningModal';
+import { getContractStatus } from '../../services/contract.api';
 import { getApiError, getApiFieldErrors, isUnauthenticated } from '../../services/api';
 import { logout } from '../../services/auth.api';
 import {
   getSupplierDashboard,
+  quickVerifySupplier,
   saveSupplierProfile,
   type SupplierDashboard as SupplierDashboardData,
   type SupplierProfileInput,
@@ -48,6 +51,8 @@ export default function SupplierDashboard({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [profile, setProfile] = useState(EMPTY_PROFILE);
+  const [showContractModal, setShowContractModal] = useState(false);
+  const [contractSigned, setContractSigned] = useState<boolean | null>(null);
   const [profileErrors, setProfileErrors] = useState<
     Partial<Record<keyof SupplierProfileInput, string>>
   >({});
@@ -85,6 +90,9 @@ export default function SupplierDashboard({
     document.title = 'SupplyMind AI · Chủ vựa';
     const timer = window.setTimeout(() => {
       void load();
+      getContractStatus()
+        .then((res) => setContractSigned(res.isSigned))
+        .catch(() => {});
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
@@ -113,6 +121,21 @@ export default function SupplierDashboard({
           'bankAccountHolder',
         ]),
       );
+      setNotice(getApiError(issue));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleQuickActivate() {
+    setBusy(true);
+    try {
+      const updated = await quickVerifySupplier();
+      setData((current) => (current ? { ...current, profile: updated } : current));
+      setNoticeError(false);
+      setNotice('Gian hàng đã được kích hoạt thành công! Tất cả sản phẩm đang mở bán hiện đã hiển thị trên Tìm nguồn sỉ.');
+    } catch (issue) {
+      setNoticeError(true);
       setNotice(getApiError(issue));
     } finally {
       setBusy(false);
@@ -157,7 +180,8 @@ export default function SupplierDashboard({
 
   if (!data?.profile) {
     return (
-      <SupplierOnboarding
+      <>
+        <SupplierOnboarding
         user={user}
         initialPhone={user.phone || ''}
         onCompleted={(savedProfile) => {
@@ -188,30 +212,113 @@ export default function SupplierDashboard({
             taxCode: savedProfile.taxCode || '',
             phone: savedProfile.phone || user.phone || '',
           });
-          setNotice('Đăng ký thông tin kho vựa thành công! Chào mừng bạn đến với SupplyMind AI.');
+          setShowContractModal(true);
         }}
         onLogout={handleLogout}
         loggingOut={busy}
       />
-    );
-  }
+      <ContractSigningModal
+        isOpen={showContractModal}
+        onClose={() => {
+          setShowContractModal(false);
+          setNotice('Đã lưu thông tin kho vựa. Bạn có thể hoàn tất ký hợp đồng kết nối sau.');
+        }}
+        onSignedSuccess={() => {
+          setShowContractModal(false);
+          setContractSigned(true);
+          setNotice('Đã ký kết hợp đồng điện tử thành công!');
+        }}
+        user={user}
+      />
+    </>
+  );
+}
 
   return (
     <main className="supplier-page">
-      <header className="supplier-header">
-        <Brand />
-        <div className="supplier-header-actions">
-          <TopbarBalance linkTo="/supplier/wallet" />
-          <span>
-            <strong>{user.name}</strong>
-            <small>Chủ vựa / Đại lý bỏ mối</small>
-          </span>
-          <button className="secondary-button" onClick={handleLogout} disabled={busy}>
-            <Icon name="logout" /> Đăng xuất
-          </button>
-        </div>
-      </header>
+      <SupplierHeader
+        user={user}
+        activeNav="dashboard"
+        onLogout={handleLogout}
+        loggingOut={busy}
+      />
       <section className="supplier-main">
+        {contractSigned === false && (
+          <div
+            style={{
+              margin: '0 0 16px 0',
+              padding: '12px 18px',
+              backgroundColor: '#fff7ed',
+              border: '1px solid #fed7aa',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+            }}
+          >
+            <div style={{ fontSize: '13px', color: '#9a3412', lineHeight: 1.45 }}>
+              <strong>Thỏa thuận kết nối nền tảng:</strong> Bạn chưa hoàn tất ký số Hợp đồng điện tử và cam kết cơ chế ký quỹ Escrow 10% với SupplyMind.
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowContractModal(true)}
+              style={{
+                padding: '7px 16px',
+                backgroundColor: '#ea580c',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                boxShadow: '0 1px 2px rgba(234, 88, 12, 0.25)',
+              }}
+            >
+              Ký hợp đồng ngay
+            </button>
+          </div>
+        )}
+        {data?.profile && data.profile.verificationStatus !== 'APPROVED' && (
+          <div
+            style={{
+              margin: '0 0 16px 0',
+              padding: '12px 18px',
+              backgroundColor: '#fffbeb',
+              border: '1px solid #fef3c7',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ fontSize: '13px', color: '#92400e', lineHeight: 1.45 }}>
+              <strong>Gian hàng chưa kích hoạt mở bán:</strong> Các sản phẩm bạn đăng hiện đang ở chế độ chờ xác minh và chưa hiển thị với các chủ tiệm tạp hóa trên trang "Tìm nguồn sỉ".
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleQuickActivate()}
+              disabled={busy}
+              style={{
+                padding: '7px 16px',
+                backgroundColor: '#16a34a',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                boxShadow: '0 1px 2px rgba(22, 163, 74, 0.25)',
+              }}
+            >
+              Kích hoạt mở bán ngay
+            </button>
+          </div>
+        )}
         <nav className="catalog-nav" aria-label="Chủ vựa">
           <Link to="/supplier" aria-current="page">
             Tổng quan
@@ -378,6 +485,16 @@ export default function SupplierDashboard({
           </>
         )}
       </section>
+      <ContractSigningModal
+        isOpen={showContractModal}
+        onClose={() => setShowContractModal(false)}
+        onSignedSuccess={() => {
+          setShowContractModal(false);
+          setContractSigned(true);
+          setNotice('Đã ký kết hợp đồng điện tử thành công!');
+        }}
+        user={user}
+      />
     </main>
   );
 }
@@ -458,7 +575,7 @@ function ProfileForm({
                   fontWeight: 500,
                 }}
               >
-                🔍 Tra cứu (masothue.com)
+                Tra cứu (masothue.com)
               </a>
             </span>
           }

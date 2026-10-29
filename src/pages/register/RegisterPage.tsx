@@ -465,7 +465,7 @@ function TermsModal({
             onClick={onClose}
             aria-label="Đóng bảng điều khoản"
           >
-            ✕
+            ×
           </button>
         </div>
 
@@ -755,10 +755,13 @@ function OtpModal({
             <div className="otp-success-icon-wrap">
               <Icon name="check" />
             </div>
-            <h2 className="otp-success-title">Đăng ký tài khoản thành công! 🎉</h2>
+            <h2 className="otp-success-title">Đăng ký tài khoản thành công!</h2>
             <p className="otp-success-subtitle">
               Mã OTP chính xác. Tài khoản <strong>{successUser.username}</strong> của bạn đã được kích hoạt thành công.
             </p>
+            <div style={{ margin: '14px 0', padding: '10px 14px', backgroundColor: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', fontSize: '13px', color: '#166534', textAlign: 'left', lineHeight: 1.5 }}>
+              <strong>Khóa ký kết hợp đồng điện tử:</strong> Hệ thống đã khởi tạo cặp khóa mật mã bảo mật (Public/Private Key) cho tài khoản. Sau khi đăng nhập và hoàn tất thông tin cơ sở kinh doanh, bạn sẽ dùng khóa này để ký thỏa thuận kết nối nền tảng.
+            </div>
             <p className="otp-success-redirect-hint">
               Đang chuyển đến trang đăng nhập trong giây lát...
             </p>
@@ -791,7 +794,7 @@ function OtpModal({
             aria-label="Đóng popup và ở lại màn hình đăng ký"
             title="Đóng và quay lại biểu mẫu đăng ký"
           >
-            ✕
+            ×
           </button>
         </div>
 
@@ -874,7 +877,7 @@ function OtpModal({
         {/* Optional dev mode helper */}
         {currentDevOtp && (
           <div className="otp-dev-notice">
-            💡 <strong>Mã thử nghiệm (Dev):</strong> <code>{currentDevOtp}</code>
+            <strong>Mã thử nghiệm (Dev):</strong> <code>{currentDevOtp}</code>
           </div>
         )}
           </>

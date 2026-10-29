@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
 import {
@@ -100,6 +100,7 @@ function validateNewPassword(password: string): string | undefined {
 
 export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => void }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const registrationState: unknown = location.state;
   const registeredUsername =
     registrationState &&
@@ -157,6 +158,7 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
 
   // Toast notification state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [hideRegistrationNotice, setHideRegistrationNotice] = useState(false);
 
   useEffect(() => {
     document.title =
@@ -300,6 +302,10 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
 
       // Return to login screen
       setViewMode('LOGIN');
+      setHideRegistrationNotice(true);
+      navigate(location.pathname, { replace: true, state: {} });
+      setErrors({});
+      setServerError('');
 
       // Show success toast notification at top-right
       setToastMessage('Đổi mật khẩu thành công! Vui lòng đăng nhập với mật khẩu mới.');
@@ -347,7 +353,7 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
               fontSize: '12px',
             }}
           >
-            ✓
+            OK
           </span>
           <span>{toastMessage}</span>
         </div>
@@ -411,7 +417,7 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
                   ? 'Tài khoản đã hết hạn và chưa được đăng nhập vào hệ thống.'
                   : 'Cửa hàng của bạn, sẵn sàng cho ngày mới.'}
               </p>
-              {registeredUsername && !payment && (
+              {registeredUsername && !hideRegistrationNotice && !payment && (
                 <p className="success-notice" role="status">
                   Đăng ký thành công! Username đã được điền sẵn. Nhập mật khẩu để đăng nhập.
                 </p>
@@ -701,8 +707,12 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
                   disabled={requestingOtp}
                   onClick={() => {
                     setViewMode('LOGIN');
+                    setHideRegistrationNotice(true);
+                    navigate(location.pathname, { replace: true, state: {} });
                     setForgotServerError('');
                     setForgotEmailError('');
+                    setErrors({});
+                    setServerError('');
                   }}
                   style={{ marginTop: '12px' }}
                 >
@@ -828,9 +838,13 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
                   disabled={submittingNewPassword}
                   onClick={() => {
                     setViewMode('LOGIN');
+                    setHideRegistrationNotice(true);
+                    navigate(location.pathname, { replace: true, state: {} });
                     setNewPasswordServerError('');
                     setNewPasswordError('');
                     setConfirmNewPasswordError('');
+                    setErrors({});
+                    setServerError('');
                   }}
                   style={{ marginTop: '12px' }}
                 >
@@ -1035,7 +1049,7 @@ function ForgotPasswordOtpModal({
             aria-label="Đóng popup"
             title="Đóng và quay lại"
           >
-            ✕
+            ×
           </button>
         </div>
 
@@ -1118,7 +1132,7 @@ function ForgotPasswordOtpModal({
         {/* Optional dev mode helper */}
         {currentDevOtp && (
           <div className="otp-dev-notice">
-            💡 <strong>Mã thử nghiệm (Dev):</strong> <code>{currentDevOtp}</code>
+            <strong>Mã thử nghiệm (Dev):</strong> <code>{currentDevOtp}</code>
           </div>
         )}
       </div>

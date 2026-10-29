@@ -399,7 +399,7 @@ export default function StoreRevenue({ onLogout }: { onLogout: () => void }) {
                     }}
                     onClick={() => setExportOpen(true)}
                   >
-                    📥 Xuất Excel / PDF
+                    Xuất Excel / PDF
                   </button>
                   <span className="revenue-note">Mới nhất trước</span>
                 </div>

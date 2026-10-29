@@ -2383,3 +2383,33 @@ input {
   width: 14px;
   height: 14px;
 }
+
+/* ==========================================================================
+   Contract Printing & PDF Export Styles
+   ========================================================================== */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .contract-printable-container,
+  .contract-printable-container * {
+    visibility: visible;
+  }
+  .contract-printable-container {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}

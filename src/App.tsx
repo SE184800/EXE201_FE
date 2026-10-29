@@ -12,6 +12,7 @@ import SupplierQuotes from './pages/supplier/SupplierQuotes';
 import SupplierWallet from './pages/supplier/SupplierWallet';
 import AdminPage from './pages/admin/AdminPage';
 import SubscriptionPage from './pages/SubscriptionPage';
+import SupplierProfilePage from './pages/supplier/SupplierProfilePage';
 import { getMe } from './services/auth.api';
 import { ROLE_DETAILS, type AuthUser } from './types/auth';
 
@@ -82,7 +83,7 @@ function LogoutToast() {
           fontSize: '12px',
         }}
       >
-        ✓
+        OK
       </span>
       <span>Đã đăng xuất thành công. Hẹn gặp lại bạn!</span>
     </div>
@@ -141,7 +142,7 @@ export default function App() {
           path="/supplier/inventory"
           element={
             user?.role === 'SUPPLIER' ? (
-              <SupplierInventory onLogout={clearUser} />
+              <SupplierInventory user={user} onLogout={clearUser} />
             ) : checkingSession && !user ? (
               restoreSession
             ) : (
@@ -153,7 +154,7 @@ export default function App() {
           path="/supplier/products"
           element={
             user?.role === 'SUPPLIER' ? (
-              <SupplierProducts onLogout={clearUser} />
+              <SupplierProducts user={user} onLogout={clearUser} />
             ) : checkingSession && !user ? (
               restoreSession
             ) : (
@@ -165,7 +166,7 @@ export default function App() {
           path="/supplier/quotes"
           element={
             user?.role === 'SUPPLIER' ? (
-              <SupplierQuotes onLogout={clearUser} />
+              <SupplierQuotes user={user} onLogout={clearUser} />
             ) : checkingSession && !user ? (
               restoreSession
             ) : (
@@ -186,10 +187,22 @@ export default function App() {
           }
         />
         <Route
+          path="/supplier/profile"
+          element={
+            user?.role === 'SUPPLIER' ? (
+              <SupplierProfilePage user={user} onLogout={clearUser} />
+            ) : checkingSession && !user ? (
+              restoreSession
+            ) : (
+              <Navigate to={destination} replace />
+            )
+          }
+        />
+        <Route
           path="/supplier/subscription"
           element={
             user?.role === 'SUPPLIER' ? (
-              <SubscriptionPage role="SUPPLIER" onLogout={clearUser} />
+              <SubscriptionPage role="SUPPLIER" user={user} onLogout={clearUser} />
             ) : checkingSession && !user ? (
               restoreSession
             ) : (

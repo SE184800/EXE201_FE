@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import Icon from '../components/Icon';
 import CheckoutDialog from '../components/CheckoutDialog';
 import ProductImage from '../components/ProductImage';
@@ -11,7 +11,22 @@ import './catalog.css';
 export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
   const [data, setData] = useState<CatalogPage>({ products: [], page: 1, hasMore: false });
   const [suppliers, setSuppliers] = useState<SupplierProfile[]>([]);
-  const [selected, setSelected] = useState<CatalogProduct | null>(null);
+  const [selectedProducts, setSelectedProducts] = useState<CatalogProduct[]>([]);
+  const [checkoutProducts, setCheckoutProducts] = useState<CatalogProduct[] | null>(null);
+
+  const uniqueSupplierCount = useMemo(() => {
+    return new Set(selectedProducts.map((p) => p.supplier.id)).size;
+  }, [selectedProducts]);
+
+  function toggleSelect(product: CatalogProduct) {
+    setSelectedProducts((prev) => {
+      const exists = prev.some((p) => p.id === product.id);
+      if (exists) {
+        return prev.filter((p) => p.id !== product.id);
+      }
+      return [...prev, product];
+    });
+  }
   const [category, setCategory] = useState(''),
     [minPrice, setMinPrice] = useState(''),
     [maxPrice, setMaxPrice] = useState(''),
@@ -212,19 +227,38 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
         </section>
       ) : (
         <div className="catalog-grid">
-          {data.products.map((product) => (
-            <article className="catalog-card" key={product.id} aria-label={product.name}>
-              <ProductImage url={product.imageUrl} name={product.name} />
-              <div className="catalog-card-top">
-                <span className="supplier-panel-label">{product.category}</span>
-                <span className={`catalog-badge ${product.stockQty === 0 ? 'muted' : ''}`}>
-                  {product.stockQty === 0
-                    ? 'Hết hàng'
-                    : product.stockQty < product.moq
-                      ? 'Tồn dưới MOQ'
-                      : 'Còn hàng'}
-                </span>
-              </div>
+          {data.products.map((product) => {
+            const isSelected = selectedProducts.some((p) => p.id === product.id);
+            const isOutOfStock = product.stockQty === 0;
+            const isBelowMoq = product.stockQty < product.moq;
+            return (
+              <article
+                className={`catalog-card ${isSelected ? 'is-selected' : ''}`}
+                key={product.id}
+                aria-label={product.name}
+              >
+                <div className="catalog-card-header-row">
+                  <label className="catalog-select-label">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      disabled={isBelowMoq}
+                      onChange={() => toggleSelect(product)}
+                    />
+                    <span>{isSelected ? 'Đã chọn' : 'Chọn đặt'}</span>
+                  </label>
+                  <span className={`catalog-badge ${isOutOfStock ? 'muted' : ''}`}>
+                    {isOutOfStock
+                      ? 'Hết hàng'
+                      : isBelowMoq
+                        ? 'Tồn dưới MOQ'
+                        : 'Còn hàng'}
+                  </span>
+                </div>
+                <ProductImage url={product.imageUrl} name={product.name} />
+                <div className="catalog-card-top">
+                  <span className="supplier-panel-label">{product.category}</span>
+                </div>
               <span className="supplier-panel-label">{product.packaging}</span>
               <h2>{product.name}</h2>
               <strong className="catalog-price">
@@ -289,7 +323,7 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
                 <small>Bán kính giao hàng: {product.supplier.deliveryRadiusKm} km</small>
                 {product.supplier.phone && (
                   <a className="catalog-phone" href={`tel:${product.supplier.phone}`}>
-                    ☎ Liên hệ chủ vựa: {product.supplier.phone}
+                    Liên hệ chủ vựa: {product.supplier.phone}
                   </a>
                 )}
                 <button
@@ -312,12 +346,13 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
               <button
                 className="primary-button"
                 disabled={product.stockQty < product.moq}
-                onClick={() => setSelected(product)}
+                onClick={() => setCheckoutProducts([product])}
               >
                 Đặt hàng từ vựa
               </button>
             </article>
-          ))}
+          );
+        })}
         </div>
       )}
       {!error && (
@@ -345,8 +380,41 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
           </button>
         </div>
       )}
-      {selected && (
-        <CheckoutDialog product={selected} onClose={() => setSelected(null)} onLogout={onLogout} />
+      {selectedProducts.length > 0 && (
+        <aside className="catalog-selection-bar" role="region" aria-label="Danh sách đặt hàng">
+          <div className="catalog-selection-info">
+            <strong>Đã chọn {selectedProducts.length} mặt hàng</strong>
+            <span>
+              Từ {uniqueSupplierCount} chủ vựa ({uniqueSupplierCount} đơn hàng sẽ được tạo độc lập)
+            </span>
+          </div>
+          <div className="catalog-selection-actions">
+            <button
+              type="button"
+              className="catalog-selection-clear-btn"
+              onClick={() => setSelectedProducts([])}
+            >
+              Bỏ chọn tất cả
+            </button>
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => setCheckoutProducts(selectedProducts)}
+            >
+              Đặt {selectedProducts.length} mặt hàng ({uniqueSupplierCount} đơn hàng) →
+            </button>
+          </div>
+        </aside>
+      )}
+      {checkoutProducts && checkoutProducts.length > 0 && (
+        <CheckoutDialog
+          products={checkoutProducts}
+          onClose={() => {
+            setCheckoutProducts(null);
+            setSelectedProducts([]);
+          }}
+          onLogout={onLogout}
+        />
       )}
     </section>
   );

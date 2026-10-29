@@ -5,6 +5,8 @@ import '../store-inventory.css';
 import Brand from '../../components/Brand';
 import TopbarBalance from '../../components/TopbarBalance';
 import Icon from '../../components/Icon';
+import SupplierHeader from '../../components/SupplierHeader';
+import type { AuthUser } from '../../types/auth';
 import type { SupplierProduct } from '../../services/supplier.api';
 import ExportDropdown from '../../components/ExportDropdown';
 import { exportSupplierInventoryToExcel, exportSupplierInventoryToPdf } from '../../utils/exportSupplier';
@@ -67,7 +69,7 @@ function resolveImage(url: string | null | undefined): string | undefined {
   return url;
 }
 
-export default function SupplierInventory({ onLogout }: { onLogout: () => void }) {
+export default function SupplierInventory({ user, onLogout }: { user?: AuthUser; onLogout: () => void }) {
   const navigate = useNavigate();
   const [items, setItems] = useState<SupplierProduct[]>([]);
   const [loading, setLoading] = useState(true);
@@ -188,15 +190,23 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
 
   return (
     <main className="supplier-page store-dashboard">
-      <header className="supplier-header">
-        <Brand />
-        <div className="supplier-header-actions">
-          <TopbarBalance linkTo="/supplier/wallet" />
-          <Link className="ghost-button catalog-link" to="/supplier">
-            ← Tổng quan chủ vựa
-          </Link>
-        </div>
-      </header>
+      {user ? (
+        <SupplierHeader
+          user={user}
+          activeNav="inventory"
+          onLogout={onLogout}
+        />
+      ) : (
+        <header className="supplier-header">
+          <Brand />
+          <div className="supplier-header-actions">
+            <TopbarBalance linkTo="/supplier/wallet" />
+            <Link className="ghost-button catalog-link" to="/supplier">
+              ← Tổng quan chủ vựa
+            </Link>
+          </div>
+        </header>
+      )}
       <section className="supplier-main dashboard-content">
         <nav className="catalog-nav" aria-label="Chủ vựa">
           <Link to="/supplier">Tổng quan</Link>
@@ -231,7 +241,7 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
 
         {notice && (
           <div className="inventory-toast" role="status">
-            <span className="toast-icon">✓</span>
+            <span className="toast-icon">OK</span>
             <div className="toast-body">
               <strong>Thông báo</strong>
               <p>{notice}</p>

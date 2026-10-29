@@ -231,7 +231,7 @@ export default function BirthDateInput({
             title="Xóa ngày đã chọn"
             aria-label="Xóa ngày sinh"
           >
-            ✕
+            ×
           </button>
         )}
         <button

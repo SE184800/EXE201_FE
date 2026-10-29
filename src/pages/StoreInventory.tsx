@@ -6,6 +6,8 @@ import StockActivity from './StockActivity';
 import StoreRevenue from './StoreRevenue';
 import ProfilePage, { type StoreProfile, type Profile } from './ProfilePage';
 import StoreOnboarding from '../components/StoreOnboarding';
+import ContractSigningModal from '../components/ContractSigningModal';
+import { getContractStatus } from '../services/contract.api';
 import RestockPage from './RestockPage';
 import SalesCalendar from './SalesCalendar';
 import VoiceQuickSale from './VoiceQuickSale';
@@ -23,6 +25,12 @@ import InventoryImportDialog, {
 } from '../components/InventoryImportDialog';
 import OverviewRestockSuggestions from '../components/OverviewRestockSuggestions';
 import type { AuthUser } from '../types/auth';
+import {
+  createConsignmentRequest,
+  getStoreConsignmentRequests,
+  confirmConsignmentReceipt,
+  type ConsignmentRequest,
+} from '../services/consignment.api';
 
 type Item = {
   purchasePrice: number | null;
@@ -36,6 +44,12 @@ type Item = {
   expiryDate: string | null;
   daysUntilExpiry: number | null;
   expiryLabel: string;
+  supplierName?: string | null;
+  isConsignment?: boolean;
+  settlementPrice?: number;
+  autoRestock?: boolean;
+  autoExchangeExpiry?: boolean;
+  termsNote?: string | null;
   lots?: {
     id: number;
     quantity: number;
@@ -52,6 +66,11 @@ const empty = {
   purchasePrice: '',
   sellingPrice: '',
   expiryDate: '',
+  supplierName: '',
+  isConsignment: false,
+  settlementPrice: '',
+  autoRestock: true,
+  autoExchangeExpiry: true,
 };
 const examples = [
   'Coca còn bao nhiêu?',
@@ -109,12 +128,25 @@ export default function StoreInventory({
   const saleDialog = useRef<HTMLDialogElement>(null);
   const importDialog = useRef<InventoryImportDialogHandle>(null);
 
+  const [consignmentRequests, setConsignmentRequests] = useState<ConsignmentRequest[]>([]);
+  const [requestingConsignment, setRequestingConsignment] = useState<{ item: Item; type: 'RESTOCK' | 'EXCHANGE_EXPIRY' } | null>(null);
+  const [showConsignmentHistory, setShowConsignmentHistory] = useState(false);
+  const [showContractModal, setShowContractModal] = useState(false);
+  const [contractSigned, setContractSigned] = useState<boolean | null>(null);
+  const [contractRefreshKey, setContractRefreshKey] = useState(0);
+
   const [revision, setRevision] = useState(0);
   const { '*': page = '' } = useParams();
   const activeTab = tabs.find((tab) => tab.id === (page || 'overview'))?.id;
   function setActiveTab(tab: StoreTab) {
     navigate(tab === 'overview' ? '/store' : `/store/${tab}`);
   }
+  useEffect(() => {
+    getContractStatus()
+      .then((res) => setContractSigned(res.isSigned))
+      .catch(() => {});
+  }, [revision]);
+
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [chatOpen, setChatOpen] = useState(false);
@@ -198,6 +230,11 @@ export default function StoreInventory({
       .finally(() => {
         if (active) setLoading(false);
       });
+    getStoreConsignmentRequests()
+      .then((data) => {
+        if (active) setConsignmentRequests(data);
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -231,6 +268,7 @@ export default function StoreInventory({
     setLoading(true);
     try {
       setItems((await api.get<{ items: Item[] }>('/inventory')).data.items);
+      getStoreConsignmentRequests().then(setConsignmentRequests).catch(() => {});
       setRevision((value) => value + 1);
     } catch (issue) {
       if (isUnauthenticated(issue)) onLogout();
@@ -255,12 +293,17 @@ export default function StoreInventory({
             )
           : undefined;
       const payload = {
-        purchasePrice: form.purchasePrice === '' ? null : Number(form.purchasePrice),
+        purchasePrice: form.isConsignment ? 0 : (form.purchasePrice === '' ? null : Number(form.purchasePrice)),
         sellingPrice: form.sellingPrice === '' ? null : Number(form.sellingPrice),
         name: form.name.trim(),
         unit: form.unit.trim(),
         quantity: Number(form.quantity),
         expiryDate: form.expiryDate || null,
+        supplierName: form.supplierName ? form.supplierName.trim() : null,
+        isConsignment: form.isConsignment,
+        settlementPrice: form.settlementPrice ? Number(form.settlementPrice) : 0,
+        autoRestock: form.autoRestock,
+        autoExchangeExpiry: form.autoExchangeExpiry,
         expectedUpdatedAt: editing === null ? undefined : editVersion.current,
       };
       if (editing === null) await api.post('/inventory', payload);
@@ -386,6 +429,11 @@ export default function StoreInventory({
       unit: item.unit,
       quantity: String(item.quantity),
       expiryDate: item.expiryDate?.slice(0, 10) || '',
+      supplierName: item.supplierName || '',
+      isConsignment: Boolean(item.isConsignment),
+      settlementPrice: item.settlementPrice ? String(item.settlementPrice) : '',
+      autoRestock: item.autoRestock !== false,
+      autoExchangeExpiry: item.autoExchangeExpiry !== false,
     });
     setNotice('');
     setError('');
@@ -438,21 +486,54 @@ export default function StoreInventory({
     setSearch('');
     setActiveTab('inventory');
   }
-  const needsOnboarding = !checkingStore && Boolean(storeProfile && !storeProfile.isConfigured);
+  if (checkingStore) {
+    return (
+      <main
+        className="store-dashboard"
+        style={{
+          display: 'grid',
+          placeItems: 'center',
+          minHeight: '60vh',
+          color: '#64748B',
+        }}
+      >
+        <p>Đang chuẩn bị không gian cửa hàng…</p>
+      </main>
+    );
+  }
+
+  const needsOnboarding = Boolean(!storeProfile || !storeProfile.isConfigured);
 
   if (needsOnboarding) {
     return (
-      <StoreOnboarding
-        user={user}
-        initialPhone={storeProfile?.storePhone || user.phone || ''}
-        onCompleted={(savedStoreProfile) => {
-          setStoreProfile(savedStoreProfile);
-          setNotice('Đăng ký thông tin cửa hàng thành công! Chào mừng bạn đến với SupplyMind AI.');
-          setActiveTab('overview');
-        }}
-        onSignOut={onSignOut}
-        signingOut={signingOut}
-      />
+      <>
+        <StoreOnboarding
+          user={user}
+          initialPhone={storeProfile?.storePhone || user.phone || ''}
+          onCompleted={(savedStoreProfile) => {
+            setStoreProfile(savedStoreProfile);
+            setShowContractModal(true);
+          }}
+          onSignOut={onSignOut}
+          signingOut={signingOut}
+        />
+        <ContractSigningModal
+          isOpen={showContractModal}
+          onClose={() => {
+            setShowContractModal(false);
+            setNotice('Đã lưu thông tin cửa hàng. Bạn có thể ký hợp đồng kết nối trong mục Hồ sơ.');
+            setActiveTab('overview');
+          }}
+          onSignedSuccess={() => {
+            setShowContractModal(false);
+            setContractSigned(true);
+            setNotice('Đã ký kết hợp đồng điện tử thành công!');
+            setContractRefreshKey((prev) => prev + 1);
+            setActiveTab('profile');
+          }}
+          user={user}
+        />
+      </>
     );
   }
 
@@ -701,7 +782,7 @@ export default function StoreInventory({
               )}
               {notice && (
                 <div className="inventory-toast" role="status">
-                  <span className="toast-icon">✓</span>
+                  <span className="toast-icon">OK</span>
                   <div className="toast-body">
                     <strong>Thông báo</strong>
                     <p>{notice}</p>
@@ -713,6 +794,43 @@ export default function StoreInventory({
                     aria-label="Đóng"
                   >
                     ×
+                  </button>
+                </div>
+              )}
+              {contractSigned === false && (
+                <div
+                  style={{
+                    margin: '0 0 16px 0',
+                    padding: '12px 18px',
+                    backgroundColor: '#fff7ed',
+                    border: '1px solid #fed7aa',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                  }}
+                >
+                  <div style={{ fontSize: '13px', color: '#9a3412', lineHeight: 1.45 }}>
+                    <strong>Thỏa thuận kết nối nền tảng:</strong> Bạn chưa hoàn tất ký số Hợp đồng điện tử và thỏa thuận cơ chế ký quỹ 10% với SupplyMind.
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowContractModal(true)}
+                    style={{
+                      padding: '7px 16px',
+                      backgroundColor: '#ea580c',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '12.5px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      boxShadow: '0 1px 2px rgba(234, 88, 12, 0.25)',
+                    }}
+                  >
+                    Ký hợp đồng ngay
                   </button>
                 </div>
               )}
@@ -934,13 +1052,34 @@ export default function StoreInventory({
                     Hàng hóa của bạn <span className="count-chip">{items.length}</span>
                   </h2>
                 </div>
-                <button
-                  className="inventory-refresh"
-                  disabled={loading || saving}
-                  onClick={() => void refresh()}
-                >
-                  ↻ Tải lại kho
-                </button>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      background: '#f0fdf4',
+                      border: '1px solid #bbf7d0',
+                      color: '#15803d',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => setShowConsignmentHistory(true)}
+                  >
+                    Hàng tiếp thị ({consignmentRequests.filter((r) => r.status !== 'COMPLETED').length ? `${consignmentRequests.filter((r) => r.status !== 'COMPLETED').length} yêu cầu` : 'Theo dõi'})
+                  </button>
+                  <button
+                    className="inventory-refresh"
+                    disabled={loading || saving}
+                    onClick={() => void refresh()}
+                  >
+                    ↻ Tải lại kho
+                  </button>
+                </div>
               </div>
               <div className="inventory-toolbar">
                 <label className="product-search">
@@ -1018,6 +1157,16 @@ export default function StoreInventory({
                               <div>
                                 <strong>{item.name}</strong>
                                 <small>Mã SP #{String(item.id).padStart(4, '0')}</small>
+                                {item.supplierName && (
+                                  <small style={{ color: '#0284c7', display: 'block', marginTop: '2px', fontWeight: 500 }}>
+                                    NCC: <strong>{item.supplierName}</strong>
+                                  </small>
+                                )}
+                                {item.isConsignment && (
+                                  <span style={{ display: 'inline-block', background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '1px 6px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, marginTop: '2px' }}>
+                                    Ký gửi tiếp thị · Vốn 0đ
+                                  </span>
+                                )}
                                 <details className="lot-details">
                                   <summary>{item.lots?.length || 0} lô hàng</summary>
                                   {item.lots?.length ? (
@@ -1051,14 +1200,28 @@ export default function StoreInventory({
                             <span className="unit-label">{item.unit}</span>
                           </td>
                           <td data-label="Giá nhập / bán">
-                            {item.purchasePrice === null
-                              ? 'Chưa có giá nhập'
-                              : item.purchasePrice.toLocaleString('vi-VN') + ' ₫'}
-                            <small>
-                              {item.sellingPrice === null
-                                ? 'Chưa có giá bán'
-                                : item.sellingPrice.toLocaleString('vi-VN') + ' ₫'}
-                            </small>
+                            {item.isConsignment ? (
+                              <>
+                                <strong style={{ color: '#059669', display: 'block' }}>0 ₫ (Vốn 0đ)</strong>
+                                {item.settlementPrice ? <small style={{ color: '#4b5563', display: 'block' }}>Trả sau: {item.settlementPrice.toLocaleString('vi-VN')} ₫</small> : null}
+                                <small>
+                                  {item.sellingPrice === null
+                                    ? 'Chưa có giá bán'
+                                    : item.sellingPrice.toLocaleString('vi-VN') + ' ₫'}
+                                </small>
+                              </>
+                            ) : (
+                              <>
+                                {item.purchasePrice === null
+                                  ? 'Chưa có giá nhập'
+                                  : item.purchasePrice.toLocaleString('vi-VN') + ' ₫'}
+                                <small>
+                                  {item.sellingPrice === null
+                                    ? 'Chưa có giá bán'
+                                    : item.sellingPrice.toLocaleString('vi-VN') + ' ₫'}
+                                </small>
+                              </>
+                            )}
                           </td>
                           <td data-label="Trạng thái">
                             <span
@@ -1102,13 +1265,53 @@ export default function StoreInventory({
                             </button>
                             <button
                               className="edit-product"
-                              style={{ marginLeft: '12px' }}
+                              style={{ marginLeft: '8px' }}
                               disabled={saving}
                               aria-label={`Sửa ${item.name}`}
                               onClick={() => edit(item)}
                             >
-                              Chỉnh sửa ↗
+                              Sửa ↗
                             </button>
+                            {item.isConsignment && item.quantity <= item.lowThreshold && (
+                              <button
+                                type="button"
+                                className="dash-primary"
+                                style={{
+                                  padding: '4px 8px',
+                                  fontSize: '11px',
+                                  height: 'auto',
+                                  minHeight: '26px',
+                                  fontWeight: '600',
+                                  background: '#0d9488',
+                                  borderColor: '#0d9488',
+                                  marginLeft: '6px',
+                                }}
+                                title="Gửi yêu cầu nhà cung cấp giao thêm đợt hàng mới"
+                                onClick={() => setRequestingConsignment({ item, type: 'RESTOCK' })}
+                              >
+                                Bù hàng
+                              </button>
+                            )}
+                            {item.isConsignment && item.daysUntilExpiry !== null && item.daysUntilExpiry <= 14 && (
+                              <button
+                                type="button"
+                                className="dash-primary"
+                                style={{
+                                  padding: '4px 8px',
+                                  fontSize: '11px',
+                                  height: 'auto',
+                                  minHeight: '26px',
+                                  fontWeight: '600',
+                                  background: '#e11d48',
+                                  borderColor: '#e11d48',
+                                  marginLeft: '6px',
+                                }}
+                                title="Gửi yêu cầu nhà cung cấp thu hồi và đổi date mới 100%"
+                                onClick={() => setRequestingConsignment({ item, type: 'EXCHANGE_EXPIRY' })}
+                              >
+                                Đổi date
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -1143,6 +1346,7 @@ export default function StoreInventory({
           </div>
           <div hidden={activeTab !== 'profile'}>
             <ProfilePage
+              contractRefreshKey={contractRefreshKey}
               onSaved={(name) => {
                 setDisplayName(name);
                 api
@@ -1217,6 +1421,11 @@ export default function StoreInventory({
                         purchasePrice: item.purchasePrice == null ? '' : String(item.purchasePrice),
                         sellingPrice: item.sellingPrice == null ? '' : String(item.sellingPrice),
                         expiryDate: item.expiryDate?.slice(0, 10) || '',
+                        supplierName: item.supplierName || '',
+                        isConsignment: Boolean(item.isConsignment),
+                        settlementPrice: item.settlementPrice ? String(item.settlementPrice) : '',
+                        autoRestock: item.autoRestock !== false,
+                        autoExchangeExpiry: item.autoExchangeExpiry !== false,
                       })
                     }
                   >
@@ -1291,6 +1500,70 @@ export default function StoreInventory({
             />
             <small>Nhập ngày in trên bao bì. Nhiều lô hàng? Dùng hạn gần nhất.</small>
           </label>
+          <label className="inventory-name">
+            Nhà cung cấp / Nguồn hàng <span className="optional-label">Không bắt buộc</span>
+            <input
+              maxLength={150}
+              value={form.supplierName}
+              disabled={saving}
+              onChange={(e) => setForm({ ...form, supplierName: e.target.value })}
+              placeholder="Ví dụ: Vựa rau củ Minh Trí, Đại lý Tân Bình, Công ty Vinamilk…"
+            />
+            <small>Lưu nguồn hàng để dễ dàng theo dõi xuất xứ và liên hệ nhập thêm khi cần.</small>
+          </label>
+          <div className="inventory-name" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '12px', marginTop: '6px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 600, color: '#166534' }}>
+              <input
+                type="checkbox"
+                checked={form.isConsignment}
+                disabled={saving}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setForm((prev) => ({
+                    ...prev,
+                    isConsignment: checked,
+                    purchasePrice: checked ? '0' : prev.purchasePrice,
+                  }));
+                }}
+              />
+              Hàng ký gửi tiếp thị (Vốn 0đ - Trả tiền sau khi bán được)
+            </label>
+            {form.isConsignment && (
+              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.88rem' }}>
+                <label>
+                  <span>Giá sỉ thỏa thuận trả lại cho NCC (khi bán lẻ thành công):</span>
+                  <input
+                    type="number"
+                    min={0}
+                    value={form.settlementPrice}
+                    disabled={saving}
+                    onChange={(e) => setForm({ ...form, settlementPrice: e.target.value })}
+                    placeholder="Ví dụ: 15000"
+                    style={{ width: '100%', padding: '6px 8px', marginTop: '4px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                  />
+                  <small style={{ color: '#047857' }}>Tiền vốn thực tế ban đầu bỏ ra là 0đ. Chỉ trả tiền sau khi khách lẻ đã mua.</small>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.autoExchangeExpiry}
+                    disabled={saving}
+                    onChange={(e) => setForm({ ...form, autoExchangeExpiry: e.target.checked })}
+                  />
+                  <span>Tự động kích hoạt đổi date mới 100% khi hàng cận hạn sử dụng</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.autoRestock}
+                    disabled={saving}
+                    onChange={(e) => setForm({ ...form, autoRestock: e.target.checked })}
+                  />
+                  <span>Tự động kích hoạt đề xuất bù hàng khi sắp hết hàng</span>
+                </label>
+              </div>
+            )}
+          </div>
           {error && (
             <p className="error-notice inventory-name" role="alert">
               {error}
@@ -1470,6 +1743,243 @@ export default function StoreInventory({
         isOpen={exportSalesOpen}
         onClose={() => setExportSalesOpen(false)}
       />
+      {requestingConsignment && (
+        <ConsignmentRequestDialog
+          item={requestingConsignment.item}
+          type={requestingConsignment.type}
+          onClose={() => setRequestingConsignment(null)}
+          onSubmit={async (qty, note) => {
+            try {
+              const res = await createConsignmentRequest(requestingConsignment.item.id, {
+                type: requestingConsignment.type,
+                requestedQty: qty,
+                note,
+              });
+              setNotice(res.message);
+              await refresh();
+            } catch (err) {
+              setError(getApiError(err));
+            }
+          }}
+        />
+      )}
+      {showConsignmentHistory && (
+        <ConsignmentHistoryDialog
+          requests={consignmentRequests}
+          onClose={() => setShowConsignmentHistory(false)}
+          onConfirmReceipt={async (requestId) => {
+            try {
+              const res = await confirmConsignmentReceipt(requestId);
+              setNotice(res.message);
+              await refresh();
+            } catch (err) {
+              setError(getApiError(err));
+            }
+          }}
+        />
+      )}
+      <ContractSigningModal
+        isOpen={showContractModal}
+        onClose={() => setShowContractModal(false)}
+        onSignedSuccess={() => {
+          setShowContractModal(false);
+          setContractSigned(true);
+          setNotice('Đã ký kết hợp đồng điện tử thành công!');
+          setContractRefreshKey((prev) => prev + 1);
+          setActiveTab('profile');
+        }}
+        user={user}
+      />
     </main>
+  );
+}
+
+function ConsignmentRequestDialog({
+  item,
+  type,
+  onClose,
+  onSubmit,
+}: {
+  item: Item;
+  type: 'RESTOCK' | 'EXCHANGE_EXPIRY';
+  onClose: () => void;
+  onSubmit: (requestedQty: number, note: string) => Promise<void>;
+}) {
+  const [requestedQty, setRequestedQty] = useState(
+    type === 'EXCHANGE_EXPIRY' ? item.quantity : Math.max(1, (item.lowThreshold || 5) * 2),
+  );
+  const [note, setNote] = useState(
+    type === 'EXCHANGE_EXPIRY'
+      ? `Hàng cận date (HSD ${item.expiryDate?.slice(0, 10)}). Đề xuất thu hồi và đổi đợt date mới 100%.`
+      : `Hàng sắp hết (còn ${item.quantity} ${item.unit}). Đề xuất nhà cung cấp cấp bù thêm đợt mới.`,
+  );
+  const [busy, setBusy] = useState(false);
+
+  async function handleSend(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await onSubmit(Number(requestedQty), note);
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="supplier-dialog-backdrop">
+      <form className="supplier-dialog" onSubmit={handleSend} style={{ maxWidth: '500px' }}>
+        <span className="supplier-panel-label">
+          {type === 'EXCHANGE_EXPIRY' ? 'THU HỒI & ĐỔI DATE MỚI' : 'CẤP BÙ HÀNG MỚI'}
+        </span>
+        <h2>{item.name}</h2>
+        <p style={{ color: '#4b5563', fontSize: '0.9rem', margin: '4px 0 12px' }}>
+          Nhà cung cấp: <strong>{item.supplierName || 'Chưa rõ'}</strong> · Đơn vị: <strong>{item.unit}</strong>
+        </p>
+        <label className="supplier-dialog-field">
+          <span>{type === 'EXCHANGE_EXPIRY' ? 'Số lượng cần thu hồi & đổi mới' : 'Số lượng cần cấp bù thêm'}:</span>
+          <input
+            type="number"
+            min={1}
+            required
+            value={requestedQty}
+            onChange={(e) => setRequestedQty(Number(e.target.value))}
+            style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+          />
+        </label>
+        <label className="supplier-dialog-field" style={{ marginTop: '10px' }}>
+          <span>Ghi chú cho nhà cung cấp:</span>
+          <textarea
+            rows={3}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+          />
+        </label>
+        <div className="supplier-dialog-actions" style={{ marginTop: '16px', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+          <button type="button" className="ghost-button" disabled={busy} onClick={onClose}>
+            Hủy
+          </button>
+          <button type="submit" className="dash-primary" disabled={busy}>
+            {busy ? 'Đang gửi…' : 'Gửi yêu cầu đến nhà cung cấp'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function ConsignmentHistoryDialog({
+  requests,
+  onClose,
+  onConfirmReceipt,
+}: {
+  requests: ConsignmentRequest[];
+  onClose: () => void;
+  onConfirmReceipt: (requestId: string) => Promise<void>;
+}) {
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  async function handleConfirm(id: string) {
+    setConfirmingId(id);
+    try {
+      await onConfirmReceipt(id);
+    } finally {
+      setConfirmingId(null);
+    }
+  }
+
+  return (
+    <div className="supplier-dialog-backdrop">
+      <div className="supplier-dialog" style={{ maxWidth: '680px', maxHeight: '85vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <div>
+            <span className="supplier-panel-label">HÀNG TIẾP THỊ & KÝ GỬI</span>
+            <h2>Theo dõi yêu cầu bù hàng / đổi date</h2>
+          </div>
+          <button className="dialog-close" onClick={onClose} style={{ fontSize: '24px', cursor: 'pointer', border: 'none', background: 'none' }}>
+            ×
+          </button>
+        </div>
+
+        {!requests.length ? (
+          <p style={{ textAlign: 'center', color: '#64748b', padding: '30px 0' }}>
+            Chưa có yêu cầu bù hàng hoặc đổi date nào.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {requests.map((r) => (
+              <div
+                key={r.id}
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '12px 14px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px' }}>
+                  <div>
+                    <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>{r.id} · {new Date(r.createdAt).toLocaleDateString('vi-VN')}</span>
+                    <h3 style={{ margin: '2px 0', fontSize: '1.05rem', color: '#0f172a' }}>{r.productName}</h3>
+                    <p style={{ margin: 0, fontSize: '0.88rem', color: '#475569' }}>
+                      NCC: <strong>{r.supplierName}</strong>
+                    </p>
+                  </div>
+                  <div>
+                    {r.type === 'RESTOCK' ? (
+                      <span style={{ background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
+                        Cấp bù {r.requestedQty} {r.unit}
+                      </span>
+                    ) : (
+                      <span style={{ background: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
+                        Đổi date mới ({r.requestedQty} {r.unit})
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {r.note && (
+                  <p style={{ margin: '6px 0', fontSize: '0.85rem', color: '#334155', background: '#fff', padding: '6px 8px', borderRadius: '4px', border: '1px solid #f1f5f9' }}>
+                    <strong>Ghi chú:</strong> {r.note}
+                  </p>
+                )}
+
+                {r.status === 'DISPATCHED' && r.driverInfo && (
+                  <div style={{ marginTop: '8px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', padding: '8px 10px', fontSize: '0.86rem', color: '#1e40af' }}>
+                    <div style={{ fontWeight: 600, marginBottom: '2px' }}>Chuyến xe giao bù / đổi date đang đến:</div>
+                    <div>Tài xế: <strong>{r.driverInfo.driverName}</strong> · SĐT: <a href={`tel:${r.driverInfo.driverPhone}`} style={{ color: '#1d4ed8' }}>{r.driverInfo.driverPhone}</a></div>
+                    <div>Phương tiện: {r.driverInfo.vehicleType || 'Xe'} · Biển số: <strong>{r.driverInfo.licensePlate || 'N/A'}</strong></div>
+                    {r.driverInfo.estimatedDeliveryTime && <div>Dự kiến đến: <strong>{r.driverInfo.estimatedDeliveryTime}</strong></div>}
+                    {r.newExpiryDate && <div>HSD lô mới bàn giao: <strong>{r.newExpiryDate.split('-').reverse().join('/')}</strong></div>}
+                  </div>
+                )}
+
+                <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: r.status === 'COMPLETED' ? '#16a34a' : r.status === 'DISPATCHED' ? '#2563eb' : r.status === 'REJECTED' ? '#dc2626' : '#d97706' }}>
+                    {r.status === 'PENDING' && 'Đang chờ nhà cung cấp tiếp nhận'}
+                    {r.status === 'DISPATCHED' && 'Đang giao xe bù/đổi'}
+                    {r.status === 'COMPLETED' && 'Đã hoàn tất giao bù & thu hồi'}
+                    {r.status === 'REJECTED' && 'Nhà cung cấp từ chối'}
+                  </span>
+
+                  {r.status === 'DISPATCHED' && (
+                    <button
+                      type="button"
+                      className="dash-primary"
+                      style={{ padding: '4px 10px', fontSize: '12px' }}
+                      disabled={confirmingId === r.id}
+                      onClick={() => handleConfirm(r.id)}
+                    >
+                      {confirmingId === r.id ? 'Đang xác nhận…' : 'Đã nhận được hàng'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

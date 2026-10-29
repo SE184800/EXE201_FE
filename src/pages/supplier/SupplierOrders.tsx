@@ -4,6 +4,7 @@ import '../catalog.css';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
 import TopbarBalance from '../../components/TopbarBalance';
+import SupplierHeader from '../../components/SupplierHeader';
 import OrderList from '../../components/OrderList';
 import { getApiError, isUnauthenticated } from '../../services/api';
 import { logout } from '../../services/auth.api';
@@ -137,24 +138,24 @@ export default function SupplierOrders({
 
   return (
     <main className="supplier-page">
-      <header className="supplier-header">
-        <Brand />
-        <div className="supplier-header-actions">
-          <TopbarBalance linkTo="/supplier/wallet" />
-          {user && (
-            <span>
-              <strong>{user.name}</strong>
-              <small>Chủ vựa / Đại lý bỏ mối</small>
-            </span>
-          )}
-          <Link className="ghost-button catalog-link" to="/supplier">
-            ← Tổng quan chủ vựa
-          </Link>
-          <button className="secondary-button" onClick={handleLogout} disabled={busy}>
-            <Icon name="logout" /> Đăng xuất
-          </button>
-        </div>
-      </header>
+      {user ? (
+        <SupplierHeader
+          user={user}
+          activeNav="orders"
+          onLogout={handleLogout}
+          loggingOut={busy}
+        />
+      ) : (
+        <header className="supplier-header">
+          <Brand />
+          <div className="supplier-header-actions">
+            <TopbarBalance linkTo="/supplier/wallet" />
+            <button className="secondary-button" onClick={handleLogout} disabled={busy}>
+              <Icon name="logout" /> Đăng xuất
+            </button>
+          </div>
+        </header>
+      )}
       <section className="supplier-main">
         <nav className="catalog-nav" aria-label="Chủ vựa">
           <Link to="/supplier">Tổng quan</Link>
@@ -371,8 +372,8 @@ function DispatchDriverDialog({
         <span className="supplier-panel-label">ĐƠN #{order.id} · {order.buyer?.name || 'Tạp hóa'}</span>
         <h2 id="dispatch-dialog-title">
           {order.status === 'PREPARING'
-            ? '🚚 Điền thông tin tài xế & Bàn giao vận chuyển'
-            : '✏️ Cập nhật thông tin tài xế'}
+            ? 'Điền thông tin tài xế & Bàn giao vận chuyển'
+            : 'Cập nhật thông tin tài xế'}
         </h2>
         <p style={{ fontSize: '13px', color: '#64748b', marginTop: '2px', marginBottom: '14px' }}>
           Điền thông tin tài xế và chuyến xe để tiệm tạp hóa tiện theo dõi đơn hàng và liên hệ khi xe tới.
@@ -522,7 +523,7 @@ function DispatchDriverDialog({
                 disabled={busy}
                 style={{ fontWeight: 600 }}
               >
-                {busy ? 'Đang xử lý…' : '🚚 Bàn giao xe & Xuất phát'}
+                {busy ? 'Đang xử lý…' : 'Bàn giao xe & Xuất phát'}
               </button>
             </>
           ) : (

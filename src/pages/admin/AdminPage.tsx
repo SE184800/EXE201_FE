@@ -394,10 +394,33 @@ function Overview({ onLogout }: Props) {
 function DeleteUserDialog({
   user,
   onClose,
+  onSuccess,
+  onLogout,
 }: {
   user: Account;
   onClose: () => void;
+  onSuccess?: () => void;
+  onLogout?: () => void;
 }) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleDelete = async () => {
+    setError('');
+    setDeleting(true);
+    try {
+      await api.delete(`/admin/users/${user.id}`);
+      onSuccess?.();
+    } catch (err) {
+      if (isUnauthenticated(err) && onLogout) {
+        onLogout();
+        return;
+      }
+      setError(getApiError(err));
+      setDeleting(false);
+    }
+  };
+
   return (
     <div
       role="dialog"
@@ -414,7 +437,7 @@ function DeleteUserDialog({
         backdropFilter: 'blur(3px)',
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && !deleting) onClose();
       }}
     >
       <div
@@ -449,14 +472,15 @@ function DeleteUserDialog({
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: '20px',
+              fontWeight: 700,
               flexShrink: 0,
             }}
           >
-            ⚠️
+            !
           </span>
           <div>
             <h3 style={{ margin: 0, color: '#9F1239', fontSize: '17px', fontWeight: 700 }}>
-              Yêu cầu xóa tài khoản người dùng
+              Xóa tài khoản người dùng
             </h3>
             <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#BE123C' }}>
               Người dùng: <strong>{user.name}</strong> (@{user.username} · #{user.id})
@@ -467,43 +491,25 @@ function DeleteUserDialog({
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div
             style={{
-              backgroundColor: '#FFFBEB',
-              border: '1px solid #FDE68A',
+              backgroundColor: '#FEF2F2',
+              border: '1px solid #FECACA',
               borderRadius: '10px',
               padding: '14px 16px',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-              <span style={{ fontSize: '16px' }}>📋</span>
-              <strong style={{ color: '#92400E', fontSize: '14px' }}>
-                Lưu ý nghiệp vụ hệ thống (Pending Roadmap):
-              </strong>
-            </div>
-            <p style={{ margin: 0, fontSize: '13px', color: '#B45309', lineHeight: 1.55 }}>
-              Luồng <strong>xóa người dùng khỏi hệ thống</strong> là một luồng quan trọng cần giải quyết nhưng <strong>chưa kích hoạt xử lý tại thời điểm này</strong> do các ràng buộc toàn vẹn dữ liệu:
+            <p style={{ margin: 0, fontSize: '13.5px', color: '#991B1B', lineHeight: 1.6 }}>
+              Hành động này sẽ <strong>xóa vĩnh viễn</strong> tài khoản người dùng <strong>@{user.username}</strong> và toàn bộ dữ liệu kiểm thử liên quan (hồ sơ cửa hàng, kho hàng, hợp đồng, ví giả lập).
             </p>
-            <ul style={{ margin: '8px 0 0 18px', padding: 0, fontSize: '13px', color: '#92400E', lineHeight: 1.5 }}>
-              <li>Lịch sử đơn đặt hàng sỉ (Wholesale Orders) và biên bản đối soát tài chính.</li>
-              <li>Số dư ký quỹ / ví tiền trung gian (Escrow) chưa thanh toán xong.</li>
-              <li>Danh mục kho hàng tồn & nhật ký kiểm toán hệ thống (Audit Logs).</li>
-            </ul>
+            <p style={{ margin: '8px 0 0 0', fontSize: '12.5px', color: '#B91C1C', lineHeight: 1.5 }}>
+              Sau khi xóa, tên đăng nhập và số điện thoại/email này có thể được sử dụng để <strong>đăng ký lại tài khoản mới</strong> phục vụ mục đích kiểm thử hệ thống.
+            </p>
           </div>
 
-          <div
-            style={{
-              backgroundColor: '#F8FAFC',
-              border: '1px solid #E2E8F0',
-              borderRadius: '10px',
-              padding: '14px 16px',
-            }}
-          >
-            <strong style={{ color: '#334155', fontSize: '13px' }}>
-              💡 Khuyến nghị xử lý an toàn hiện tại:
-            </strong>
-            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748B', lineHeight: 1.5 }}>
-              Nếu cần chặn quyền truy cập của người dùng này ngay lập tức, Quản trị viên vui lòng sử dụng chức năng <strong>Khóa vĩnh viễn (BANNED)</strong> hoặc <strong>Khóa tạm thời (SUSPENDED)</strong> trong phần Quản lý. Tài khoản sẽ bị đăng xuất tức thì khỏi toàn bộ phiên làm việc mà vẫn đảm bảo tính toàn vẹn của sổ sách kế toán.
+          {error && (
+            <p style={{ margin: 0, color: '#DC2626', fontSize: '13px', backgroundColor: '#FEF2F2', padding: '10px 14px', borderRadius: '8px', border: '1px solid #FECACA' }}>
+              {error}
             </p>
-          </div>
+          )}
         </div>
 
         <div
@@ -518,6 +524,7 @@ function DeleteUserDialog({
         >
           <button
             type="button"
+            disabled={deleting}
             onClick={onClose}
             style={{
               padding: '8px 20px',
@@ -527,10 +534,30 @@ function DeleteUserDialog({
               color: '#334155',
               fontWeight: 600,
               fontSize: '14px',
-              cursor: 'pointer',
+              cursor: deleting ? 'not-allowed' : 'pointer',
             }}
           >
-            Đã ghi nhận (Đóng)
+            Hủy bỏ
+          </button>
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={handleDelete}
+            style={{
+              padding: '8px 20px',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: '#E11D48',
+              color: '#FFFFFF',
+              fontWeight: 600,
+              fontSize: '14px',
+              cursor: deleting ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            {deleting ? 'Đang xóa...' : 'Xác nhận xóa vĩnh viễn'}
           </button>
         </div>
       </div>
@@ -545,7 +572,8 @@ function Users({ onLogout }: Props) {
   const [query, setQuery] = useState({ q: '', role: '', status: '', page: 1 }),
     [revision, setRevision] = useState(0),
     [selected, setSelected] = useState<Account | null>(null),
-    [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
+    [deleteTarget, setDeleteTarget] = useState<Account | null>(null),
+    [userToast, setUserToast] = useState('');
   const { data, error, loading } = useAdminData<List & { users: Account[] }>(
     '/admin/users',
     query,
@@ -559,6 +587,23 @@ function Users({ onLogout }: Props) {
         title="Người dùng"
         description="Quản lý gói sử dụng, khóa tạm thời hoặc khóa vĩnh viễn chủ tạp hóa và chủ vựa. Mọi thao tác đều được lưu vào nhật ký."
       />
+      {userToast && (
+        <div
+          role="status"
+          style={{
+            backgroundColor: '#ECFDF5',
+            border: '1px solid #A7F3D0',
+            color: '#065F46',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            marginBottom: '16px',
+            fontSize: '14px',
+            fontWeight: 600,
+          }}
+        >
+          {userToast}
+        </div>
+      )}
       <form
         className="admin-filters"
         onSubmit={(e) => {
@@ -658,9 +703,9 @@ function Users({ onLogout }: Props) {
                               gap: '4px',
                             }}
                             onClick={() => setDeleteTarget(user)}
-                            title="Xóa người dùng (Luồng đang xem xét)"
+                            title="Xóa vĩnh viễn tài khoản người dùng"
                           >
-                            <span>🗑️</span> Xóa
+                            Xóa
                           </button>
                         </div>
                       </td>
@@ -691,6 +736,14 @@ function Users({ onLogout }: Props) {
         <DeleteUserDialog
           user={deleteTarget}
           onClose={() => setDeleteTarget(null)}
+          onSuccess={() => {
+            const deletedName = deleteTarget.name;
+            setDeleteTarget(null);
+            setRevision((n) => n + 1);
+            setUserToast(`Đã xóa vĩnh viễn tài khoản "${deletedName}" thành công.`);
+            setTimeout(() => setUserToast(''), 4000);
+          }}
+          onLogout={onLogout}
         />
       )}
     </>
@@ -858,7 +911,7 @@ function AccountDialog({
             }}
             onClick={() => setShowDeleteNotice(true)}
           >
-            🗑️ Xóa người dùng
+            Xóa người dùng
           </button>
         </div>
         <div className="admin-dialog-actions">
@@ -875,6 +928,11 @@ function AccountDialog({
         <DeleteUserDialog
           user={user}
           onClose={() => setShowDeleteNotice(false)}
+          onSuccess={() => {
+            setShowDeleteNotice(false);
+            onSaved();
+          }}
+          onLogout={onLogout}
         />
       )}
     </AdminDialog>
@@ -2230,7 +2288,7 @@ function ModerationDetailDialog({
                 flexShrink: 0,
               }}
             >
-              🤖
+              AI
             </span>
             <div>
               <h3 style={{ margin: 0, color: '#92400E', fontSize: '17px', fontWeight: 700 }}>
@@ -2254,7 +2312,7 @@ function ModerationDetailDialog({
               padding: '4px 8px',
             }}
           >
-            ✕
+            ×
           </button>
         </div>
 
@@ -2278,7 +2336,6 @@ function ModerationDetailDialog({
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ fontSize: '16px' }}>⚠️</span>
                 <strong style={{ color: '#991B1B', fontSize: '14px' }}>
                   Phân tích rủi ro từ AI Engine
                 </strong>
@@ -2312,7 +2369,7 @@ function ModerationDetailDialog({
           {/* Product Details Grid */}
           <div>
             <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>📦</span> Thông tin sản phẩm đăng bán
+              Thông tin sản phẩm đăng bán
             </h4>
             <div
               style={{
@@ -2372,7 +2429,7 @@ function ModerationDetailDialog({
           {/* Supplier Info */}
           <div>
             <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>🏢</span> Thông tin đối tác đăng bán (Chủ vựa)
+              Thông tin đối tác đăng bán (Chủ vựa)
             </h4>
             <div
               style={{
@@ -2425,7 +2482,7 @@ function ModerationDetailDialog({
                     color: item.supplierVerificationStatus === 'APPROVED' ? '#15803D' : '#64748B',
                   }}
                 >
-                  {item.supplierVerificationStatus === 'APPROVED' ? '✓ Đã xác minh' : 'Chưa xác minh'}
+                  {item.supplierVerificationStatus === 'APPROVED' ? 'Đã xác minh' : 'Chưa xác minh'}
                 </span>
               </div>
             </div>
@@ -2501,7 +2558,7 @@ function ModerationDetailDialog({
                 gap: '6px',
               }}
             >
-              <span>🚫</span> {busy ? 'Đang xử lý…' : 'Từ chối đăng bán'}
+              {busy ? 'Đang xử lý…' : 'Từ chối đăng bán'}
             </button>
             <button
               type="button"
@@ -2521,7 +2578,7 @@ function ModerationDetailDialog({
                 gap: '6px',
               }}
             >
-              <span>✅</span> {busy ? 'Đang xử lý…' : 'Duyệt đăng bán'}
+              {busy ? 'Đang xử lý…' : 'Duyệt đăng bán'}
             </button>
           </div>
         </div>
@@ -2614,7 +2671,7 @@ function ModerationQueue({ onLogout }: Props) {
                               fontSize: '12px',
                             }}
                           >
-                            ⚠️ Rủi ro {item.moderation.riskScore}%
+                            Rủi ro {item.moderation.riskScore}%
                           </span>
                         </td>
                         <td>
@@ -2638,7 +2695,7 @@ function ModerationQueue({ onLogout }: Props) {
                             }}
                             onClick={() => setSelectedItem(item)}
                           >
-                            <span>🔍</span> Xem chi tiết & Xử lý
+                            Xem chi tiết & Xử lý
                           </button>
                         </td>
                       </tr>
@@ -2880,7 +2937,7 @@ function AiSystemConfig({ onLogout }: Props) {
                 gap: '6px',
               }}
             >
-              {saving ? 'Đang lưu…' : '✓ Lưu cấu hình'}
+              {saving ? 'Đang lưu…' : 'Lưu cấu hình'}
             </button>
           </div>
         }
@@ -2923,7 +2980,7 @@ function AiSystemConfig({ onLogout }: Props) {
             marginBottom: '20px',
           }}
         >
-          ✓ {saveSuccess}
+          {saveSuccess}
         </p>
       )}
 
@@ -2944,7 +3001,7 @@ function AiSystemConfig({ onLogout }: Props) {
                 Admin điều chỉnh tỷ lệ phần trăm tiền cọc đảm bảo hợp đồng sỉ giữa tiệm tạp hóa và chủ vựa. Tiền cọc được tạm giữ an toàn trong hệ thống ký quỹ cho đến khi đơn hàng hoàn tất.
               </p>
             </div>
-            <span style={{ fontSize: '28px' }}>💰</span>
+            
           </div>
 
           <div className="admin-config-grid">
@@ -3046,7 +3103,7 @@ function AiSystemConfig({ onLogout }: Props) {
                 Khi sản phẩm có chứa bất kỳ từ cấm nào bên dưới (trong tên, danh mục, quy cách hoặc mô tả), AI sẽ ngay lập tức từ chối và cấm đăng bán thẳng để bảo vệ an toàn sàn.
               </p>
             </div>
-            <span style={{ fontSize: '28px' }}>🚫</span>
+            
           </div>
 
           <div className="admin-tag-input-row">
@@ -3079,7 +3136,7 @@ function AiSystemConfig({ onLogout }: Props) {
             </span>
             <input
               type="text"
-              placeholder="🔍 Lọc nhanh từ cấm..."
+              placeholder="Lọc nhanh từ cấm..."
               value={forbiddenSearch}
               onChange={(e) => setForbiddenSearch(e.target.value)}
               style={{
@@ -3104,7 +3161,7 @@ function AiSystemConfig({ onLogout }: Props) {
                     title={`Xóa từ "${word}" khỏi danh sách từ cấm`}
                     aria-label={`Xóa ${word}`}
                   >
-                    ✕
+                    ×
                   </button>
                 </span>
               ))
@@ -3126,7 +3183,7 @@ function AiSystemConfig({ onLogout }: Props) {
                 Sản phẩm chứa các từ khóa này (thuốc lá, xì gà, rượu, thực phẩm chức năng...) sẽ không bị cấm ngay mà được đưa vào Hàng chờ duyệt để Admin kiểm tra giấy phép kinh doanh.
               </p>
             </div>
-            <span style={{ fontSize: '28px' }}>⚠️</span>
+            
           </div>
 
           <div className="admin-tag-input-row">
@@ -3159,7 +3216,7 @@ function AiSystemConfig({ onLogout }: Props) {
             </span>
             <input
               type="text"
-              placeholder="🔍 Lọc từ hạn chế..."
+              placeholder="Lọc từ hạn chế..."
               value={restrictedSearch}
               onChange={(e) => setRestrictedSearch(e.target.value)}
               style={{
@@ -3184,7 +3241,7 @@ function AiSystemConfig({ onLogout }: Props) {
                     title={`Xóa từ "${word}" khỏi danh sách hạn chế`}
                     aria-label={`Xóa ${word}`}
                   >
-                    ✕
+                    ×
                   </button>
                 </span>
               ))
@@ -3206,7 +3263,7 @@ function AiSystemConfig({ onLogout }: Props) {
                 Điều chỉnh các ngưỡng giá tối thiểu/tối đa và số lượng MOQ để AI phát hiện kịp thời các hành vi phá giá, tạo đơn ảo hoặc số lượng phi thực tế.
               </p>
             </div>
-            <span style={{ fontSize: '28px' }}>⚙️</span>
+            
           </div>
 
           {/* Toggle Enable/Disable AI */}
@@ -3395,7 +3452,7 @@ function AiSystemConfig({ onLogout }: Props) {
               gap: '8px',
             }}
           >
-            {saving ? 'Đang lưu…' : '✓ Lưu toàn bộ cấu hình'}
+            {saving ? 'Đang lưu…' : 'Lưu toàn bộ cấu hình'}
           </button>
         </div>
       </div>

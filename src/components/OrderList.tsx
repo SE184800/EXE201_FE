@@ -420,7 +420,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
 
       {depositNotice && (
         <div className="deposit-flow-notice" role="status" aria-live="polite">
-          <strong>✓ Cập nhật thanh toán thành công</strong>
+          <strong>Cập nhật thanh toán thành công</strong>
           <span>{depositNotice}</span>
           <button type="button" aria-label="Đóng thông báo" onClick={() => setDepositNotice('')}>
             ×
@@ -430,7 +430,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
 
       {kind === 'supplier' && submittedDepositCount > 0 && (
         <div className="order-deposit-alert" role="status">
-          <strong>🔔 Có {submittedDepositCount} khoản cọc đang chờ bạn xác nhận</strong>
+          <strong>Có {submittedDepositCount} khoản cọc đang chờ bạn xác nhận</strong>
           <span>
             Kiểm tra tiền đã vào tài khoản ngân hàng, sau đó bấm “Xác nhận đã nhận cọc” trong đơn
             tương ứng.
@@ -526,7 +526,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                         <strong style={{ color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span>🔔</span> Yêu cầu dời giờ giao từ tiệm tạp hóa
+                          Yêu cầu dời giờ giao từ tiệm tạp hóa
                         </strong>
                         <span style={{ fontSize: '11px', color: '#92400e', fontWeight: 600, backgroundColor: '#fef3c7', padding: '2px 8px', borderRadius: '10px' }}>
                           Cần xác nhận
@@ -544,14 +544,14 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                           disabled={supplierRescheduleBusy === order.id}
                           onClick={() => void handleSupplierReschedule(order, 'ACCEPT')}
                         >
-                          {supplierRescheduleBusy === order.id ? 'Đang lưu…' : '✅ Đồng ý dời lịch'}
+                          {supplierRescheduleBusy === order.id ? 'Đang lưu…' : 'Đồng ý dời lịch'}
                         </button>
                         <a
                           href={`tel:${order.recipientPhone || '0908123456'}`}
                           className="ghost-button"
                           style={{ fontSize: '11px', padding: '4px 8px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                         >
-                          📞 Gọi cho Tiệm (${order.recipientPhone || '0908 123 456'})
+                          Gọi cho Tiệm (${order.recipientPhone || '0908 123 456'})
                         </a>
                         <button
                           type="button"
@@ -563,7 +563,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                             setRejectRescheduleReason('');
                           }}
                         >
-                          ❌ Không thể dời
+                          Không thể dời
                         </button>
                       </div>
                     </div>
@@ -580,7 +580,6 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                        <span>⏰</span>
                         <span>ĐÃ GỬI YÊU CẦU DỜI LỊCH GIAO: Đang chờ chủ vựa xác nhận.</span>
                       </div>
                       <small style={{ display: 'block', marginTop: '2px', color: '#b45309' }}>
@@ -606,7 +605,6 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                         gap: '6px',
                       }}
                     >
-                      <span>✅</span>
                       <strong>ĐÃ THỐNG NHẤT DỜI LỊCH GIAO: Chủ vựa đã xác nhận đổi tuyến giao theo giờ hẹn của tiệm.</strong>
                     </div>
                   );
@@ -628,7 +626,6 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                         gap: '6px',
                       }}
                     >
-                      <span>⚠️</span>
                       <strong>CHỦ VỰA KHÔNG THỂ DỜI LỊCH: Vui lòng sắp xếp người nhận hàng hoặc gọi trực tiếp cho vựa.</strong>
                     </div>
                   );
@@ -667,7 +664,6 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                         fontSize: '13px',
                       }}
                     >
-                      <span>{order.status === 'PREPARING' ? '📦' : '🚚'}</span>
                       {order.status === 'PREPARING'
                         ? 'Đã chuẩn bị hàng xong · Sẵn sàng vận chuyển'
                         : 'Đang trên đường vận chuyển'}
@@ -682,10 +678,10 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       }}
                     >
                       {order.driverInfo?.estimatedDeliveryTime
-                        ? `⏱️ Dự kiến giao: ${order.driverInfo.estimatedDeliveryTime}`
+                        ? `Dự kiến giao: ${order.driverInfo.estimatedDeliveryTime}`
                         : order.status === 'PREPARING'
-                          ? '⏱️ Dự kiến: Sắp xếp chuyến xe sớm nhất'
-                          : '⏱️ Dự kiến giao: trong 30 – 45 phút tới'}
+                          ? 'Dự kiến: Sắp xếp chuyến xe sớm nhất'
+                          : 'Dự kiến giao: trong 30 – 45 phút tới'}
                     </span>
                   </div>
 
@@ -699,10 +695,10 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                     }}
                   >
                     <div>
-                      <span>📍 <strong>Kho xuất phát:</strong> </span>
+                      <span><strong>Kho xuất phát:</strong> </span>
                       <span>{order.supplier?.warehouseAddress || 'Kho vựa phân phối'}</span>
                       <div style={{ marginTop: '4px' }}>
-                        <span>🛵 <strong>Phương tiện:</strong> </span>
+                        <span><strong>Phương tiện:</strong> </span>
                         <span
                           style={{
                             backgroundColor: '#e0e7ff',
@@ -733,7 +729,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       </div>
                     </div>
                     <div>
-                      <span>👤 <strong>Tài xế giao hàng:</strong> </span>
+                      <span><strong>Tài xế giao hàng:</strong> </span>
                       <strong>
                         {order.driverInfo?.driverName ||
                           (order.supplier?.businessName
@@ -741,7 +737,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                             : 'Đội giao vận chủ vựa')}
                       </strong>
                       <br />
-                      <span>📞 <strong>Số điện thoại tài xế:</strong> </span>
+                      <span><strong>Số điện thoại tài xế:</strong> </span>
                       <a
                         href={`tel:${order.driverInfo?.driverPhone || order.supplier?.phone || '0908123789'}`}
                         style={{
@@ -754,7 +750,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       </a>
                       {order.driverInfo?.deliveryNotes && (
                         <div style={{ marginTop: '4px', fontSize: '11px', color: '#475569' }}>
-                          <span>📝 <strong>Ghi chú chuyến xe:</strong> <em>{order.driverInfo.deliveryNotes}</em></span>
+                          <span><strong>Ghi chú chuyến xe:</strong> <em>{order.driverInfo.deliveryNotes}</em></span>
                         </div>
                       )}
                     </div>
@@ -773,7 +769,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                     }}
                   >
                     <span style={{ color: '#475569', fontSize: '11px' }}>
-                      💡 {order.status === 'PREPARING'
+                      {order.status === 'PREPARING'
                         ? 'Hàng đã chuẩn bị xong. Tiệm có thể hẹn dời giờ nhận ngay trước khi xe lăn bánh để vựa chủ động sắp chuyến.'
                         : 'Nếu bạn có việc bận đi vắng, hãy gọi tài xế hoặc bấm Hẹn dời giờ nhận để tài xế chủ động tuyến đường.'}
                     </span>
@@ -790,7 +786,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                           gap: '4px',
                         }}
                       >
-                        📞 Gọi tài xế / vựa
+                        Gọi tài xế / vựa
                       </a>
                       {kind === 'supplier' && onEditDriver && (
                         <button
@@ -799,7 +795,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                           style={{ fontSize: '11px', padding: '4px 10px', backgroundColor: '#475569' }}
                           onClick={() => onEditDriver(order)}
                         >
-                          ✏️ {order.driverInfo ? 'Sửa thông tin tài xế' : 'Gán tài xế'}
+                          {order.driverInfo ? 'Sửa thông tin tài xế' : 'Gán tài xế'}
                         </button>
                       )}
                       {kind === 'store' && (
@@ -815,7 +811,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                             setRescheduleMessage('');
                           }}
                         >
-                          ⏰ Hẹn dời giờ nhận hàng
+                          Hẹn dời giờ nhận hàng
                         </button>
                       )}
                     </div>
@@ -831,9 +827,9 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                     </strong>
                     <span>
                       {order.depositReference === 'VÍ_HỆ_THỐNG' && order.depositStatus === 'PAID'
-                        ? '🔒 Đã ký quỹ qua Ví hệ thống (An toàn)'
+                        ? 'Đã ký quỹ qua Ví hệ thống (An toàn)'
                         : order.depositReference === 'VÍ_HỆ_THỐNG' && order.depositStatus === 'REFUNDED'
-                          ? '↩️ Đã hoàn cọc vào Ví hệ thống'
+                          ? 'Đã hoàn cọc vào Ví hệ thống'
                           : order.depositStatus === 'PENDING'
                             ? 'Chờ cửa hàng chuyển cọc'
                             : order.depositStatus === 'SUBMITTED'
@@ -863,7 +859,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       }}
                     >
                       <strong style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span>🔒</span> Ký quỹ đảm bảo qua Ví hệ thống (Escrow)
+                        Ký quỹ đảm bảo qua Ví hệ thống (Escrow)
                       </strong>
                       <span>
                         {kind === 'store'
@@ -962,7 +958,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                             >
                               {depositBusy === order.id
                                 ? 'Đang ký quỹ…'
-                                : `🔒 Ký quỹ từ Ví (${money(order.depositAmount)})`}
+                                : `Ký quỹ từ Ví (${money(order.depositAmount)})`}
                             </button>
                             <button
                               className="ghost-button"
@@ -1098,7 +1094,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                         gap: '6px',
                       }}
                     >
-                      <span>⚠️</span> Báo cáo đơn hàng:{' '}
+                      Báo cáo đơn hàng:{' '}
                       {REASON_LABELS[order.complaint.reason] || order.complaint.reason}
                     </strong>
                     <span
@@ -1130,7 +1126,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                         />
                       </a>
                       <small style={{ display: 'block', color: '#78350f', fontSize: '11px', marginTop: '2px' }}>
-                        🔍 Bấm vào ảnh để xem kích thước lớn
+                        Bấm vào ảnh để xem kích thước lớn
                       </small>
                     </div>
                   )}
@@ -1145,7 +1141,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                         color: '#166534',
                       }}
                     >
-                      <strong>💬 Phản hồi từ Supplier:</strong> {order.complaint.response}
+                      <strong>Phản hồi từ Supplier:</strong> {order.complaint.response}
                     </div>
                   ) : (
                     <small
@@ -1173,7 +1169,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                           setComplaintMessage('');
                         }}
                       >
-                        ✍️ Xử lý báo cáo
+                        Xử lý báo cáo
                       </button>
                     </div>
                   )}
@@ -1264,7 +1260,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       setComplaintMessage('');
                     }}
                   >
-                    ⚠️ Báo cáo đơn hàng
+                    Báo cáo đơn hàng
                   </button>
                 </div>
               )}
@@ -1289,7 +1285,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       setComplaintMessage('');
                     }}
                   >
-                    ⚠️ Báo cáo đơn hàng
+                    Báo cáo đơn hàng
                   </button>
                 </div>
               )}
@@ -1331,7 +1327,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
           >
             <h2>
               {kind === 'store'
-                ? `⚠️ Báo hàng bị hỏng / thiếu (Đơn #${complaintOrder.id})`
+                ? `Báo hàng bị hỏng / thiếu (Đơn #${complaintOrder.id})`
                 : `Xử lý sự cố đơn hàng #${complaintOrder.id}`}
             </h2>
 
@@ -1354,13 +1350,13 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                     marginBottom: '12px',
                   }}
                 >
-                  ⏱️ <strong>Lưu ý:</strong> Vui lòng báo sự cố trong vòng 2 giờ kể từ khi nhận hàng để được hỗ trợ đối soát với shipper và giải quyết nhanh nhất.
+                  <strong>Lưu ý:</strong> Vui lòng báo sự cố trong vòng 2 giờ kể từ khi nhận hàng để được hỗ trợ đối soát với shipper và giải quyết nhanh nhất.
                 </div>
 
                 {/* Chụp ảnh / Tải ảnh */}
                 <div style={{ marginBottom: '14px' }}>
                   <label style={{ fontWeight: 600, display: 'block', marginBottom: '6px', fontSize: '13px' }}>
-                    📷 Chụp ảnh hàng hỏng / thiếu <span style={{ color: '#dc2626' }}>(Bắt buộc)</span>:
+                    Chụp ảnh hàng hỏng / thiếu <span style={{ color: '#dc2626' }}>(Bắt buộc)</span>:
                   </label>
                   <div
                     style={{
@@ -1383,7 +1379,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                     />
                     <label htmlFor="complaint-photo-upload" style={{ cursor: 'pointer', display: 'block' }}>
                       {uploadingImage ? (
-                        <span style={{ color: '#15803d', fontWeight: 600 }}>⏳ Đang tải ảnh lên…</span>
+                        <span style={{ color: '#15803d', fontWeight: 600 }}>Đang tải ảnh lên…</span>
                       ) : uploadedImageUrl ? (
                         <div>
                           <img
@@ -1398,13 +1394,12 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                             }}
                           />
                           <p style={{ margin: '6px 0 0', color: '#15803d', fontWeight: 600, fontSize: '12px' }}>
-                            ✓ Đã tải ảnh lên. Bấm để chụp lại ảnh khác
+                            Đã tải ảnh lên. Bấm để chụp lại ảnh khác
                           </p>
                         </div>
                       ) : (
                         <div>
-                          <span style={{ fontSize: '28px', display: 'block' }}>📷</span>
-                          <span style={{ fontWeight: 600, color: '#166534', fontSize: '14px' }}>
+                          <span style={{ fontWeight: 600, color: '#166534', fontSize: '14px', display: 'block' }}>
                             Bấm vào đây để Chụp ảnh hoặc Chọn ảnh
                           </span>
                           <small style={{ color: '#6b7280', display: 'block', marginTop: '2px' }}>
@@ -1423,10 +1418,10 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                   </span>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                     {[
-                      { code: 'DAMAGED', label: '💥 Hàng bị bể vỡ / hư hỏng' },
-                      { code: 'SHORTAGE', label: '📦 Giao thiếu số lượng' },
-                      { code: 'WRONG_ITEM', label: '🔄 Giao sai sản phẩm' },
-                      { code: 'EXPIRED', label: '⏳ Hàng cận date / hết hạn' },
+                      { code: 'DAMAGED', label: 'Hàng bị bể vỡ / hư hỏng' },
+                      { code: 'SHORTAGE', label: 'Giao thiếu số lượng' },
+                      { code: 'WRONG_ITEM', label: 'Giao sai sản phẩm' },
+                      { code: 'EXPIRED', label: 'Hàng cận date / hết hạn' },
                     ].map((item) => (
                       <label
                         key={item.code}
@@ -1554,7 +1549,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       />
                       <div>
                         <strong style={{ color: '#15803d' }}>
-                          💰 1. Đồng ý trừ tiền vào COD (Hàng hỏng / thiếu một phần)
+                          1. Đồng ý trừ tiền vào COD (Hàng hỏng / thiếu một phần)
                         </strong>
                         <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#4b5563' }}>
                           Giảm trừ phần hàng hỏng vào tiền COD. Tiền cọc 10% vẫn giải ngân cho bạn khi hoàn tất.
@@ -1623,7 +1618,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       />
                       <div>
                         <strong style={{ color: '#1d4ed8' }}>
-                          ↩️ 2. Nhận lại hàng & Hoàn cọc 100% (Hàng hỏng nặng / Giao sai)
+                          2. Nhận lại hàng & Hoàn cọc 100% (Hàng hỏng nặng / Giao sai)
                         </strong>
                         <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#4b5563' }}>
                           Đồng ý hủy đơn, nhận lại hàng. Hệ thống hoàn 100% cọc về Ví của tiệm và cộng trả tồn kho.
@@ -1651,7 +1646,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       />
                       <div>
                         <strong style={{ color: '#b91c1c' }}>
-                          ❌ 3. Bác bỏ: Khách từ chối nhận vô cớ (Bùng đơn)
+                          3. Bác bỏ: Khách từ chối nhận vô cớ (Bùng đơn)
                         </strong>
                         <p style={{ margin: '2px 0 0', fontSize: '12px', color: '#4b5563' }}>
                           Khách từ chối nhận hàng không có lý do. Tiền cọc 10% sẽ chuyển vào Ví của bạn để đền bù chi phí giao hàng.
@@ -1696,7 +1691,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
               </button>
               {kind === 'store' ? (
                 <button className="table-button danger" disabled={complaintBusy || uploadingImage || !uploadedImageUrl}>
-                  {complaintBusy ? 'Đang gửi…' : '🚀 Gửi báo cáo cho Chủ vựa'}
+                  {complaintBusy ? 'Đang gửi…' : 'Gửi báo cáo cho Chủ vựa'}
                 </button>
               ) : (
                 <button
@@ -1718,7 +1713,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
             style={{ maxWidth: '520px' }}
             onSubmit={handleReschedule}
           >
-            <h2>⏰ Hẹn dời giờ nhận hàng (Đơn #{rescheduleOrderTarget.id})</h2>
+            <h2>Hẹn dời giờ nhận hàng (Đơn #{rescheduleOrderTarget.id})</h2>
             <p className="catalog-hint" style={{ marginTop: 0 }}>
               Thông báo trước cho tài xế và chủ vựa (
               <strong>{rescheduleOrderTarget.supplier?.businessName || 'Chủ vựa'}</strong>) nếu bạn có việc bận đột xuất để dời lịch giao, hoàn toàn không tính là bùng đơn.
@@ -1730,10 +1725,10 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
               </span>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {[
-                  { code: '1_HOUR', label: '⏱️ Dời lại 1 tiếng nữa (Tôi đang ra ngoài có việc gấp)' },
-                  { code: 'THIS_AFTERNOON', label: '🌤️ Giao vào buổi chiều nay (14h00 – 16h30)' },
-                  { code: 'TOMORROW_MORNING', label: '🌅 Giao vào sáng mai (8h00 – 11h00)' },
-                  { code: 'CUSTOM', label: '✏️ Tự nhập thời gian khác...' },
+                  { code: '1_HOUR', label: 'Dời lại 1 tiếng nữa (Tôi đang ra ngoài có việc gấp)' },
+                  { code: 'THIS_AFTERNOON', label: 'Giao vào buổi chiều nay (14h00 – 16h30)' },
+                  { code: 'TOMORROW_MORNING', label: 'Giao vào sáng mai (8h00 – 11h00)' },
+                  { code: 'CUSTOM', label: 'Tự nhập thời gian khác...' },
                 ].map((item) => (
                   <label
                     key={item.code}
@@ -1824,7 +1819,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
               void handleSupplierReschedule(rejectRescheduleOrder, 'REJECT', rejectRescheduleReason);
             }}
           >
-            <h2>❌ Không thể dời lịch giao (Đơn #{rejectRescheduleOrder.id})</h2>
+            <h2>Không thể dời lịch giao (Đơn #{rejectRescheduleOrder.id})</h2>
             <p className="catalog-hint" style={{ marginTop: 0 }}>
               Nhập lý do không thể dời giờ giao (ví dụ: xe đã kín tuyến, hàng đông lạnh cần giao ngay, hoặc vựa hết chuyến giao trong ngày) để thông báo cho tiệm tạp hóa.
             </p>

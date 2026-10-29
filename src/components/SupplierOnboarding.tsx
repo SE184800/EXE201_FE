@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import Brand from './Brand';
 import Icon from './Icon';
 import { getApiError, getApiFieldErrors, isUnauthenticated } from '../services/api';
-import { saveSupplierProfile, type SupplierProfile } from '../services/supplier.api';
+import { quickVerifySupplier, saveSupplierProfile, type SupplierProfile } from '../services/supplier.api';
 import type { AuthUser } from '../types/auth';
 import { normalizePhone } from '../validation/registration';
 
@@ -32,21 +32,78 @@ export default function SupplierOnboarding({
   const [phone, setPhone] = useState(initialPhone || user.phone || '');
   const [taxCode, setTaxCode] = useState('');
   const [warehouseAddress, setWarehouseAddress] = useState('');
+  const [locationType, setLocationType] = useState<'STREET_FRONT' | 'ALLEY'>('STREET_FRONT');
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [isAddressVerified, setIsAddressVerified] = useState(false);
+  const [verifyingMap, setVerifyingMap] = useState(false);
+  const [mapVerifiedAddress, setMapVerifiedAddress] = useState<string | null>(null);
+  const [mapStatus, setMapStatus] = useState<'idle' | 'success' | 'not_found' | 'error'>('idle');
+
   const [fieldErrors, setFieldErrors] = useState<SupplierOnboardingErrors>({});
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  async function verifyAddressOnMap() {
+    const trimmed = warehouseAddress.trim();
+    if (!trimmed || trimmed.length < 5) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        warehouseAddress: 'Vui lòng nhập địa chỉ trước khi định vị bản đồ.',
+      }));
+      return;
+    }
+    setVerifyingMap(true);
+    setMapStatus('idle');
+    try {
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&countrycodes=vn&limit=1&q=${encodeURIComponent(
+          trimmed
+        )}`,
+        { headers: { 'Accept-Language': 'vi' } }
+      );
+      const results = await response.json();
+      if (Array.isArray(results) && results.length > 0) {
+        const first = results[0];
+        const lat = parseFloat(first.lat);
+        const lon = parseFloat(first.lon);
+        setLatitude(lat);
+        setLongitude(lon);
+        setIsAddressVerified(true);
+        setMapVerifiedAddress(first.display_name || trimmed);
+        setMapStatus('success');
+        setFieldErrors((prev) => ({ ...prev, warehouseAddress: undefined }));
+      } else {
+        setMapStatus('not_found');
+        setIsAddressVerified(false);
+      }
+    } catch {
+      setMapStatus('error');
+    } finally {
+      setVerifyingMap(false);
+    }
+  }
 
   function validate(): SupplierOnboardingErrors {
     const errors: SupplierOnboardingErrors = {};
     const trimmedName = businessName.trim().replace(/\s+/g, ' ');
     if (!trimmedName || trimmedName.length < 2 || trimmedName.length > 150) {
-      errors.businessName = 'Tên gian hàng / đại lý cần từ 2 đến 150 ký tự.';
+      errors.businessName = 'Tên gian hàng / vựa sỉ cần từ 2 đến 150 ký tự.';
     }
 
     const trimmedAddress = warehouseAddress.trim().replace(/\s+/g, ' ');
     if (!trimmedAddress || trimmedAddress.length < 10 || trimmedAddress.length > 255) {
       errors.warehouseAddress =
         'Địa chỉ kho bãi cần chi tiết từ 10 đến 255 ký tự (Số nhà, tên đường, phường/xã, quận/huyện, tỉnh/thành).';
+    } else {
+      const hasAdmin =
+        /(phường|xã|thị trấn|quận|huyện|thị xã|thành phố|tỉnh|tp\.|q\.|h\.|p\.|x\.)/i.test(trimmedAddress) ||
+        trimmedAddress.includes(',') ||
+        trimmedAddress.split(/\s+/).length >= 5;
+      if (!hasAdmin) {
+        errors.warehouseAddress =
+          'Địa chỉ cần ghi rõ cấu trúc: Số nhà, tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố.';
+      }
     }
 
     const normPhone = normalizePhone(phone);
@@ -57,7 +114,9 @@ export default function SupplierOnboarding({
     }
 
     const trimmedTax = taxCode.trim().replace(/\s+/g, '');
-    if (trimmedTax && !/^[A-Za-z0-9-]{5,30}$/.test(trimmedTax)) {
+    if (!trimmedTax) {
+      errors.taxCode = 'Vui lòng nhập mã số thuế hoặc mã số đăng ký kinh doanh.';
+    } else if (!/^[A-Za-z0-9-]{5,30}$/.test(trimmedTax)) {
       errors.taxCode = 'Mã số thuế / ĐKKD gồm 5–30 ký tự (chữ, số hoặc gạch ngang).';
     }
 
@@ -92,6 +151,13 @@ export default function SupplierOnboarding({
       };
 
       const saved = await saveSupplierProfile(payload);
+      try {
+        const verified = await quickVerifySupplier();
+        onCompleted(verified);
+        return;
+      } catch {
+        // Fallback to saved profile if quick verify is unavailable
+      }
       onCompleted(saved);
     } catch (issue) {
       const apiErrors = getApiFieldErrors<keyof SupplierOnboardingErrors>(issue, [
@@ -178,7 +244,7 @@ export default function SupplierOnboarding({
           {/* Header Card */}
           <div
             style={{
-              background: 'linear-gradient(135deg, #1b382b 0%, #22543d 100%)',
+              background: 'linear-gradient(135deg, #1e3a2f 0%, #295c47 100%)',
               color: '#ffffff',
               padding: '28px 32px',
             }}
@@ -196,7 +262,7 @@ export default function SupplierOnboarding({
                 marginBottom: '12px',
               }}
             >
-              BƯỚC 1/1 · KHỞI TẠO GIAN HÀNG SỈ
+              BƯỚC 1/1 · KHỞI TẠO CƠ SỞ KINH DOANH
             </div>
             <h1 style={{ margin: '0 0 8px', fontSize: '24px', fontWeight: 700 }}>
               Đăng ký thông tin Gian hàng & Kho bãi của bạn
@@ -248,19 +314,18 @@ export default function SupplierOnboarding({
                     marginBottom: '6px',
                   }}
                 >
-                  Tên gian hàng / đại lý vựa <span style={{ color: '#dc2626' }}>*</span>
+                  Tên gian hàng / vựa sỉ <span style={{ color: '#dc2626' }}>*</span>
                 </label>
                 <input
                   id="supplier-businessName"
                   type="text"
                   required
                   disabled={saving}
-                  placeholder="Ví dụ: Đại lý Nông sản Minh Phát, Vựa Bách Hóa Sỉ Tân Bình..."
+                  placeholder="Ví dụ: Vựa Gạo Phúc Thịnh, Đại Lý Nông Sản Ba Tri, Tổng Kho Tiêu Dùng Miền Nam..."
                   value={businessName}
                   onChange={(e) => {
                     setBusinessName(e.target.value);
-                    if (fieldErrors.businessName)
-                      setFieldErrors({ ...fieldErrors, businessName: undefined });
+                    if (fieldErrors.businessName) setFieldErrors({ ...fieldErrors, businessName: undefined });
                   }}
                   style={{
                     width: '100%',
@@ -286,7 +351,7 @@ export default function SupplierOnboarding({
                 )}
               </div>
 
-              {/* Contact Phone */}
+              {/* Phone */}
               <div>
                 <label
                   htmlFor="supplier-phone"
@@ -298,14 +363,14 @@ export default function SupplierOnboarding({
                     marginBottom: '6px',
                   }}
                 >
-                  Số điện thoại nhận đơn / hotline kho <span style={{ color: '#dc2626' }}>*</span>
+                  Số điện thoại nhận đơn / Hotline kho <span style={{ color: '#dc2626' }}>*</span>
                 </label>
                 <input
                   id="supplier-phone"
                   type="tel"
                   required
                   disabled={saving}
-                  placeholder="Ví dụ: 0908123789"
+                  placeholder="Ví dụ: 0908123456"
                   value={phone}
                   onChange={(e) => {
                     setPhone(e.target.value);
@@ -321,15 +386,8 @@ export default function SupplierOnboarding({
                     outline: 'none',
                   }}
                 />
-                <small
-                  style={{
-                    color: '#64748b',
-                    display: 'block',
-                    marginTop: '4px',
-                    fontSize: '12px',
-                  }}
-                >
-                  Tự động điền số điện thoại lúc bạn đăng ký tài khoản. Bạn có thể sửa nếu vựa dùng số hotline riêng.
+                <small style={{ color: '#64748b', display: 'block', marginTop: '4px', fontSize: '12px' }}>
+                  Tự động điền số điện thoại lúc bạn đăng ký. Dùng để đối tác liên hệ khi nhận hàng sỉ.
                 </small>
                 {fieldErrors.phone && (
                   <span
@@ -364,7 +422,7 @@ export default function SupplierOnboarding({
                       margin: 0,
                     }}
                   >
-                    Mã số thuế / Mã ĐKKD
+                    Mã số thuế / Mã số ĐKKD <span style={{ color: '#dc2626' }}>*</span>
                   </label>
                   <a
                     href="https://masothue.com"
@@ -380,7 +438,7 @@ export default function SupplierOnboarding({
                       gap: '4px',
                     }}
                   >
-                    🔍 Tra cứu mã số thuế (masothue.com)
+                    Tra cứu mã số thuế (masothue.com)
                   </a>
                 </div>
                 <input
@@ -388,7 +446,7 @@ export default function SupplierOnboarding({
                   type="text"
                   maxLength={30}
                   disabled={saving}
-                  placeholder="Ví dụ: 0312345678 (5–30 số hoặc gạch ngang)"
+                  placeholder="Ví dụ: 0312345678 (Mã số thuế doanh nghiệp hoặc hộ kinh doanh cá thể)"
                   value={taxCode}
                   onChange={(e) => {
                     setTaxCode(e.target.value);
@@ -404,15 +462,8 @@ export default function SupplierOnboarding({
                     outline: 'none',
                   }}
                 />
-                <small
-                  style={{
-                    color: '#64748b',
-                    display: 'block',
-                    marginTop: '4px',
-                    fontSize: '12px',
-                  }}
-                >
-                  Có thể tra cứu trực tiếp theo tên doanh nghiệp/hộ kinh doanh hoặc tên chủ vựa trên masothue.com.
+                <small style={{ color: '#64748b', display: 'block', marginTop: '4px', fontSize: '12px' }}>
+                  Có thể tra cứu nhanh theo tên vựa hoặc tên chủ cơ sở kinh doanh trên masothue.com.
                 </small>
                 {fieldErrors.taxCode && (
                   <span
@@ -428,20 +479,116 @@ export default function SupplierOnboarding({
                 )}
               </div>
 
-              {/* Warehouse Address */}
+              {/* Location Type (Mặt tiền vs Trong hẻm/đường nhánh) */}
               <div>
                 <label
-                  htmlFor="supplier-warehouseAddress"
                   style={{
                     display: 'block',
                     fontSize: '14px',
                     fontWeight: 600,
                     color: '#1e293b',
+                    marginBottom: '8px',
+                  }}
+                >
+                  Vị trí mặt bằng kho bãi <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '12px 14px',
+                      borderRadius: '10px',
+                      border: `2px solid ${locationType === 'STREET_FRONT' ? '#214e39' : '#e2e8f0'}`,
+                      background: locationType === 'STREET_FRONT' ? '#f0fdf4' : '#ffffff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="locationType"
+                      checked={locationType === 'STREET_FRONT'}
+                      onChange={() => setLocationType('STREET_FRONT')}
+                    />
+                    <div>
+                      <strong style={{ display: 'block', fontSize: '14px', color: '#0f172a' }}>
+                        Mặt tiền đường lớn
+                      </strong>
+                      <small style={{ color: '#64748b', fontSize: '12px' }}>Xe tải trọng tải lớn bốc dỡ hàng thuận tiện</small>
+                    </div>
+                  </label>
+
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      padding: '12px 14px',
+                      borderRadius: '10px',
+                      border: `2px solid ${locationType === 'ALLEY' ? '#214e39' : '#e2e8f0'}`,
+                      background: locationType === 'ALLEY' ? '#f0fdf4' : '#ffffff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="locationType"
+                      checked={locationType === 'ALLEY'}
+                      onChange={() => setLocationType('ALLEY')}
+                    />
+                    <div>
+                      <strong style={{ display: 'block', fontSize: '14px', color: '#0f172a' }}>
+                        Trong hẻm / đường nhánh
+                      </strong>
+                      <small style={{ color: '#64748b', fontSize: '12px' }}>Xe tải nhỏ hoặc xe ba gác vào lấy hàng</small>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Warehouse Address */}
+              <div>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
                     marginBottom: '6px',
                   }}
                 >
-                  Địa chỉ kho bãi chi tiết <span style={{ color: '#dc2626' }}>*</span>
-                </label>
+                  <label
+                    htmlFor="supplier-warehouseAddress"
+                    style={{
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: '#1e293b',
+                      margin: 0,
+                    }}
+                  >
+                    Địa chỉ kho bãi chi tiết <span style={{ color: '#dc2626' }}>*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={verifyAddressOnMap}
+                    disabled={verifyingMap || !warehouseAddress.trim()}
+                    style={{
+                      fontSize: '12px',
+                      color: '#1d4ed8',
+                      background: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      cursor: verifyingMap || !warehouseAddress.trim() ? 'not-allowed' : 'pointer',
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    {verifyingMap ? 'Đang định vị…' : 'Kiểm tra trên bản đồ số'}
+                  </button>
+                </div>
                 <input
                   id="supplier-warehouseAddress"
                   type="text"
@@ -451,8 +598,8 @@ export default function SupplierOnboarding({
                   value={warehouseAddress}
                   onChange={(e) => {
                     setWarehouseAddress(e.target.value);
-                    if (fieldErrors.warehouseAddress)
-                      setFieldErrors({ ...fieldErrors, warehouseAddress: undefined });
+                    if (fieldErrors.warehouseAddress) setFieldErrors({ ...fieldErrors, warehouseAddress: undefined });
+                    setMapStatus('idle');
                   }}
                   style={{
                     width: '100%',
@@ -464,16 +611,63 @@ export default function SupplierOnboarding({
                     outline: 'none',
                   }}
                 />
-                <small
-                  style={{
-                    color: '#64748b',
-                    display: 'block',
-                    marginTop: '4px',
-                    fontSize: '12px',
-                  }}
-                >
-                  Địa chỉ kho dùng để <strong>đo khoảng cách giao hàng đến các tiệm tạp hóa</strong>,
-                  đối chiếu bán kính nhận đơn và xác thực địa chỉ hợp lệ tránh địa chỉ ma.
+
+                {/* Map verification status badge */}
+                {mapStatus === 'success' && isAddressVerified && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '10px 14px',
+                      background: '#f0fdf4',
+                      border: '1px solid #bbf7d0',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      color: '#166534',
+                    }}
+                  >
+                    <strong>Đã tìm thấy trên bản đồ số:</strong> {mapVerifiedAddress}
+                    {latitude && longitude && (
+                      <div style={{ fontSize: '11px', color: '#15803d', marginTop: '2px' }}>
+                        Tọa độ: {latitude.toFixed(6)}, {longitude.toFixed(6)} (Sẵn sàng tính khoảng cách giao hàng tới tiệm tạp hóa)
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {mapStatus === 'not_found' && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '10px 14px',
+                      background: '#fffbeb',
+                      border: '1px solid #fde68a',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      color: '#92400e',
+                    }}
+                  >
+                    <strong>Chưa tìm thấy vị trí chính xác trên bản đồ.</strong> Vui lòng ghi rõ: <em>Số nhà, Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố</em> (ví dụ: 456 Quốc Lộ 1A, Phường An Lạc, Quận Bình Tân, TP. Hồ Chí Minh).
+                  </div>
+                )}
+
+                {mapStatus === 'error' && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '8px 12px',
+                      background: '#f8fafc',
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      fontSize: '12px',
+                      color: '#64748b',
+                    }}
+                  >
+                    Lưu ý: Tạm thời không kết nối được dịch vụ bản đồ số, hệ thống sẽ lưu địa chỉ và xác thực qua cấu trúc hành chính.
+                  </div>
+                )}
+
+                <small style={{ color: '#64748b', display: 'block', marginTop: '6px', fontSize: '12px' }}>
+                  Địa chỉ kho bãi sẽ dùng làm điểm xuất phát giao hàng, tính khoảng cách cước vận chuyển đến các cửa hàng tạp hóa.
                 </small>
                 {fieldErrors.warehouseAddress && (
                   <span

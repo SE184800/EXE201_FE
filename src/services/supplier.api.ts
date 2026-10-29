@@ -165,9 +165,21 @@ export async function saveSupplierProfile(input: SupplierProfileInput): Promise<
   return response.data.profile;
 }
 
+export async function quickVerifySupplier(): Promise<SupplierProfile> {
+  const response = await api.post<{ success: boolean; profile: SupplierProfile }>('/supplier/quick-verify');
+  return response.data.profile;
+}
+
 export async function createSupplierProduct(input: SupplierProductInput): Promise<SupplierProduct> {
   const response = await api.post<{ product: SupplierProduct }>('/supplier/products', input);
   return response.data.product;
+}
+
+export async function createSupplierProductsBatch(products: SupplierProductInput[]): Promise<SupplierProduct[]> {
+  const response = await api.post<{ products?: SupplierProduct[]; product?: SupplierProduct }>('/supplier/products', { products });
+  if (response.data.products) return response.data.products;
+  if (response.data.product) return [response.data.product];
+  return [];
 }
 
 export async function updateSupplierProduct(

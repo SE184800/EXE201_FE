@@ -137,7 +137,7 @@ export default function VoiceQuickSale({
           <h2>Nói để cập nhật cuối ca</h2>
         </div>
         <button className="dash-primary" type="button" onClick={start} disabled={listening}>
-          {listening ? '🎙️ Đang nghe…' : '🎙️ Bắt đầu nói'}
+          {listening ? 'Đang nghe…' : 'Bắt đầu nói'}
         </button>
       </div>
       <p className="stock-help">

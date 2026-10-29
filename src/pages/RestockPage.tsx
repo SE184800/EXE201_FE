@@ -295,7 +295,7 @@ export default function RestockPage({
               }}
             >
               <strong style={{ fontSize: '15.5px', color: '#1d4ed8' }}>
-                🎄 AI CẢNH BÁO LỊCH NGÀY LỄ (DEMO CHẾ ĐỘ GIÁNG SINH & NĂM MỚI):
+                AI CẢNH BÁO LỊCH NGÀY LỄ (DEMO CHẾ ĐỘ GIÁNG SINH & NĂM MỚI):
               </strong>
               {displayHolidays.map((h) => (
                 <p
@@ -395,7 +395,7 @@ export default function RestockPage({
                               marginLeft: '6px',
                             }}
                           >
-                            🎄 +{Math.round((item.holidayMultiplier - 1) * 100)}% (
+                            +{Math.round((item.holidayMultiplier - 1) * 100)}% (
                             {item.holidayName || 'Dịp Lễ'})
                           </span>
                         )}

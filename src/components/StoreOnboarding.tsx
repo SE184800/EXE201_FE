@@ -116,7 +116,9 @@ export default function StoreOnboarding({
     }
 
     const trimmedTax = taxCode.trim().replace(/\s+/g, '');
-    if (trimmedTax && !/^[A-Za-z0-9-]{10,14}$/.test(trimmedTax)) {
+    if (!trimmedTax) {
+      errors.taxCode = 'Vui lòng nhập mã số thuế của cơ sở kinh doanh.';
+    } else if (!/^[A-Za-z0-9-]{10,14}$/.test(trimmedTax)) {
       errors.taxCode = 'Mã số thuế gồm 10–14 ký tự (chữ, số hoặc gạch ngang).';
     }
 
@@ -444,7 +446,7 @@ export default function StoreOnboarding({
                       gap: '4px',
                     }}
                   >
-                    🔍 Tra cứu mã số thuế (masothue.com)
+                    Tra cứu mã số thuế (masothue.com)
                   </a>
                 </div>
                 <input
@@ -519,7 +521,7 @@ export default function StoreOnboarding({
                     />
                     <div>
                       <strong style={{ display: 'block', fontSize: '14px', color: '#0f172a' }}>
-                        🏢 Mặt tiền đường lớn
+                        Mặt tiền đường lớn
                       </strong>
                       <small style={{ color: '#64748b', fontSize: '12px' }}>Xe tải giao hàng đỗ tận cửa tiệm</small>
                     </div>
@@ -545,7 +547,7 @@ export default function StoreOnboarding({
                     />
                     <div>
                       <strong style={{ display: 'block', fontSize: '14px', color: '#0f172a' }}>
-                        🏘️ Trong hẻm / ngõ
+                        Trong hẻm / ngõ
                       </strong>
                       <small style={{ color: '#64748b', fontSize: '12px' }}>Đường hẹp, chuyển hàng bằng xe máy / ba gác</small>
                     </div>
@@ -644,7 +646,7 @@ export default function StoreOnboarding({
                       gap: '4px',
                     }}
                   >
-                    {verifyingMap ? '⏳ Đang định vị…' : '📍 Kiểm tra trên bản đồ số'}
+                    {verifyingMap ? 'Đang định vị…' : 'Kiểm tra trên bản đồ số'}
                   </button>
                 </div>
                 <input
@@ -683,7 +685,7 @@ export default function StoreOnboarding({
                       color: '#166534',
                     }}
                   >
-                    <strong>✓ Đã tìm thấy trên bản đồ số:</strong> {mapVerifiedAddress}
+                    <strong>Đã tìm thấy trên bản đồ số:</strong> {mapVerifiedAddress}
                     {latitude && longitude && (
                       <div style={{ fontSize: '11px', color: '#15803d', marginTop: '2px' }}>
                         Tọa độ: {latitude.toFixed(6)}, {longitude.toFixed(6)} (Sẵn sàng đo khoảng cách đến chủ vựa)
@@ -704,7 +706,7 @@ export default function StoreOnboarding({
                       color: '#92400e',
                     }}
                   >
-                    <strong>⚠️ Chưa tìm thấy vị trí chính xác trên bản đồ.</strong> Vui lòng ghi rõ: <em>Số nhà, Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố</em> (ví dụ: 123 Đường Số 4, Phường Bình Trị Đông B, Quận Bình Tân, TP. Hồ Chí Minh).
+                    <strong>Chưa tìm thấy vị trí chính xác trên bản đồ.</strong> Vui lòng ghi rõ: <em>Số nhà, Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố</em> (ví dụ: 123 Đường Số 4, Phường Bình Trị Đông B, Quận Bình Tân, TP. Hồ Chí Minh).
                   </div>
                 )}
 
@@ -720,7 +722,7 @@ export default function StoreOnboarding({
                       color: '#64748b',
                     }}
                   >
-                    ℹ️ Tạm thời không kết nối được dịch vụ bản đồ số, hệ thống sẽ lưu địa chỉ và xác thực qua cấu trúc hành chính.
+                    Lưu ý: Tạm thời không kết nối được dịch vụ bản đồ số, hệ thống sẽ lưu địa chỉ và xác thực qua cấu trúc hành chính.
                   </div>
                 )}
 
