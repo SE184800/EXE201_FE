@@ -9,6 +9,7 @@ import SupplierProducts from './pages/supplier/SupplierProducts';
 import SupplierOrders from './pages/supplier/SupplierOrders';
 import SupplierInventory from './pages/supplier/SupplierInventory';
 import SupplierQuotes from './pages/supplier/SupplierQuotes';
+import SupplierWallet from './pages/supplier/SupplierWallet';
 import AdminPage from './pages/admin/AdminPage';
 import SubscriptionPage from './pages/SubscriptionPage';
 import { getMe } from './services/auth.api';
@@ -102,6 +103,18 @@ export default function App() {
           element={
             user?.role === 'SUPPLIER' ? (
               <SubscriptionPage role="SUPPLIER" onLogout={clearUser} />
+            ) : checkingSession && !user ? (
+              restoreSession
+            ) : (
+              <Navigate to={destination} replace />
+            )
+          }
+        />
+        <Route
+          path="/supplier/wallet"
+          element={
+            user?.role === 'SUPPLIER' ? (
+              <SupplierWallet user={user} onLogout={clearUser} />
             ) : checkingSession && !user ? (
               restoreSession
             ) : (
