@@ -809,13 +809,38 @@ export default function ProfilePage({
             )}
           </label>
 
-          {/* Store Owner specific fields */}
+          {/* Store Owner specific fields: Section 1 */}
           {isStoreOwner && (
-            <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>
-                Thông tin Cửa hàng / Tiệm tạp hóa của bạn
-              </h3>
-              <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b' }}>
+            <div
+              style={{
+                gridColumn: '1 / -1',
+                marginTop: '28px',
+                paddingTop: '24px',
+                borderTop: '2px solid #e2e8f0',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    backgroundColor: '#214e39',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                  }}
+                >
+                  1
+                </span>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+                  Thông tin Cửa hàng / Tiệm tạp hóa của bạn
+                </h3>
+              </div>
+              <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b', paddingLeft: '34px' }}>
                 Thông tin này được dùng khi đặt đơn hàng sỉ với các chủ vựa trên SupplyMind,
                 đảm bảo cửa hàng có địa chỉ hợp lệ tránh địa chỉ ma và dùng để đo khoảng cách giao hàng.
               </p>
@@ -1148,13 +1173,38 @@ export default function ProfilePage({
             </div>
           )}
 
-          {/* Supplier specific fields */}
+          {/* Supplier specific fields: Section 1 */}
           {isSupplier && (
-            <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
-              <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>
-                Thông tin Gian hàng & Kho bãi của bạn
-              </h3>
-              <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b' }}>
+            <div
+              style={{
+                gridColumn: '1 / -1',
+                marginTop: '28px',
+                paddingTop: '24px',
+                borderTop: '2px solid #e2e8f0',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    backgroundColor: '#214e39',
+                    color: '#ffffff',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                  }}
+                >
+                  1
+                </span>
+                <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+                  Thông tin Gian hàng & Kho bãi của bạn
+                </h3>
+              </div>
+              <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b', paddingLeft: '34px' }}>
                 Thông tin này giúp các cửa hàng tạp hóa tìm kiếm nguồn sỉ và tính khoảng cách giao hàng.
               </p>
 
@@ -1279,12 +1329,37 @@ export default function ProfilePage({
             </div>
           )}
 
-          {/* Default Banking & Payout Account */}
-          <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
-            <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>
-              Tài khoản thanh toán & Nhận tiền mặc định
-            </h3>
-            <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b' }}>
+          {/* Default Banking & Payout Account: Section 2 */}
+          <div
+            style={{
+              gridColumn: '1 / -1',
+              marginTop: '28px',
+              paddingTop: '24px',
+              borderTop: '2px solid #e2e8f0',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px' }}>
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: '24px',
+                  height: '24px',
+                  borderRadius: '50%',
+                  backgroundColor: '#214e39',
+                  color: '#ffffff',
+                  fontSize: '13px',
+                  fontWeight: 700,
+                }}
+              >
+                2
+              </span>
+              <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', margin: 0 }}>
+                Tài khoản thanh toán & Nhận tiền mặc định
+              </h3>
+            </div>
+            <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b', paddingLeft: '34px' }}>
               Dùng để tự động điền nhanh khi bạn thực hiện nạp hoặc rút tiền trong Ví. Bạn vẫn có thể nhập tài khoản khác khi rút tiền.
             </p>
 
