@@ -16,7 +16,7 @@ import {
 import type { AuthUser } from '../../types/auth';
 
 const STATUS_ACTIONS: Record<string, { next: string; label: string }> = {
-  PENDING: { next: 'PREPARING', label: 'Bắt đầu soạn đơn' },
+  PENDING: { next: 'PREPARING', label: 'Duyệt đơn & Bắt đầu soạn hàng' },
   APPROVED: { next: 'PREPARING', label: 'Bắt đầu soạn đơn' },
   PREPARING: { next: 'SHIPPING', label: 'Bàn giao vận chuyển' },
 };

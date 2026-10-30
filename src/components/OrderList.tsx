@@ -3,7 +3,6 @@ import { api, getApiError, isUnauthenticated } from '../services/api';
 import {
   rescheduleOrder,
   respondRescheduleOrder,
-  approveOrder,
   confirmOrderArrival,
   submitOrderPayment,
   completeOrder,
@@ -215,22 +214,6 @@ export default function OrderList({
   const [depositDraft, setDepositDraft] = useState<{ orderId: number; reference: string } | null>(
     null,
   );
-
-  async function handleStoreApprove(order: SupplierOrder) {
-    if (actionLoadingId !== null) return;
-    setActionLoadingId(order.id);
-    setError('');
-    try {
-      const res = await approveOrder(order.id);
-      setDepositNotice(res.message || `Đơn #${order.id} đã được duyệt và chuyển sang đang soạn đơn.`);
-      setReload((n) => n + 1);
-    } catch (issue) {
-      setError(getApiError(issue));
-      if (isUnauthenticated(issue)) onLogout();
-    } finally {
-      setActionLoadingId(null);
-    }
-  }
 
   async function handleConfirmArrival(order: SupplierOrder) {
     if (actionLoadingId !== null) return;
@@ -1956,7 +1939,7 @@ export default function OrderList({
                           }
                           onClick={() => onStatus?.(order)}
                         >
-                          Bắt đầu soạn đơn
+                          Duyệt đơn & Bắt đầu soạn hàng
                         </button>
                         <button
                           className="table-button danger"
@@ -1978,25 +1961,6 @@ export default function OrderList({
                 {/* Phía Chủ tạp hóa: Các nút duyệt đơn, nhận hàng, trả tiền */}
                 {kind === 'store' && (
                   <div className="order-actions">
-                    {(order.status === 'PENDING' || order.status === 'APPROVED') && (
-                      <button
-                        type="button"
-                        className="table-button primary-small"
-                        disabled={
-                          busy ||
-                          actionLoadingId === order.id ||
-                          (order.depositAmount > 0 && order.depositStatus !== 'PAID')
-                        }
-                        onClick={() => void handleStoreApprove(order)}
-                        title={
-                          order.depositAmount > 0 && order.depositStatus !== 'PAID'
-                            ? 'Cần đặt cọc trước khi duyệt đơn'
-                            : undefined
-                        }
-                      >
-                        {actionLoadingId === order.id ? 'Đang duyệt…' : 'Duyệt đơn (Chuyển sang soạn đơn)'}
-                      </button>
-                    )}
 
                     {order.status === 'SHIPPING' && (
                       <button
@@ -2048,7 +2012,12 @@ export default function OrderList({
                     ? 'Chuyển đúng số tiền cọc đến tài khoản hiển thị phía trên rồi gửi mã giao dịch.'
                     : order.depositStatus === 'SUBMITTED'
                       ? 'Đã gửi xác nhận chuyển cọc. Đang chờ chủ vựa kiểm tra tài khoản.'
-                      : 'Bấm nút Duyệt đơn để báo chủ vựa bắt đầu soạn hàng.'}
+                      : 'Đang chờ chủ vựa duyệt đơn và bắt đầu soạn hàng.'}
+                </p>
+              )}
+              {kind === 'store' && order.status === 'PREPARING' && (
+                <p className="catalog-hint">
+                  Chủ vựa đang chuẩn bị và đóng gói các món hàng trong đơn tại kho.
                 </p>
               )}
 
