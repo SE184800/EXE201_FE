@@ -13,7 +13,7 @@ import {
 import Icon from './Icon';
 import ExportDropdown from './ExportDropdown';
 import { exportSupplierOrdersToExcel, exportSupplierOrdersToPdf } from '../utils/exportSupplier';
-import { payOrderWithWallet, depositOrderWithWallet } from '../services/wallet.api';
+import { depositOrderWithWallet } from '../services/wallet.api';
 import './complaint-dialog.css';
 
 const statuses = {
@@ -210,7 +210,6 @@ export default function OrderList({
   const [supplierPlan, setSupplierPlan] = useState<string>('AGREE_REFUND');
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [depositBusy, setDepositBusy] = useState<number | null>(null);
-  const [payingOrderId, setPayingOrderId] = useState<number | null>(null);
   const [depositDraft, setDepositDraft] = useState<{ orderId: number; reference: string } | null>(
     null,
   );
@@ -367,26 +366,6 @@ export default function OrderList({
       if (isUnauthenticated(issue)) onLogout();
     } finally {
       setDepositBusy(null);
-    }
-  }
-
-  /** Pays an order with the store wallet. The amount comes from the backend. */
-  async function payWithWallet(order: SupplierOrder) {
-    if (payingOrderId !== null) return;
-    setPayingOrderId(order.id);
-    setError('');
-    setDepositNotice('');
-    try {
-      const payment = await payOrderWithWallet(order.id);
-      setDepositNotice(
-        `Đã thanh toán ${money(payment.amount)} cho đơn #${order.id} bằng ví. Chủ vựa sẽ nhận tiền khi đơn được giao.`,
-      );
-      setReload((value) => value + 1);
-    } catch (issue) {
-      setError(getApiError(issue));
-      if (isUnauthenticated(issue)) onLogout();
-    } finally {
-      setPayingOrderId(null);
     }
   }
 
@@ -1879,21 +1858,6 @@ export default function OrderList({
                       : order.total,
                   )}
                 </strong>
-                {kind === 'store' && !['REJECTED', 'DELIVERED'].includes(order.status) && (
-                  <div className="order-actions">
-                    <button
-                      className="table-button primary-small"
-                      disabled={busy || payingOrderId === order.id || Boolean(order.walletPayment)}
-                      onClick={() => void payWithWallet(order)}
-                    >
-                      {payingOrderId === order.id
-                        ? 'Đang thanh toán…'
-                        : order.walletPayment
-                          ? 'Đã thanh toán bằng ví'
-                          : 'Thanh toán bằng ví'}
-                    </button>
-                  </div>
-                )}
                 {kind === 'supplier' && (
                   <div className="order-actions">
                     {order.status === 'PREPARING' && (
@@ -2021,25 +1985,6 @@ export default function OrderList({
                 </p>
               )}
 
-              {/* Nút báo cáo đơn hàng khi đang ở bước tiếp nhận xử lý (ISSUE_HANDLING) */}
-              {kind === 'store' && order.status === 'ISSUE_HANDLING' && !order.complaint && (
-                <div
-                  className="order-card-bottom"
-                  style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #e8eee7' }}
-                >
-                  <p className="catalog-hint" style={{ margin: 0 }}>
-                    Đơn hàng đang ở bước <strong>tiếp nhận xử lý</strong>. Nếu phát hiện sự cố hoặc
-                    lỗi hàng, bạn có thể gửi báo cáo khiếu nại.
-                  </p>
-                  <button
-                    className="table-button complaint-card-report-btn"
-                    type="button"
-                    onClick={() => openStoreComplaint(order)}
-                  >
-                    Báo cáo sự cố
-                  </button>
-                </div>
-              )}
 
               {/* Nút báo cáo đơn hàng khi đã giao (DELIVERED) */}
               {kind === 'store' && order.status === 'DELIVERED' && !order.complaint && (
