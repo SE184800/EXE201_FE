@@ -148,6 +148,14 @@ export type SupplierOrder = {
   createdAt: string;
   updatedAt: string;
   buyer: { id: number; name: string; username: string };
+  /** Wallet payment state. `null` when the order was not paid with a wallet. */
+  walletPayment?: {
+    id: number;
+    status: string;
+    amount: number;
+    paidAt: string;
+    refunded: boolean;
+  } | null;
   items: Array<{
     id: number;
     productId: number;

@@ -15,8 +15,7 @@ import StoreCatalog from './StoreCatalog';
 import OrderList from '../components/OrderList';
 import StoreQuotes from './StoreQuotes';
 import SubscriptionPage from './SubscriptionPage';
-import WalletPage from './WalletPage';
-import TopbarBalance from '../components/TopbarBalance';
+import WalletPage from './wallet/WalletPage';
 import Brand from '../components/Brand';
 import Icon from '../components/Icon';
 import ExportSalesDialog from '../components/ExportSalesDialog';
@@ -85,7 +84,7 @@ const tabs = [
   { id: 'catalog', label: 'Tìm nguồn sỉ', icon: 'store' },
   { id: 'quotes', label: 'Báo giá nhận được', icon: 'sparkle' },
   { id: 'orders', label: 'Đơn mua hàng', icon: 'box' },
-  { id: 'wallet', label: 'Ví & Ký quỹ', icon: 'sparkle' },
+  { id: 'wallet', label: 'Ví tiền', icon: 'chart' },
   { id: 'history', label: 'Lịch sử giao dịch', icon: 'check' },
   { id: 'revenue', label: 'Doanh thu', icon: 'chart' },
   { id: 'calendar', label: 'Lịch nhập dự kiến', icon: 'sparkle' },
@@ -144,7 +143,7 @@ export default function StoreInventory({
   useEffect(() => {
     getContractStatus()
       .then((res) => setContractSigned(res.isSigned))
-      .catch(() => {});
+      .catch(() => { });
   }, [revision]);
 
   const [search, setSearch] = useState('');
@@ -234,7 +233,7 @@ export default function StoreInventory({
       .then((data) => {
         if (active) setConsignmentRequests(data);
       })
-      .catch(() => {});
+      .catch(() => { });
     return () => {
       active = false;
     };
@@ -268,7 +267,7 @@ export default function StoreInventory({
     setLoading(true);
     try {
       setItems((await api.get<{ items: Item[] }>('/inventory')).data.items);
-      getStoreConsignmentRequests().then(setConsignmentRequests).catch(() => {});
+      getStoreConsignmentRequests().then(setConsignmentRequests).catch(() => { });
       setRevision((value) => value + 1);
     } catch (issue) {
       if (isUnauthenticated(issue)) onLogout();
@@ -287,10 +286,10 @@ export default function StoreInventory({
       const existingItem =
         editing === null
           ? items.find(
-              (item) =>
-                item.name.trim().localeCompare(form.name.trim(), 'vi', { sensitivity: 'base' }) ===
-                0,
-            )
+            (item) =>
+              item.name.trim().localeCompare(form.name.trim(), 'vi', { sensitivity: 'base' }) ===
+              0,
+          )
           : undefined;
       const payload = {
         purchasePrice: form.isConsignment ? 0 : (form.purchasePrice === '' ? null : Number(form.purchasePrice)),
@@ -460,12 +459,12 @@ export default function StoreInventory({
   const productSuggestions =
     editing === null && form.name.trim().length > 0
       ? items
-          .filter(
-            (item) =>
-              fold(item.name).includes(fold(form.name.trim())) ||
-              fold(form.name.trim()).includes(fold(item.name)),
-          )
-          .slice(0, 6)
+        .filter(
+          (item) =>
+            fold(item.name).includes(fold(form.name.trim())) ||
+            fold(form.name.trim()).includes(fold(item.name)),
+        )
+        .slice(0, 6)
       : [];
   const visible = items.filter(
     (item) =>
@@ -721,7 +720,7 @@ export default function StoreInventory({
           ) : activeTab === 'orders' ? (
             <OrderList kind="store" onLogout={onLogout} />
           ) : activeTab === 'wallet' ? (
-            <WalletPage onLogout={onLogout} />
+            <WalletPage onLogout={onLogout} role="STORE_OWNER" />
           ) : activeTab === 'revenue' ? (
             <StoreRevenue onLogout={onLogout} />
           ) : activeTab === 'subscription' ? (
@@ -1124,9 +1123,9 @@ export default function StoreInventory({
                     onClick={
                       items.length
                         ? () => {
-                            setSearch('');
-                            setFilter('all');
-                          }
+                          setSearch('');
+                          setFilter('all');
+                        }
                         : addProduct
                     }
                   >
@@ -1354,7 +1353,7 @@ export default function StoreInventory({
                   .then(({ data }) => {
                     if (data.profile.storeProfile) setStoreProfile(data.profile.storeProfile);
                   })
-                  .catch(() => {});
+                  .catch(() => { });
               }}
               onLogout={onLogout}
             />

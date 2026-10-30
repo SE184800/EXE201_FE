@@ -92,7 +92,7 @@ export default function SupplierDashboard({
       void load();
       getContractStatus()
         .then((res) => setContractSigned(res.isSigned))
-        .catch(() => {});
+        .catch(() => { });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
@@ -182,13 +182,13 @@ export default function SupplierDashboard({
     return (
       <>
         <SupplierOnboarding
-        user={user}
-        initialPhone={user.phone || ''}
-        onCompleted={(savedProfile) => {
-          setData((current) =>
-            current
-              ? { ...current, profile: savedProfile }
-              : {
+          user={user}
+          initialPhone={user.phone || ''}
+          onCompleted={(savedProfile) => {
+            setData((current) =>
+              current
+                ? { ...current, profile: savedProfile }
+                : {
                   profile: savedProfile,
                   products: [],
                   orders: [],
@@ -200,39 +200,39 @@ export default function SupplierDashboard({
                     deliveredRevenue: 0,
                   },
                 }
-          );
-          setProfile({
-            businessName: savedProfile.businessName,
-            warehouseAddress: savedProfile.warehouseAddress,
-            deliveryRadiusKm: savedProfile.deliveryRadiusKm,
-            deliveryFee: savedProfile.deliveryFee,
-            bankName: savedProfile.bankName || '',
-            bankAccountNumber: savedProfile.bankAccountNumber || '',
-            bankAccountHolder: savedProfile.bankAccountHolder || '',
-            taxCode: savedProfile.taxCode || '',
-            phone: savedProfile.phone || user.phone || '',
-          });
-          setShowContractModal(true);
-        }}
-        onLogout={handleLogout}
-        loggingOut={busy}
-      />
-      <ContractSigningModal
-        isOpen={showContractModal}
-        onClose={() => {
-          setShowContractModal(false);
-          setNotice('Đã lưu thông tin kho vựa. Bạn có thể hoàn tất ký hợp đồng kết nối sau.');
-        }}
-        onSignedSuccess={() => {
-          setShowContractModal(false);
-          setContractSigned(true);
-          setNotice('Đã ký kết hợp đồng điện tử thành công!');
-        }}
-        user={user}
-      />
-    </>
-  );
-}
+            );
+            setProfile({
+              businessName: savedProfile.businessName,
+              warehouseAddress: savedProfile.warehouseAddress,
+              deliveryRadiusKm: savedProfile.deliveryRadiusKm,
+              deliveryFee: savedProfile.deliveryFee,
+              bankName: savedProfile.bankName || '',
+              bankAccountNumber: savedProfile.bankAccountNumber || '',
+              bankAccountHolder: savedProfile.bankAccountHolder || '',
+              taxCode: savedProfile.taxCode || '',
+              phone: savedProfile.phone || user.phone || '',
+            });
+            setShowContractModal(true);
+          }}
+          onLogout={handleLogout}
+          loggingOut={busy}
+        />
+        <ContractSigningModal
+          isOpen={showContractModal}
+          onClose={() => {
+            setShowContractModal(false);
+            setNotice('Đã lưu thông tin kho vựa. Bạn có thể hoàn tất ký hợp đồng kết nối sau.');
+          }}
+          onSignedSuccess={() => {
+            setShowContractModal(false);
+            setContractSigned(true);
+            setNotice('Đã ký kết hợp đồng điện tử thành công!');
+          }}
+          user={user}
+        />
+      </>
+    );
+  }
 
   return (
     <SupplierLayout

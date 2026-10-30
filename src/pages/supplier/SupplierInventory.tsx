@@ -79,7 +79,7 @@ export default function SupplierInventory({ user, onLogout }: { user?: AuthUser;
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const editor = useRef<HTMLDialogElement>(null);
-  
+
 
   useEffect(() => {
     if (!notice) return;

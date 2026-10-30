@@ -7,6 +7,7 @@ import { logout } from '../../services/auth.api';
 import type { AuthUser } from '../../types/auth';
 import { AdminDialog, Badge, DateFields, Empty, LoadState, Metric, Pager } from './admin.shared';
 import { dateTime, defaultPeriod, money, useAdminData } from './admin.data';
+import AdminWalletSection, { type AdminWalletTab } from './AdminWalletPage';
 import './admin.css';
 
 type Props = { onLogout: () => void };
@@ -66,12 +67,21 @@ const navigation = [
   { path: 'users', label: 'Người dùng', icon: 'user' },
   { path: 'verification', label: 'Xác minh chủ vựa', icon: 'shield' },
   { path: 'finance', label: 'Hoa hồng & đối soát', icon: 'box' },
+  { path: 'wallet', label: 'Quản lý ví tiền', icon: 'chart' },
   { path: 'holidays', label: 'Ngày lễ & AI', icon: 'sparkle' },
   { path: 'ai', label: 'Hoạt động AI', icon: 'sparkle' },
   { path: 'moderation', label: 'Duyệt bài AI', icon: 'sparkle' },
   { path: 'ai-config', label: 'Cấu hình AI & Ký quỹ', icon: 'sparkle' },
   { path: 'audit', label: 'Nhật ký hệ thống', icon: 'lock' },
 ] as const;
+
+/** Wallet sub tabs live under the `wallet` navigation entry. */
+const walletTabs: Record<string, AdminWalletTab> = {
+  wallet: 'overview',
+  'wallet/deposits': 'deposits',
+  'wallet/withdrawals': 'withdrawals',
+  'wallet/payments': 'payments',
+};
 
 export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }) {
   const tab = useParams()['*'] || '';
@@ -80,7 +90,9 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
   useEffect(() => {
     document.title = 'SupplyMind AI · Quản trị nền tảng';
   }, []);
-  if (!navigation.some((item) => item.path === tab)) return <Navigate to="/admin" replace />;
+  if (!navigation.some((item) => item.path === tab) && !(tab in walletTabs)) {
+    return <Navigate to="/admin" replace />;
+  }
   async function signOut() {
     setBusy(true);
     try {
@@ -99,7 +111,17 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
         <span className="admin-console-label">QUẢN TRỊ NỀN TẢNG</span>
         <nav aria-label="Quản trị">
           {navigation.map((item) => (
-            <NavLink key={item.path} to={`/admin${item.path ? '/' + item.path : ''}`} end>
+            <NavLink
+              key={item.path}
+              to={`/admin${item.path ? '/' + item.path : ''}`}
+              end={item.path === ''}
+              className={({ isActive }) =>
+                isActive ||
+                (item.path !== '' && (tab === item.path || tab.startsWith(item.path + '/')))
+                  ? 'active'
+                  : undefined
+              }
+            >
               <Icon name={item.icon} />
               <span>{item.label}</span>
             </NavLink>
@@ -120,7 +142,9 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
         <header className="admin-topbar">
           <span>
             SupplyMind AI <span className="admin-slash">/</span>{' '}
-            {navigation.find((item) => item.path === tab)?.label}
+            {tab in walletTabs
+              ? 'Quản lý ví tiền'
+              : navigation.find((item) => item.path === tab)?.label}
           </span>
           <div className="admin-top-actions">
             <span className="admin-admin-tag">
@@ -145,6 +169,8 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
             <Verifications onLogout={onLogout} />
           ) : tab === 'finance' ? (
             <Finance onLogout={onLogout} />
+          ) : tab in walletTabs ? (
+            <AdminWalletSection tab={walletTabs[tab]} onLogout={onLogout} />
           ) : tab === 'holidays' ? (
             <HolidaySettings onLogout={onLogout} />
           ) : tab === 'ai' ? (

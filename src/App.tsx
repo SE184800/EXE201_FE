@@ -211,6 +211,18 @@ export default function App() {
           }
         />
         <Route
+          path="/supplier/wallet"
+          element={
+            user?.role === 'SUPPLIER' ? (
+              <SupplierWallet user={user} onLogout={clearUser} />
+            ) : checkingSession && !user ? (
+              restoreSession
+            ) : (
+              <Navigate to={destination} replace />
+            )
+          }
+        />
+        <Route
           path="/supplier/orders"
           element={
             user?.role === 'SUPPLIER' ? (

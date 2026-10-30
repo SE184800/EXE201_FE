@@ -856,293 +856,293 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
 
                   {productEntryMode === 'SINGLE' || editing ? (
                     <form onSubmit={save}>
-                  <div className="supplier-panel-title">
-                    <div>
-                      <span className="supplier-panel-label">
-                        {editing ? 'CẬP NHẬT' : 'THÊM MẶT HÀNG'}
-                      </span>
-                      <h2>{editing ? 'Sửa sản phẩm' : 'Đăng sản phẩm mới'}</h2>
-                    </div>
-                    <Icon name="box" />
-                  </div>
-                  <div className="supplier-form-grid">
-                    <label className="supplier-field supplier-field-full">
-                      Danh mục
-                      <select
-                        value={form.category}
-                        disabled={busy}
-                        onChange={(e) => setForm({ ...form, category: e.target.value })}
-                      >
-                        {PRODUCT_CATEGORIES.map((category) => (
-                          <option key={category}>{category}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <div className="supplier-field supplier-field-full">
-                      <span>Ảnh sản phẩm (không bắt buộc)</span>
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/gif"
-                        disabled={busy || uploading}
-                        style={{ display: 'none' }}
-                        onChange={handleFileSelect}
-                      />
-                      {form.imageUrl ? (
-                        <div className="image-upload-preview">
-                          <img src={form.imageUrl} alt="Ảnh sản phẩm" />
-                          <div className="image-upload-info">
-                            <span className="image-upload-status">Đã tải ảnh lên</span>
-                            <div className="image-upload-actions">
-                              <button
-                                type="button"
-                                className="ghost-button"
-                                style={{ padding: '6px 12px', fontSize: '12px' }}
-                                disabled={busy || uploading}
-                                onClick={() => fileInputRef.current?.click()}
-                              >
-                                {uploading ? 'Đang tải…' : 'Đổi ảnh khác'}
-                              </button>
-                              <button
-                                type="button"
-                                className="danger-text"
-                                disabled={busy || uploading}
-                                onClick={handleRemoveImage}
-                              >
-                                Xóa ảnh
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div
-                          className={`image-upload-zone ${uploading ? 'uploading' : ''}`}
-                          onClick={() => !busy && !uploading && fileInputRef.current?.click()}
-                          role="button"
-                          tabIndex={0}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              fileInputRef.current?.click();
-                            }
-                          }}
-                        >
-                          <Icon name="box" />
-                          <div>
-                            <strong>
-                              {uploading ? 'Đang tải ảnh lên…' : 'Bấm để tải ảnh sản phẩm lên'}
-                            </strong>
-                            <p className="catalog-hint">Hỗ trợ JPG, PNG, WEBP, GIF tối đa 5MB</p>
-                          </div>
-                        </div>
-                      )}
-                      {uploadError && (
-                        <small
-                          className="error-notice"
-                          style={{ marginTop: '6px', display: 'block' }}
-                        >
-                          {uploadError}
-                        </small>
-                      )}
-                      {fields.imageUrl && <small>{fields.imageUrl}</small>}
-                    </div>
-                    <label className="supplier-field supplier-field-full">
-                      Tên sản phẩm
-                      <input
-                        ref={nameInput}
-                        required
-                        minLength={2}
-                        maxLength={150}
-                        value={form.name}
-                        disabled={busy}
-                        onChange={(event) => setForm({ ...form, name: event.target.value })}
-                        placeholder="Nước ngọt Coca Cola 330ml"
-                      />
-                      {fields.name && <small>{fields.name}</small>}
-                    </label>
-                    <div className="supplier-field supplier-field-full">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                        <span>Quy cách / đơn vị bán</span>
-                        <span style={{ fontSize: '11px', color: '#275235', background: '#eaf4e6', padding: '2px 8px', borderRadius: '10px' }}>
-                          Áp dụng: <strong>{form.packaging || '(Chưa xác định)'}</strong>
-                        </span>
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: packState.type === 'Khác' ? '1fr' : packState.type === 'Đơn vị lẻ' ? '1.2fr 1fr' : '1.3fr 0.9fr 1fr', gap: '8px' }}>
+                      <div className="supplier-panel-title">
                         <div>
+                          <span className="supplier-panel-label">
+                            {editing ? 'CẬP NHẬT' : 'THÊM MẶT HÀNG'}
+                          </span>
+                          <h2>{editing ? 'Sửa sản phẩm' : 'Đăng sản phẩm mới'}</h2>
+                        </div>
+                        <Icon name="box" />
+                      </div>
+                      <div className="supplier-form-grid">
+                        <label className="supplier-field supplier-field-full">
+                          Danh mục
                           <select
-                            value={packState.type}
+                            value={form.category}
                             disabled={busy}
-                            onChange={(e) => updatePackagingState(e.target.value as PackagingType)}
+                            onChange={(e) => setForm({ ...form, category: e.target.value })}
                           >
-                            {PACKAGING_OPTIONS.map((opt) => (
-                              <option key={opt.type} value={opt.type}>
-                                {opt.label}
-                              </option>
+                            {PRODUCT_CATEGORIES.map((category) => (
+                              <option key={category}>{category}</option>
                             ))}
                           </select>
-                        </div>
-                        {packState.type !== 'Khác' && packState.type !== 'Đơn vị lẻ' && (
-                          <div>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={packState.qtyInput}
-                              disabled={busy}
-                              placeholder="Nhập số lượng…"
-                              onChange={(e) => {
-                                updatePackagingState(packState.type, e.target.value, packState.unit);
+                        </label>
+                        <div className="supplier-field supplier-field-full">
+                          <span>Ảnh sản phẩm (không bắt buộc)</span>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            disabled={busy || uploading}
+                            style={{ display: 'none' }}
+                            onChange={handleFileSelect}
+                          />
+                          {form.imageUrl ? (
+                            <div className="image-upload-preview">
+                              <img src={form.imageUrl} alt="Ảnh sản phẩm" />
+                              <div className="image-upload-info">
+                                <span className="image-upload-status">Đã tải ảnh lên</span>
+                                <div className="image-upload-actions">
+                                  <button
+                                    type="button"
+                                    className="ghost-button"
+                                    style={{ padding: '6px 12px', fontSize: '12px' }}
+                                    disabled={busy || uploading}
+                                    onClick={() => fileInputRef.current?.click()}
+                                  >
+                                    {uploading ? 'Đang tải…' : 'Đổi ảnh khác'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="danger-text"
+                                    disabled={busy || uploading}
+                                    onClick={handleRemoveImage}
+                                  >
+                                    Xóa ảnh
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div
+                              className={`image-upload-zone ${uploading ? 'uploading' : ''}`}
+                              onClick={() => !busy && !uploading && fileInputRef.current?.click()}
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  fileInputRef.current?.click();
+                                }
                               }}
-                              title="Số lượng trong 1 quy cách đóng gói (tối đa 100)"
-                            />
-                          </div>
-                        )}
-                        {packState.type !== 'Khác' && (
-                          <div>
-                            <select
-                              value={packState.unit}
-                              disabled={busy}
-                              onChange={(e) => updatePackagingState(packState.type, packState.qtyInput, e.target.value)}
                             >
-                              {(PACKAGING_OPTIONS.find((o) => o.type === packState.type)?.units || ['lon', 'gói', 'chai', 'hộp', 'kg']).map((u) => (
-                                <option key={u} value={u}>
-                                  {u}
-                                </option>
-                              ))}
-                            </select>
+                              <Icon name="box" />
+                              <div>
+                                <strong>
+                                  {uploading ? 'Đang tải ảnh lên…' : 'Bấm để tải ảnh sản phẩm lên'}
+                                </strong>
+                                <p className="catalog-hint">Hỗ trợ JPG, PNG, WEBP, GIF tối đa 5MB</p>
+                              </div>
+                            </div>
+                          )}
+                          {uploadError && (
+                            <small
+                              className="error-notice"
+                              style={{ marginTop: '6px', display: 'block' }}
+                            >
+                              {uploadError}
+                            </small>
+                          )}
+                          {fields.imageUrl && <small>{fields.imageUrl}</small>}
+                        </div>
+                        <label className="supplier-field supplier-field-full">
+                          Tên sản phẩm
+                          <input
+                            ref={nameInput}
+                            required
+                            minLength={2}
+                            maxLength={150}
+                            value={form.name}
+                            disabled={busy}
+                            onChange={(event) => setForm({ ...form, name: event.target.value })}
+                            placeholder="Nước ngọt Coca Cola 330ml"
+                          />
+                          {fields.name && <small>{fields.name}</small>}
+                        </label>
+                        <div className="supplier-field supplier-field-full">
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                            <span>Quy cách / đơn vị bán</span>
+                            <span style={{ fontSize: '11px', color: '#275235', background: '#eaf4e6', padding: '2px 8px', borderRadius: '10px' }}>
+                              Áp dụng: <strong>{form.packaging || '(Chưa xác định)'}</strong>
+                            </span>
                           </div>
-                        )}
-                        {packState.type === 'Khác' && (
-                          <div>
-                            <input
+                          <div style={{ display: 'grid', gridTemplateColumns: packState.type === 'Khác' ? '1fr' : packState.type === 'Đơn vị lẻ' ? '1.2fr 1fr' : '1.3fr 0.9fr 1fr', gap: '8px' }}>
+                            <div>
+                              <select
+                                value={packState.type}
+                                disabled={busy}
+                                onChange={(e) => updatePackagingState(e.target.value as PackagingType)}
+                              >
+                                {PACKAGING_OPTIONS.map((opt) => (
+                                  <option key={opt.type} value={opt.type}>
+                                    {opt.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            {packState.type !== 'Khác' && packState.type !== 'Đơn vị lẻ' && (
+                              <div>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={packState.qtyInput}
+                                  disabled={busy}
+                                  placeholder="Nhập số lượng…"
+                                  onChange={(e) => {
+                                    updatePackagingState(packState.type, e.target.value, packState.unit);
+                                  }}
+                                  title="Số lượng trong 1 quy cách đóng gói (tối đa 100)"
+                                />
+                              </div>
+                            )}
+                            {packState.type !== 'Khác' && (
+                              <div>
+                                <select
+                                  value={packState.unit}
+                                  disabled={busy}
+                                  onChange={(e) => updatePackagingState(packState.type, packState.qtyInput, e.target.value)}
+                                >
+                                  {(PACKAGING_OPTIONS.find((o) => o.type === packState.type)?.units || ['lon', 'gói', 'chai', 'hộp', 'kg']).map((u) => (
+                                    <option key={u} value={u}>
+                                      {u}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            )}
+                            {packState.type === 'Khác' && (
+                              <div>
+                                <input
+                                  required
+                                  maxLength={50}
+                                  value={packState.customText}
+                                  disabled={busy}
+                                  placeholder="Nhập quy cách tự do (VD: Kiện 100 cái, Bịch 50 gói…)"
+                                  onChange={(e) => updatePackagingState('Khác', '', '', e.target.value)}
+                                />
+                              </div>
+                            )}
+                          </div>
+                          <small style={{ color: '#687d5a', fontSize: '11px', marginTop: '1px' }}>
+                            {packState.type === 'Khác'
+                              ? 'Nhập quy cách tùy chỉnh (tối đa 50 ký tự, số lượng bên trong không vượt quá 100).'
+                              : `Chọn kiểu đóng gói và tùy chỉnh số lượng / đơn vị bên trong (tối đa 100 ${packState.unit || 'đơn vị'}).`}
+                          </small>
+                          {(packQtyError || fields.packaging) && (
+                            <small style={{ color: '#c65449', fontWeight: 600 }}>
+                              {packQtyError || fields.packaging}
+                            </small>
+                          )}
+                        </div>
+                        <label className="supplier-field supplier-field-full">
+                          Giá sỉ mỗi đơn vị (VNĐ)
+                          <input
+                            required
+                            type="number"
+                            min="0.01"
+                            max="1000000000"
+                            step="0.01"
+                            value={form.wholesalePrice || ''}
+                            disabled={busy}
+                            onChange={(event) =>
+                              setForm({ ...form, wholesalePrice: Number(event.target.value) })
+                            }
+                            placeholder="180000"
+                          />
+                          {fields.wholesalePrice && <small>{fields.wholesalePrice}</small>}
+                        </label>
+                        {editing && form.wholesalePrice !== editing.wholesalePrice && (
+                          <label className="supplier-field supplier-field-full">
+                            Lý do thay đổi giá
+                            <textarea
                               required
-                              maxLength={50}
-                              value={packState.customText}
+                              minLength={3}
+                              maxLength={500}
+                              rows={3}
+                              value={form.priceChangeReason || ''}
                               disabled={busy}
-                              placeholder="Nhập quy cách tự do (VD: Kiện 100 cái, Bịch 50 gói…)"
-                              onChange={(e) => updatePackagingState('Khác', '', '', e.target.value)}
+                              onChange={(event) =>
+                                setForm({ ...form, priceChangeReason: event.target.value })
+                              }
+                              placeholder="Ví dụ: giá nhập tăng gần dịp lễ, chi phí vận chuyển tăng…"
                             />
-                          </div>
+                            <small>
+                              Thông tin này sẽ hiển thị cho chủ tạp hóa để họ cân nhắc trước khi đặt.
+                            </small>
+                            {fields.priceChangeReason && <small>{fields.priceChangeReason}</small>}
+                          </label>
+                        )}
+                        <label className="supplier-field">
+                          Số lượng tồn kho
+                          <input
+                            required
+                            type="number"
+                            min="0"
+                            max="50000"
+                            step="1"
+                            value={form.stockQty}
+                            disabled={busy}
+                            onChange={(event) =>
+                              setForm({ ...form, stockQty: Number(event.target.value) })
+                            }
+                          />
+                          <small style={{ color: '#7a8e7e' }}>Tối đa 50.000 (theo quy cách bán).</small>
+                          {fields.stockQty && <small style={{ color: '#c65449', fontWeight: 600 }}>{fields.stockQty}</small>}
+                        </label>
+                        <label className="supplier-field">
+                          Đặt tối thiểu (MOQ)
+                          <input
+                            required
+                            type="number"
+                            min="1"
+                            max={form.stockQty > 0 ? form.stockQty : 50000}
+                            step="1"
+                            value={form.moq}
+                            disabled={busy}
+                            onChange={(event) => setForm({ ...form, moq: Number(event.target.value) })}
+                          />
+                          <small style={{ color: '#7a8e7e' }}>
+                            Mặc định 1 (người mua có thể mua lẻ từ 1 đơn vị, tối đa theo tồn kho).
+                          </small>
+                          {fields.moq && <small style={{ color: '#c65449', fontWeight: 600 }}>{fields.moq}</small>}
+                        </label>
+                        <label className="publish-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={form.isActive}
+                            disabled={busy}
+                            onChange={(event) => setForm({ ...form, isActive: event.target.checked })}
+                          />
+                          <span>Mở bán sau khi gian hàng được xác minh</span>
+                        </label>
+                      </div>
+                      <p className="catalog-hint">
+                        Giá, tồn kho và MOQ tính theo quy cách bán đã nhập. Bỏ chọn hiển thị để lưu sản
+                        phẩm ở trạng thái ẩn.
+                      </p>
+                      <div className="product-form-actions">
+                        <button className="primary-button" disabled={busy || uploading}>
+                          {busy
+                            ? 'Đang lưu…'
+                            : editing
+                              ? 'Lưu thay đổi'
+                              : form.isActive
+                                ? 'Đăng bán sản phẩm'
+                                : 'Lưu sản phẩm ẩn'}
+                        </button>
+                        {editing && (
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            disabled={busy || uploading}
+                            onClick={cancel}
+                          >
+                            Hủy sửa
+                          </button>
                         )}
                       </div>
-                      <small style={{ color: '#687d5a', fontSize: '11px', marginTop: '1px' }}>
-                        {packState.type === 'Khác'
-                          ? 'Nhập quy cách tùy chỉnh (tối đa 50 ký tự, số lượng bên trong không vượt quá 100).'
-                          : `Chọn kiểu đóng gói và tùy chỉnh số lượng / đơn vị bên trong (tối đa 100 ${packState.unit || 'đơn vị'}).`}
-                      </small>
-                      {(packQtyError || fields.packaging) && (
-                        <small style={{ color: '#c65449', fontWeight: 600 }}>
-                          {packQtyError || fields.packaging}
-                        </small>
-                      )}
-                    </div>
-                    <label className="supplier-field supplier-field-full">
-                      Giá sỉ mỗi đơn vị (VNĐ)
-                      <input
-                        required
-                        type="number"
-                        min="0.01"
-                        max="1000000000"
-                        step="0.01"
-                        value={form.wholesalePrice || ''}
-                        disabled={busy}
-                        onChange={(event) =>
-                          setForm({ ...form, wholesalePrice: Number(event.target.value) })
-                        }
-                        placeholder="180000"
-                      />
-                      {fields.wholesalePrice && <small>{fields.wholesalePrice}</small>}
-                    </label>
-                    {editing && form.wholesalePrice !== editing.wholesalePrice && (
-                      <label className="supplier-field supplier-field-full">
-                        Lý do thay đổi giá
-                        <textarea
-                          required
-                          minLength={3}
-                          maxLength={500}
-                          rows={3}
-                          value={form.priceChangeReason || ''}
-                          disabled={busy}
-                          onChange={(event) =>
-                            setForm({ ...form, priceChangeReason: event.target.value })
-                          }
-                          placeholder="Ví dụ: giá nhập tăng gần dịp lễ, chi phí vận chuyển tăng…"
-                        />
-                        <small>
-                          Thông tin này sẽ hiển thị cho chủ tạp hóa để họ cân nhắc trước khi đặt.
-                        </small>
-                        {fields.priceChangeReason && <small>{fields.priceChangeReason}</small>}
-                      </label>
-                    )}
-                    <label className="supplier-field">
-                      Số lượng tồn kho
-                      <input
-                        required
-                        type="number"
-                        min="0"
-                        max="50000"
-                        step="1"
-                        value={form.stockQty}
-                        disabled={busy}
-                        onChange={(event) =>
-                          setForm({ ...form, stockQty: Number(event.target.value) })
-                        }
-                      />
-                      <small style={{ color: '#7a8e7e' }}>Tối đa 50.000 (theo quy cách bán).</small>
-                      {fields.stockQty && <small style={{ color: '#c65449', fontWeight: 600 }}>{fields.stockQty}</small>}
-                    </label>
-                    <label className="supplier-field">
-                      Đặt tối thiểu (MOQ)
-                      <input
-                        required
-                        type="number"
-                        min="1"
-                        max={form.stockQty > 0 ? form.stockQty : 50000}
-                        step="1"
-                        value={form.moq}
-                        disabled={busy}
-                        onChange={(event) => setForm({ ...form, moq: Number(event.target.value) })}
-                      />
-                      <small style={{ color: '#7a8e7e' }}>
-                        Mặc định 1 (người mua có thể mua lẻ từ 1 đơn vị, tối đa theo tồn kho).
-                      </small>
-                      {fields.moq && <small style={{ color: '#c65449', fontWeight: 600 }}>{fields.moq}</small>}
-                    </label>
-                    <label className="publish-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={form.isActive}
-                        disabled={busy}
-                        onChange={(event) => setForm({ ...form, isActive: event.target.checked })}
-                      />
-                      <span>Mở bán sau khi gian hàng được xác minh</span>
-                    </label>
-                  </div>
-                  <p className="catalog-hint">
-                    Giá, tồn kho và MOQ tính theo quy cách bán đã nhập. Bỏ chọn hiển thị để lưu sản
-                    phẩm ở trạng thái ẩn.
-                  </p>
-                  <div className="product-form-actions">
-                    <button className="primary-button" disabled={busy || uploading}>
-                      {busy
-                        ? 'Đang lưu…'
-                        : editing
-                          ? 'Lưu thay đổi'
-                          : form.isActive
-                            ? 'Đăng bán sản phẩm'
-                            : 'Lưu sản phẩm ẩn'}
-                    </button>
-                    {editing && (
-                      <button
-                        type="button"
-                        className="ghost-button"
-                        disabled={busy || uploading}
-                        onClick={cancel}
-                      >
-                        Hủy sửa
-                      </button>
-                    )}
-                  </div>
-                </form>
+                    </form>
                   ) : (
                     <form onSubmit={handleSubmitBatch}>
                       <div className="supplier-panel-title">
