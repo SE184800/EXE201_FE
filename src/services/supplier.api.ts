@@ -45,6 +45,44 @@ export type SupplierProduct = {
   };
 };
 
+export type SavedDriver = {
+  id: string;
+  driverName: string;
+  driverPhone: string;
+  vehicleType: string;
+  licensePlate?: string | null;
+  deliveryNotes?: string | null;
+  supplierId?: number | null;
+  lastUsedAt?: string;
+};
+
+export type IncidentReport = {
+  orderId: number;
+  damagedItems: Array<{
+    productId: number;
+    productName: string;
+    packaging?: string;
+    quantity: number;
+  }>;
+  damageType: string;
+  damageTypeLabel?: string;
+  evidenceImageUrl?: string | null;
+  notes?: string | null;
+  action: string;
+  supplementaryOrderId?: number | null;
+  reportedBy?: string;
+  reportedAt: string;
+};
+
+export type PaymentInfo = {
+  method: 'COD' | 'QR';
+  amount: number;
+  status: 'PENDING_PAYMENT' | 'PENDING_SUPPLIER_CONFIRM' | 'CONFIRMED';
+  storePaidAt?: string;
+  supplierConfirmedAt?: string;
+  confirmedBy?: number;
+};
+
 export type DriverInfo = {
   orderId?: number;
   driverName: string;
@@ -55,6 +93,9 @@ export type DriverInfo = {
   deliveryNotes?: string | null;
   assignedAt?: string;
   updatedAt?: string;
+  packingChecklist?: number[];
+  incidentReport?: IncidentReport | null;
+  paymentInfo?: PaymentInfo | null;
 };
 
 export type SupplierOrder = {
@@ -70,6 +111,9 @@ export type SupplierOrder = {
     warehouseAddress?: string | null;
     deliveryRadiusKm?: number;
     phone?: string | null;
+    bankName?: string | null;
+    bankAccountNumber?: string | null;
+    bankAccountHolder?: string | null;
   };
   id: number;
   status: string;
@@ -268,4 +312,74 @@ export async function respondRescheduleOrder(
     { action, note },
   );
   return response.data;
+}
+
+export async function getSavedDrivers(): Promise<SavedDriver[]> {
+  try {
+    const { data } = await api.get<{ success: boolean; drivers: SavedDriver[] }>('/supplier/drivers');
+    return data.drivers || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveSavedDriver(driver: Partial<SavedDriver>): Promise<SavedDriver | null> {
+  try {
+    const { data } = await api.post<{ success: boolean; driver: SavedDriver }>('/supplier/drivers', driver);
+    return data.driver;
+  } catch {
+    return null;
+  }
+}
+
+export async function savePackingChecklist(orderId: number, checkedItemIds: number[]): Promise<number[]> {
+  const { data } = await api.post<{ success: boolean; packingChecklist: number[] }>(
+    `/supplier/orders/${orderId}/packing`,
+    { checkedItemIds },
+  );
+  return data.packingChecklist;
+}
+
+export async function reportSupplierIncident(
+  orderId: number,
+  payload: {
+    damagedItems: Array<{ productId: number; productName: string; packaging?: string; quantity: number }>;
+    damageType: string;
+    damageTypeLabel?: string;
+    evidenceImageUrl?: string | null;
+    notes?: string | null;
+    action: string;
+  },
+): Promise<{ success: boolean; incidentReport: IncidentReport; supplementaryOrder: SupplierOrder | null; message: string }> {
+  const { data } = await api.post(`/supplier/orders/${orderId}/incident`, payload);
+  return data;
+}
+
+export async function confirmSupplierPayment(orderId: number): Promise<{ success: boolean; paymentInfo: PaymentInfo; message: string }> {
+  const { data } = await api.post(`/supplier/orders/${orderId}/confirm-payment`);
+  return data;
+}
+
+export async function approveOrder(orderId: number): Promise<{ success: boolean; order: SupplierOrder; message: string }> {
+  const { data } = await api.post(`/orders/${orderId}/approve`);
+  return data;
+}
+
+export async function confirmOrderArrival(orderId: number): Promise<{ success: boolean; order: SupplierOrder; message: string }> {
+  const { data } = await api.post(`/orders/${orderId}/confirm-arrival`);
+  return data;
+}
+
+export async function submitOrderPayment(
+  orderId: number,
+  method: 'COD' | 'QR',
+  amount?: number,
+): Promise<{ success: boolean; paymentInfo: PaymentInfo; message: string }> {
+  const { data } = await api.post(`/orders/${orderId}/pay`, { method, amount });
+  return data;
+}
+
+export async function completeOrder(orderId: number): Promise<{ success: boolean; order: SupplierOrder; message: string }> {
+  const { data } = await api.post(`/orders/${orderId}/complete`);
+  return data;
 }

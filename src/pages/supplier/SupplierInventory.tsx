@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
 import '../store-inventory.css';
-import Brand from '../../components/Brand';
-import TopbarBalance from '../../components/TopbarBalance';
 import Icon from '../../components/Icon';
-import SupplierHeader from '../../components/SupplierHeader';
+import SupplierLayout from '../../components/SupplierLayout';
 import type { AuthUser } from '../../types/auth';
 import type { SupplierProduct } from '../../services/supplier.api';
 import ExportDropdown from '../../components/ExportDropdown';
@@ -189,37 +187,12 @@ export default function SupplierInventory({ user, onLogout }: { user?: AuthUser;
   }
 
   return (
-    <main className="supplier-page store-dashboard">
-      {user ? (
-        <SupplierHeader
-          user={user}
-          activeNav="inventory"
-          onLogout={onLogout}
-        />
-      ) : (
-        <header className="supplier-header">
-          <Brand />
-          <div className="supplier-header-actions">
-            <TopbarBalance linkTo="/supplier/wallet" />
-            <Link className="ghost-button catalog-link" to="/supplier">
-              ← Tổng quan chủ vựa
-            </Link>
-          </div>
-        </header>
-      )}
-      <section className="supplier-main dashboard-content">
-        <nav className="catalog-nav" aria-label="Chủ vựa">
-          <Link to="/supplier">Tổng quan</Link>
-          <Link to="/supplier/products">Sản phẩm đăng bán</Link>
-          <Link to="/supplier/quotes">Báo giá tiếp thị</Link>
-          <Link to="/supplier/orders">Đơn hàng</Link>
-          <Link to="/supplier/inventory" aria-current="page">
-            Kho hàng
-          </Link>
-          <Link to="/supplier/wallet">Ví & Ký quỹ</Link>
-          <Link to="/supplier/subscription">Gói sử dụng</Link>
-        </nav>
-
+    <SupplierLayout
+      user={user || ({ id: 0, username: 'chuvua', name: 'Chủ vựa', role: 'SUPPLIER' } as AuthUser)}
+      activeNav="inventory"
+      onLogout={onLogout}
+    >
+      <div>
         <div className="dashboard-title">
           <div>
             <p className="dashboard-eyebrow">QUẢN LÝ KHO HÀNG (NỘI BỘ)</p>
@@ -527,7 +500,7 @@ export default function SupplierInventory({ user, onLogout }: { user?: AuthUser;
             </div>
           </form>
         </dialog>
-      </section>
-    </main>
+      </div>
+    </SupplierLayout>
   );
 }

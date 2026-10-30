@@ -522,7 +522,8 @@
   gap: 7px;
 }
 
-.store-sidebar nav button {
+.store-sidebar nav button,
+.store-sidebar nav a {
   display: flex;
   align-items: center;
   gap: 13px;
@@ -534,16 +535,31 @@
   font-size: 13px;
   text-align: left;
   font-weight: 550;
+  text-decoration: none;
+  font-family: inherit;
+  cursor: pointer;
+  box-sizing: border-box;
+  width: 100%;
 }
 
-.store-sidebar nav button[aria-current] {
+.store-sidebar nav button[aria-current],
+.store-sidebar nav a[aria-current] {
   background: #214e3d;
   color: #fff;
   box-shadow: 0 5px 12px #214e3d16;
 }
 
-.store-sidebar nav button:hover:not([aria-current]) {
+.store-sidebar nav button:hover:not([aria-current]),
+.store-sidebar nav a:hover:not([aria-current]) {
   background: #f1f5ec;
+  color: #214e3d;
+}
+
+.store-sidebar nav button svg,
+.store-sidebar nav a svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
 }
 
 .store-sidebar nav small {

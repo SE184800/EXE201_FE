@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import Brand from '../../components/Brand';
-import TopbarBalance from '../../components/TopbarBalance';
 import Icon from '../../components/Icon';
-import SupplierHeader from '../../components/SupplierHeader';
+import SupplierLayout from '../../components/SupplierLayout';
 import type { AuthUser } from '../../types/auth';
 import { PRODUCT_CATEGORIES } from '../../services/catalog.api';
 import { getApiError, getApiFieldErrors, isUnauthenticated } from '../../services/api';
@@ -731,36 +729,13 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
   }
 
   return (
-    <main className="supplier-page">
-      {user ? (
-        <SupplierHeader
-          user={user}
-          activeNav="products"
-          onLogout={onLogout}
-        />
-      ) : (
-        <header className="supplier-header">
-          <Brand />
-          <div className="supplier-header-actions">
-            <TopbarBalance linkTo="/supplier/wallet" />
-            <Link className="ghost-button catalog-link" to="/supplier">
-              ← Tổng quan chủ vựa
-            </Link>
-          </div>
-        </header>
-      )}
-      <section className="supplier-main">
-        <nav className="catalog-nav" aria-label="Chủ vựa">
-          <Link to="/supplier">Tổng quan</Link>
-          <Link to="/supplier/products" aria-current="page">
-            Sản phẩm đăng bán
-          </Link>
-          <Link to="/supplier/quotes">Báo giá tiếp thị</Link>
-          <Link to="/supplier/orders">Đơn hàng</Link>
-          <Link to="/supplier/inventory">Kho hàng</Link>
-          <Link to="/supplier/wallet">Ví & Ký quỹ</Link>
-          <Link to="/supplier/subscription">Gói sử dụng</Link>
-        </nav>
+    <SupplierLayout
+      user={user || ({ id: 0, username: 'chuvua', name: 'Chủ vựa', role: 'SUPPLIER' } as AuthUser)}
+      activeNav="products"
+      onLogout={onLogout}
+      businessName={profile?.businessName}
+    >
+      <div>
         <div className="supplier-heading">
           <div>
             <p className="form-eyebrow">GIAN HÀNG CỦA BẠN</p>
@@ -1891,7 +1866,7 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
             </>
           )
         )}
-      </section>
+      </div>
 
       {showFilterModal && (
         <div
@@ -2122,6 +2097,6 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
           </div>
         </div>
       )}
-    </main>
+    </SupplierLayout>
   );
 }

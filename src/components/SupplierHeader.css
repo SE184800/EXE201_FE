@@ -2,7 +2,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 24px;
+  padding: 12px 24px;
   background: #ffffff;
   border-bottom: 1px solid #e2e8f0;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
@@ -14,23 +14,136 @@
 .supplier-header-left {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
 }
 
+/* Tab Dropdown List (matching UX) */
+.supplier-tabs-dropdown {
+  position: relative;
+}
+
+.supplier-tabs-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  padding: 6px 12px 6px 10px;
+  border-radius: 9px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #1e293b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.supplier-tabs-trigger:hover,
+.supplier-tabs-trigger[aria-expanded='true'] {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.supplier-tabs-trigger svg {
+  width: 15px;
+  height: 15px;
+  color: #214e39;
+  flex-shrink: 0;
+}
+
+.supplier-tabs-trigger .chevron-icon {
+  width: 13px;
+  height: 13px;
+  color: #64748b;
+  margin-left: 2px;
+}
+
+.supplier-tabs-options {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 6px);
+  width: 230px;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  padding: 6px;
+  z-index: 100;
+  animation: fadeInMenu 0.15s ease-out;
+}
+
+.supplier-tabs-caption {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  letter-spacing: 0.5px;
+  padding: 6px 10px 4px;
+  text-transform: uppercase;
+}
+
+.supplier-tab-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #334155;
+  text-decoration: none;
+  transition: all 0.15s ease;
+}
+
+.supplier-tab-option svg {
+  width: 15px;
+  height: 15px;
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.supplier-tab-option:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.supplier-tab-option:hover svg {
+  color: #214e39;
+}
+
+.supplier-tab-option.active {
+  background: #ecfdf5;
+  color: #065f46;
+  font-weight: 600;
+}
+
+.supplier-tab-option.active svg {
+  color: #065f46;
+}
+
+.supplier-tab-option .active-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #16a34a;
+  margin-left: auto;
+}
+
+/* Quick Nav Links */
 .supplier-header-nav {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .supplier-nav-link {
-  padding: 6px 12px;
+  padding: 6px 11px;
   border-radius: 8px;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 500;
   color: #475569;
   text-decoration: none;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .supplier-nav-link:hover {
@@ -195,4 +308,10 @@
   width: 16px;
   height: 16px;
   flex-shrink: 0;
+}
+
+@media (max-width: 1024px) {
+  .supplier-header-nav {
+    display: none;
+  }
 }

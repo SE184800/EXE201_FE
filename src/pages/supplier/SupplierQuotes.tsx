@@ -1,9 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import Brand from '../../components/Brand';
-import TopbarBalance from '../../components/TopbarBalance';
 import Icon from '../../components/Icon';
-import SupplierHeader from '../../components/SupplierHeader';
+import SupplierLayout from '../../components/SupplierLayout';
 import type { AuthUser } from '../../types/auth';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
 import {
@@ -240,36 +238,13 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
   }
 
   return (
-    <main className="supplier-page">
-      {user ? (
-        <SupplierHeader
-          user={user}
-          activeNav="quotes"
-          onLogout={onLogout}
-        />
-      ) : (
-        <header className="supplier-header">
-          <Brand />
-          <div className="supplier-header-actions">
-            <TopbarBalance linkTo="/supplier/wallet" />
-            <Link className="ghost-button catalog-link" to="/supplier">
-              ← Tổng quan chủ vựa
-            </Link>
-          </div>
-        </header>
-      )}
-      <section className="supplier-main">
-        <nav className="catalog-nav" aria-label="Chủ vựa">
-          <Link to="/supplier">Tổng quan</Link>
-          <Link to="/supplier/products">Sản phẩm đăng bán</Link>
-          <Link to="/supplier/quotes" aria-current="page">
-            Báo giá tiếp thị
-          </Link>
-          <Link to="/supplier/orders">Đơn hàng</Link>
-          <Link to="/supplier/inventory">Kho hàng</Link>
-          <Link to="/supplier/wallet">Ví & Ký quỹ</Link>
-          <Link to="/supplier/subscription">Gói sử dụng</Link>
-        </nav>
+    <SupplierLayout
+      user={user || ({ id: 0, username: 'chuvua', name: 'Chủ vựa', role: 'SUPPLIER' } as AuthUser)}
+      activeNav="quotes"
+      onLogout={onLogout}
+      businessName={profile?.businessName}
+    >
+      <div>
         <div className="supplier-heading">
           <div>
             <p className="form-eyebrow">TIẾP THỊ TẠI CỬA HÀNG</p>
@@ -753,7 +728,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
             )}
           </section>
         )}
-      </section>
+      </div>
 
       {dispatchingRequest && (
         <DispatchConsignmentModal
@@ -774,7 +749,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
           }}
         />
       )}
-    </main>
+    </SupplierLayout>
   );
 }
 

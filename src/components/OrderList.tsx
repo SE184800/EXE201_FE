@@ -1,29 +1,31 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, getApiError, isUnauthenticated } from '../services/api';
-import type { SupplierOrder } from '../services/supplier.api';
+import {
+  rescheduleOrder,
+  respondRescheduleOrder,
+  approveOrder,
+  confirmOrderArrival,
+  submitOrderPayment,
+  completeOrder,
+  confirmSupplierPayment,
+  savePackingChecklist,
+  type SupplierOrder,
+} from '../services/supplier.api';
 import Icon from './Icon';
 import ExportDropdown from './ExportDropdown';
 import { exportSupplierOrdersToExcel, exportSupplierOrdersToPdf } from '../utils/exportSupplier';
-import { rescheduleOrder, respondRescheduleOrder } from '../services/supplier.api';
 import { depositOrderWithWallet } from '../services/wallet.api';
 import './complaint-dialog.css';
 
 const statuses = {
   PENDING: 'Chờ duyệt',
   APPROVED: 'Đã duyệt',
-  PREPARING: 'Đang chuẩn bị',
+  PREPARING: 'Đang soạn đơn',
   SHIPPING: 'Đang vận chuyển',
   ISSUE_HANDLING: 'Tiếp nhận xử lý',
   DELIVERED: 'Đã giao',
+  COMPLETED: 'Hoàn tất',
   REJECTED: 'Đã từ chối',
-};
-
-const actions: Record<string, string> = {
-  PENDING: 'Duyệt đơn',
-  APPROVED: 'Bắt đầu soạn',
-  PREPARING: 'Bàn giao vận chuyển',
-  SHIPPING: 'Chuyển tiếp nhận xử lý',
-  ISSUE_HANDLING: 'Xác nhận đã giao & thu COD',
 };
 
 const COMPLAINT_STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
@@ -53,7 +55,7 @@ const REASON_LABELS: Record<string, string> = {
   OTHER: 'Khác',
 };
 
-const money = (n: number) => n.toLocaleString('vi-VN') + ' ₫';
+const money = (n: number) => Math.round(n).toLocaleString('vi-VN') + ' ₫';
 
 const DESIRED_RESOLUTIONS: { code: string; label: string }[] = [
   { code: 'REFUND', label: 'Hoàn tiền / Trừ cọc tương ứng' },
@@ -63,6 +65,7 @@ const DESIRED_RESOLUTIONS: { code: string; label: string }[] = [
 ];
 
 const SUPPLIER_RESOLUTIONS: { code: string; label: string }[] = [
+  { code: 'AGREE_REPLACE_0VND', label: 'Đồng ý giao bù hàng mới (Tự động tạo đơn 0đ)' },
   { code: 'AGREE_REFUND', label: 'Đồng ý hoàn tiền / Trừ cọc' },
   { code: 'AGREE_REPLACE', label: 'Đồng ý giao bù hàng mới chuyến sau' },
   { code: 'AGREE_RETURN', label: 'Đồng ý thu hồi đổi trả hàng' },
@@ -165,9 +168,18 @@ type Props = {
   busy?: boolean;
   onStatus?: (order: SupplierOrder, forcedStatus?: string) => void;
   onEditDriver?: (order: SupplierOrder) => void;
+  onReportIncident?: (order: SupplierOrder) => void;
 };
 
-export default function OrderList({ kind, onLogout, revision = 0, busy = false, onStatus, onEditDriver }: Props) {
+export default function OrderList({
+  kind,
+  onLogout,
+  revision = 0,
+  busy = false,
+  onStatus,
+  onEditDriver,
+  onReportIncident,
+}: Props) {
   const [query, setQuery] = useState({ page: 1, status: '' });
   const [data, setData] = useState<{ orders: SupplierOrder[]; total: number; hasMore: boolean }>({
     orders: [],
@@ -178,6 +190,14 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
   const [depositNotice, setDepositNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
+
+  // Packing checklist state (orderId -> itemIds checked)
+  const [packingMap, setPackingMap] = useState<Record<number, number[]>>({});
+
+  // Payment dialog state for Store Owner
+  const [paymentOrder, setPaymentOrder] = useState<SupplierOrder | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
+
   const [complaintOrder, setComplaintOrder] = useState<SupplierOrder | null>(null);
   const [complaintReason, setComplaintReason] = useState(COMPLAINT_REASONS[0].code);
   const [complaintDescription, setComplaintDescription] = useState('');
@@ -194,6 +214,107 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
   const [depositDraft, setDepositDraft] = useState<{ orderId: number; reference: string } | null>(
     null,
   );
+
+  async function handleStoreApprove(order: SupplierOrder) {
+    if (actionLoadingId !== null) return;
+    setActionLoadingId(order.id);
+    setError('');
+    try {
+      const res = await approveOrder(order.id);
+      setDepositNotice(res.message || `Đơn #${order.id} đã được duyệt và chuyển sang đang soạn đơn.`);
+      setReload((n) => n + 1);
+    } catch (issue) {
+      setError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
+  async function handleConfirmArrival(order: SupplierOrder) {
+    if (actionLoadingId !== null) return;
+    setActionLoadingId(order.id);
+    setError('');
+    try {
+      const res = await confirmOrderArrival(order.id);
+      setDepositNotice(res.message || `Đã xác nhận hàng đến cửa hàng cho đơn #${order.id}.`);
+      setReload((n) => n + 1);
+    } catch (issue) {
+      setError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
+  async function handleCompleteOrder(order: SupplierOrder) {
+    if (actionLoadingId !== null) return;
+    setActionLoadingId(order.id);
+    setError('');
+    try {
+      const res = await completeOrder(order.id);
+      setDepositNotice(res.message || `Đơn #${order.id} đã hoàn tất thành công.`);
+      setReload((n) => n + 1);
+    } catch (issue) {
+      setError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
+  async function handleSupplierConfirmPayment(order: SupplierOrder) {
+    if (actionLoadingId !== null) return;
+    setActionLoadingId(order.id);
+    setError('');
+    try {
+      const res = await confirmSupplierPayment(order.id);
+      setDepositNotice(res.message || `Đã xác nhận nhận đủ tiền thanh toán cho đơn #${order.id}.`);
+      setReload((n) => n + 1);
+    } catch (issue) {
+      setError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
+  async function handleTogglePackingItem(orderId: number, itemId: number) {
+    const current = packingMap[orderId] || [];
+    const next = current.includes(itemId)
+      ? current.filter((id) => id !== itemId)
+      : [...current, itemId];
+    setPackingMap((prev) => ({ ...prev, [orderId]: next }));
+    try {
+      await savePackingChecklist(orderId, next);
+    } catch {}
+  }
+
+  async function handleToggleAllPacking(order: SupplierOrder) {
+    const current = packingMap[order.id] || [];
+    const next = current.length === order.items.length ? [] : order.items.map((it) => it.id);
+    setPackingMap((prev) => ({ ...prev, [order.id]: next }));
+    try {
+      await savePackingChecklist(order.id, next);
+    } catch {}
+  }
+
+  async function handlePaySubmit(method: 'COD' | 'QR') {
+    if (!paymentOrder) return;
+    const order = paymentOrder;
+    setActionLoadingId(order.id);
+    try {
+      const res = await submitOrderPayment(order.id, method);
+      setDepositNotice(res.message || `Đã gửi xác nhận trả tiền qua ${method}. Đang chờ Chủ vựa xác nhận.`);
+      setPaymentOrder(null);
+      setReload((n) => n + 1);
+    } catch (issue) {
+      setError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
   function handleExportExcel() {
     exportSupplierOrdersToExcel(
       data.orders,
@@ -508,6 +629,15 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
         if (!abort.signal.aborted) {
           setData(data);
           setError('');
+          setPackingMap((prev) => {
+            const next = { ...prev };
+            data.orders?.forEach((o: SupplierOrder) => {
+              if (o.driverInfo?.packingChecklist) {
+                next[o.id] = o.driverInfo.packingChecklist;
+              }
+            });
+            return next;
+          });
         }
       })
       .catch((error) => {
@@ -628,6 +758,94 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                   </span>
                 ))}
               </div>
+
+              {/* Checklist soạn hàng cho Chủ vựa khi đơn ở trạng thái PREPARING */}
+              {kind === 'supplier' && order.status === 'PREPARING' && (
+                <div
+                  style={{
+                    margin: '10px 0',
+                    padding: '12px 14px',
+                    borderRadius: '8px',
+                    backgroundColor: '#f8fafc',
+                    border: '1px solid #cbd5e1',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '8px',
+                      flexWrap: 'wrap',
+                      gap: '6px',
+                    }}
+                  >
+                    <strong style={{ fontSize: '13px', color: '#1e293b' }}>
+                      Checklist soạn hàng đóng gói ({(packingMap[order.id] || []).length}/{order.items.length} món)
+                    </strong>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      style={{ fontSize: '11px', padding: '2px 8px' }}
+                      onClick={() => handleToggleAllPacking(order)}
+                    >
+                      {(packingMap[order.id] || []).length === order.items.length ? 'Bỏ chọn tất cả' : 'Tích chọn tất cả'}
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {order.items.map((item) => {
+                      const isChecked = (packingMap[order.id] || []).includes(item.id);
+                      return (
+                        <label
+                          key={item.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '8px',
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            backgroundColor: isChecked ? '#f0fdf4' : '#ffffff',
+                            border: `1px solid ${isChecked ? '#86efac' : '#e2e8f0'}`,
+                            cursor: 'pointer',
+                            fontSize: '12.5px',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => handleTogglePackingItem(order.id, item.id)}
+                            style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                          />
+                          <span
+                            style={{
+                              flex: 1,
+                              textDecoration: isChecked ? 'line-through' : 'none',
+                              color: isChecked ? '#166534' : '#1e293b',
+                            }}
+                          >
+                            <strong>{item.productName}</strong> · SL: <strong>{item.quantity}</strong> × {item.packaging} ({money(item.lineTotal)})
+                          </span>
+                          <span style={{ fontSize: '11px', fontWeight: 650, color: isChecked ? '#15803d' : '#94a3b8' }}>
+                            {isChecked ? 'Đã chuẩn bị' : 'Chưa lấy'}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <p
+                    style={{
+                      margin: '8px 0 0',
+                      fontSize: '11.5px',
+                      color: (packingMap[order.id] || []).length === order.items.length ? '#15803d' : '#b45309',
+                      fontWeight: 500,
+                    }}
+                  >
+                    {(packingMap[order.id] || []).length === order.items.length
+                      ? 'Đã kiểm tra đủ toàn bộ hàng hóa. Nút "Chuẩn bị giao hàng" bên dưới đã sẵn sàng!'
+                      : `Vui lòng tick kiểm tra đủ ${order.items.length} món hàng để kích hoạt nút chuẩn bị giao hàng.`}
+                  </p>
+                </div>
+              )}
 
               <p className="order-delivery">
                 <strong>{order.recipientName || 'Đơn cũ chưa có người nhận'}</strong>
@@ -1415,13 +1633,227 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                 </div>
               )}
 
+              {/* Báo cáo sự cố khi đang giao của tài xế */}
+              {order.driverInfo?.incidentReport && (
+                <div
+                  style={{
+                    margin: '10px 0',
+                    padding: '12px 14px',
+                    borderRadius: '8px',
+                    backgroundColor: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    fontSize: '12.5px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '6px',
+                      flexWrap: 'wrap',
+                      gap: '6px',
+                    }}
+                  >
+                    <strong style={{ color: '#991b1b', fontSize: '13px' }}>
+                      Sự cố khi đang giao: {order.driverInfo.incidentReport.damageTypeLabel || order.driverInfo.incidentReport.damageType}
+                    </strong>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        color: '#b91c1c',
+                        fontWeight: 650,
+                        backgroundColor: '#fee2e2',
+                        padding: '2px 8px',
+                        borderRadius: '10px',
+                      }}
+                    >
+                      Báo cáo sự cố tài xế
+                    </span>
+                  </div>
+                  <div style={{ color: '#7f1d1d' }}>
+                    <strong>Mặt hàng bị hỏng:</strong>{' '}
+                    {order.driverInfo.incidentReport.damagedItems
+                      ?.map((d) => `${d.productName} (x${d.quantity})`)
+                      .join(', ')}
+                  </div>
+                  {order.driverInfo.incidentReport.notes && (
+                    <div style={{ marginTop: '4px', fontStyle: 'italic', color: '#991b1b' }}>
+                      Ghi chú: "{order.driverInfo.incidentReport.notes}"
+                    </div>
+                  )}
+                  {order.driverInfo.incidentReport.evidenceImageUrl && (() => {
+                    const imgs = resolveComplaintImages(order.driverInfo.incidentReport.evidenceImageUrl);
+                    if (!imgs.length) return null;
+                    return (
+                      <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                        {imgs.map((src, i) => (
+                          <img
+                            key={i}
+                            src={src}
+                            alt={`Bằng chứng ${i + 1}`}
+                            style={{
+                              width: '55px',
+                              height: '55px',
+                              objectFit: 'cover',
+                              borderRadius: '4px',
+                              border: '1px solid #fca5a5',
+                              cursor: 'pointer',
+                            }}
+                            onClick={() => setViewingImage(src)}
+                            title="Bấm để xem ảnh lớn"
+                          />
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  {order.driverInfo.incidentReport.supplementaryOrderId && (
+                    <div
+                      style={{
+                        marginTop: '8px',
+                        fontWeight: 650,
+                        color: '#166534',
+                        backgroundColor: '#f0fdf4',
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #bbf7d0',
+                      }}
+                    >
+                      Chủ vựa đã tạo đơn giao bổ sung 0đ #{order.driverInfo.incidentReport.supplementaryOrderId} để bù hàng hỏng chuyến sau cho tiệm.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Tiến trình thanh toán & Xác nhận 2 bước */}
+              {order.driverInfo?.paymentInfo?.status === 'PENDING_SUPPLIER_CONFIRM' && (
+                <div
+                  style={{
+                    margin: '10px 0',
+                    padding: '12px 14px',
+                    borderRadius: '8px',
+                    backgroundColor: '#fefce8',
+                    border: '1px solid #fef08a',
+                    fontSize: '12.5px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                    }}
+                  >
+                    <div>
+                      <strong style={{ color: '#854d0e', display: 'block', fontSize: '13px' }}>
+                        {kind === 'store'
+                          ? `Đã gửi xác nhận trả tiền qua ${order.driverInfo.paymentInfo.method} (${money(order.driverInfo.paymentInfo.amount)})`
+                          : `Tiệm tạp hóa đã báo trả tiền qua ${order.driverInfo.paymentInfo.method} (${money(order.driverInfo.paymentInfo.amount)})`}
+                      </strong>
+                      <span style={{ fontSize: '12px', color: '#713f12' }}>
+                        {kind === 'store'
+                          ? 'Đang chờ Chủ vựa / Tài xế bấm "Xác nhận đã nhận đủ tiền" để kích hoạt hoàn tất đơn.'
+                          : 'Vui lòng kiểm tra tiền mặt từ tài xế hoặc tài khoản ngân hàng, sau đó bấm xác nhận bên dưới.'}
+                      </span>
+                    </div>
+
+                    {kind === 'supplier' ? (
+                      <button
+                        type="button"
+                        className="table-button primary-small"
+                        style={{ backgroundColor: '#15803d', fontWeight: 700 }}
+                        disabled={actionLoadingId === order.id}
+                        onClick={() => void handleSupplierConfirmPayment(order)}
+                      >
+                        {actionLoadingId === order.id ? 'Đang lưu…' : 'Xác nhận đã nhận đủ tiền'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="table-button primary-small"
+                        disabled={true}
+                        style={{ opacity: 0.6, cursor: 'not-allowed', backgroundColor: '#94a3b8' }}
+                        title="Nút sẽ được kích hoạt ngay khi Chủ vựa bấm xác nhận đã nhận đủ tiền"
+                      >
+                        Thanh toán thành công (Chờ vựa xác nhận...)
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {order.driverInfo?.paymentInfo?.status === 'CONFIRMED' && order.status !== 'COMPLETED' && (
+                <div
+                  style={{
+                    margin: '10px 0',
+                    padding: '12px 14px',
+                    borderRadius: '8px',
+                    backgroundColor: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    fontSize: '12.5px',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                    }}
+                  >
+                    <div>
+                      <strong style={{ color: '#166534', display: 'block', fontSize: '13px' }}>
+                        Chủ vựa đã xác nhận nhận đủ tiền thanh toán qua {order.driverInfo.paymentInfo.method}
+                      </strong>
+                      <span style={{ fontSize: '12px', color: '#14532d' }}>
+                        {kind === 'store'
+                          ? 'Tiền hàng đã được thanh toán an toàn. Bấm nút bên phải để hoàn tất đơn hàng và giải ngân ký quỹ.'
+                          : 'Đã xác nhận thu tiền thành công. Cửa hàng đang thực hiện hoàn tất đơn.'}
+                      </span>
+                    </div>
+
+                    {kind === 'store' && (
+                      <button
+                        type="button"
+                        className="table-button primary-small"
+                        style={{ backgroundColor: '#15803d', fontWeight: 700 }}
+                        disabled={actionLoadingId === order.id}
+                        onClick={() => void handleCompleteOrder(order)}
+                      >
+                        {actionLoadingId === order.id ? 'Đang hoàn tất…' : 'Thanh toán thành công & Hoàn tất đơn'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {order.status === 'COMPLETED' && (
+                <div
+                  style={{
+                    margin: '10px 0',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    backgroundColor: '#f0fdf4',
+                    border: '1px solid #86efac',
+                    color: '#15803d',
+                    fontWeight: 650,
+                    fontSize: '12.5px',
+                  }}
+                >
+                  Đơn hàng đã hoàn tất thành công. Tiền hàng và cọc đã được quyết toán đầy đủ.
+                </div>
+              )}
+
               <p className="catalog-hint">
                 Tiền hàng {money(order.subtotal)} + giao hàng {money(order.deliveryFee)}
               </p>
 
               <div className="order-card-bottom">
                 <strong>
-                  {order.status === 'DELIVERED'
+                  {order.status === 'DELIVERED' || order.status === 'COMPLETED'
                     ? 'Tổng đã giao'
                     : order.depositStatus === 'PAID'
                       ? 'Còn lại khi giao'
@@ -1433,33 +1865,130 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                       : order.total,
                   )}
                 </strong>
-                {kind === 'supplier' && actions[order.status] && (
+
+                {/* Phía Chủ vựa: Các nút thao tác trạng thái */}
+                {kind === 'supplier' && (
                   <div className="order-actions">
-                    <button
-                      className="table-button primary-small"
-                      disabled={
-                        busy ||
-                        (order.status === 'PENDING' &&
-                          order.depositAmount > 0 &&
-                          order.depositStatus !== 'PAID')
-                      }
-                      onClick={() => onStatus?.(order)}
-                    >
-                      {actions[order.status]}
-                    </button>
-                    {order.status === 'PENDING' && (
+                    {order.status === 'PREPARING' && (
                       <button
-                        className="table-button danger"
-                        disabled={busy || order.depositStatus === 'SUBMITTED'}
+                        className="table-button primary-small"
+                        disabled={
+                          busy ||
+                          (packingMap[order.id] || []).length < order.items.length
+                        }
+                        onClick={() => onStatus?.(order)}
                         title={
-                          order.depositStatus === 'SUBMITTED'
-                            ? 'Xử lý xác nhận cọc trước khi từ chối đơn'
+                          (packingMap[order.id] || []).length < order.items.length
+                            ? `Cần tích đủ ${order.items.length} món trong checklist soạn hàng`
                             : undefined
                         }
-                        onClick={() => onStatus?.(order, 'REJECTED')}
                       >
-                        Từ chối
+                        {(packingMap[order.id] || []).length < order.items.length
+                          ? `Soạn đủ hàng để giao (${(packingMap[order.id] || []).length}/${order.items.length})`
+                          : 'Chuẩn bị giao hàng & Gán tài xế'}
                       </button>
+                    )}
+
+                    {order.status === 'SHIPPING' && (
+                      <button
+                        type="button"
+                        className="table-button danger"
+                        style={{ backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 650 }}
+                        onClick={() => onReportIncident?.(order)}
+                      >
+                        Lập báo cáo sự cố (Khi giao)
+                      </button>
+                    )}
+
+                    {order.status === 'PENDING' && (
+                      <>
+                        <button
+                          className="table-button primary-small"
+                          disabled={
+                            busy ||
+                            (order.status === 'PENDING' &&
+                              order.depositAmount > 0 &&
+                              order.depositStatus !== 'PAID')
+                          }
+                          onClick={() => onStatus?.(order)}
+                        >
+                          Bắt đầu soạn đơn
+                        </button>
+                        <button
+                          className="table-button danger"
+                          disabled={busy || order.depositStatus === 'SUBMITTED'}
+                          title={
+                            order.depositStatus === 'SUBMITTED'
+                              ? 'Xử lý xác nhận cọc trước khi từ chối đơn'
+                              : undefined
+                          }
+                          onClick={() => onStatus?.(order, 'REJECTED')}
+                        >
+                          Từ chối
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Phía Chủ tạp hóa: Các nút duyệt đơn, nhận hàng, trả tiền */}
+                {kind === 'store' && (
+                  <div className="order-actions">
+                    {(order.status === 'PENDING' || order.status === 'APPROVED') && (
+                      <button
+                        type="button"
+                        className="table-button primary-small"
+                        disabled={
+                          busy ||
+                          actionLoadingId === order.id ||
+                          (order.depositAmount > 0 && order.depositStatus !== 'PAID')
+                        }
+                        onClick={() => void handleStoreApprove(order)}
+                        title={
+                          order.depositAmount > 0 && order.depositStatus !== 'PAID'
+                            ? 'Cần đặt cọc trước khi duyệt đơn'
+                            : undefined
+                        }
+                      >
+                        {actionLoadingId === order.id ? 'Đang duyệt…' : 'Duyệt đơn (Chuyển sang soạn đơn)'}
+                      </button>
+                    )}
+
+                    {order.status === 'SHIPPING' && (
+                      <button
+                        type="button"
+                        className="table-button primary-small"
+                        style={{ backgroundColor: '#15803d', fontWeight: 700 }}
+                        disabled={busy || actionLoadingId === order.id}
+                        onClick={() => void handleConfirmArrival(order)}
+                      >
+                        {actionLoadingId === order.id ? 'Đang xử lý…' : 'Hàng đã đến cửa hàng (Xác nhận nhận xe)'}
+                      </button>
+                    )}
+
+                    {order.status === 'ISSUE_HANDLING' && (
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        {!order.complaint && (
+                          <button
+                            type="button"
+                            className="table-button complaint-card-report-btn"
+                            onClick={() => openStoreComplaint(order)}
+                          >
+                            Báo cáo sự cố
+                          </button>
+                        )}
+                        {(!order.driverInfo?.paymentInfo ||
+                          order.driverInfo?.paymentInfo?.status === 'PENDING_PAYMENT') && (
+                          <button
+                            type="button"
+                            className="table-button primary-small"
+                            style={{ backgroundColor: '#0284c7', fontWeight: 700 }}
+                            onClick={() => setPaymentOrder(order)}
+                          >
+                            Hàng hóa đầy đủ & Trả tiền
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 )}
@@ -1475,7 +2004,7 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
                     ? 'Chuyển đúng số tiền cọc đến tài khoản hiển thị phía trên rồi gửi mã giao dịch.'
                     : order.depositStatus === 'SUBMITTED'
                       ? 'Đã gửi xác nhận chuyển cọc. Đang chờ chủ vựa kiểm tra tài khoản.'
-                      : 'Chờ chủ vựa kiểm tra tồn kho và xác nhận khu vực giao hàng.'}
+                      : 'Bấm nút Duyệt đơn để báo chủ vựa bắt đầu soạn hàng.'}
                 </p>
               )}
 
@@ -2259,6 +2788,263 @@ export default function OrderList({ kind, onLogout, revision = 0, busy = false, 
           </form>
         </div>
       )}
+
+      {paymentOrder && (
+        <PaymentDialog
+          order={paymentOrder}
+          busy={actionLoadingId === paymentOrder.id}
+          onCancel={() => setPaymentOrder(null)}
+          onSubmit={handlePaySubmit}
+        />
+      )}
     </section>
+  );
+}
+
+function PaymentDialog({
+  order,
+  busy,
+  onCancel,
+  onSubmit,
+}: {
+  order: SupplierOrder;
+  busy: boolean;
+  onCancel: () => void;
+  onSubmit: (method: 'COD' | 'QR') => void;
+}) {
+  const [method, setMethod] = useState<'COD' | 'QR'>('COD');
+  const depositPaid = order.depositStatus === 'PAID' ? order.depositAmount : 0;
+  const remainingAmount = Math.max(0, order.total - depositPaid);
+
+  const bankName = order.supplier?.bankName || order.depositBankName || 'Vietcombank';
+  const bankAcc = order.supplier?.bankAccountNumber || order.depositBankAccountNumber || '123456789';
+  const bankHolder =
+    order.supplier?.bankAccountHolder ||
+    order.depositBankAccountHolder ||
+    order.supplier?.businessName ||
+    'CHỦ VỰA';
+  const qrUrl = `https://img.vietqr.io/image/${bankName}-${bankAcc}-compact2.png?amount=${remainingAmount}&addInfo=THANH%20TOAN%20DH${order.id}&accountName=${encodeURIComponent(bankHolder)}`;
+
+  return (
+    <div className="supplier-dialog-backdrop" role="presentation">
+      <section
+        className="supplier-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="payment-dialog-title"
+        style={{ maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto' }}
+      >
+        <span className="supplier-panel-label">THANH TOÁN ĐƠN #{order.id}</span>
+        <h2 id="payment-dialog-title">Thanh toán tiền hàng</h2>
+        <p style={{ fontSize: '13px', color: '#64748b', marginTop: '2px', marginBottom: '14px' }}>
+          Chọn phương thức thanh toán tiền hàng còn lại khi nhận xe giao đến tiệm.
+        </p>
+
+        <div
+          style={{
+            marginBottom: '14px',
+            padding: '12px 14px',
+            backgroundColor: '#f8fafc',
+            borderRadius: '8px',
+            border: '1px solid #cbd5e1',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              marginBottom: '4px',
+              fontSize: '13px',
+            }}
+          >
+            <span>Tổng giá trị đơn hàng:</span>
+            <strong>{money(order.total)}</strong>
+          </div>
+          {depositPaid > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginBottom: '4px',
+                fontSize: '13px',
+                color: '#15803d',
+              }}
+            >
+              <span>Đã thanh toán / cọc trước:</span>
+              <strong>- {money(depositPaid)}</strong>
+            </div>
+          )}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              borderTop: '1px dashed #cbd5e1',
+              paddingTop: '6px',
+              fontSize: '15px',
+            }}
+          >
+            <strong style={{ color: '#0f172a' }}>Số tiền còn lại cần trả:</strong>
+            <strong style={{ color: '#0284c7', fontSize: '16px' }}>{money(remainingAmount)}</strong>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: '14px' }}>
+          <span
+            style={{
+              fontSize: '13px',
+              fontWeight: 650,
+              color: '#1e293b',
+              display: 'block',
+              marginBottom: '8px',
+            }}
+          >
+            Chọn hình thức thanh toán:
+          </span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <button
+              type="button"
+              onClick={() => setMethod('COD')}
+              style={{
+                padding: '12px',
+                borderRadius: '8px',
+                border: `2px solid ${method === 'COD' ? '#0284c7' : '#e2e8f0'}`,
+                backgroundColor: method === 'COD' ? '#f0f9ff' : '#ffffff',
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              <strong
+                style={{
+                  display: 'block',
+                  color: method === 'COD' ? '#0369a1' : '#1e293b',
+                  fontSize: '13px',
+                }}
+              >
+                Tiền mặt khi giao (COD)
+              </strong>
+              <small style={{ color: '#64748b' }}>Trả tiền trực tiếp cho tài xế</small>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMethod('QR')}
+              style={{
+                padding: '12px',
+                borderRadius: '8px',
+                border: `2px solid ${method === 'QR' ? '#0284c7' : '#e2e8f0'}`,
+                backgroundColor: method === 'QR' ? '#f0f9ff' : '#ffffff',
+                textAlign: 'left',
+                cursor: 'pointer',
+              }}
+            >
+              <strong
+                style={{
+                  display: 'block',
+                  color: method === 'QR' ? '#0369a1' : '#1e293b',
+                  fontSize: '13px',
+                }}
+              >
+                Quét mã VietQR
+              </strong>
+              <small style={{ color: '#64748b' }}>Chuyển khoản trực tiếp vựa</small>
+            </button>
+          </div>
+        </div>
+
+        {method === 'QR' ? (
+          <div
+            style={{
+              marginBottom: '14px',
+              padding: '12px',
+              borderRadius: '8px',
+              backgroundColor: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              textAlign: 'center',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '13px',
+                fontWeight: 600,
+                color: '#166534',
+                display: 'block',
+                marginBottom: '8px',
+              }}
+            >
+              Quét mã QR bằng ứng dụng ngân hàng:
+            </span>
+            <img
+              src={qrUrl}
+              alt="Mã QR thanh toán VietQR"
+              style={{
+                width: '180px',
+                height: '180px',
+                margin: '0 auto',
+                display: 'block',
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+              }}
+            />
+            <div
+              style={{
+                marginTop: '10px',
+                fontSize: '12.5px',
+                color: '#1e293b',
+                textAlign: 'left',
+                padding: '8px 12px',
+                backgroundColor: '#ffffff',
+                borderRadius: '6px',
+                border: '1px solid #e2e8f0',
+              }}
+            >
+              <div>
+                <strong>Ngân hàng:</strong> {bankName}
+              </div>
+              <div>
+                <strong>Số tài khoản:</strong> {bankAcc}
+              </div>
+              <div>
+                <strong>Chủ tài khoản:</strong> {bankHolder}
+              </div>
+              <div>
+                <strong>Nội dung CK:</strong> THANH TOAN DH{order.id}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div
+            style={{
+              marginBottom: '14px',
+              padding: '12px',
+              borderRadius: '8px',
+              backgroundColor: '#fffbeb',
+              border: '1px solid #fde68a',
+              fontSize: '13px',
+              color: '#92400e',
+            }}
+          >
+            <strong>Hướng dẫn thanh toán tiền mặt (COD):</strong>
+            <p style={{ margin: '4px 0 0' }}>
+              Chuẩn bị đúng số tiền <strong>{money(remainingAmount)}</strong> để đưa cho tài xế giao hàng khi xe đến cửa hàng.
+            </p>
+          </div>
+        )}
+
+        <div className="supplier-dialog-actions">
+          <button type="button" className="ghost-button" onClick={onCancel} disabled={busy}>
+            Đóng
+          </button>
+          <button
+            type="button"
+            className="table-button primary-small"
+            style={{ backgroundColor: '#0284c7', fontWeight: 700 }}
+            onClick={() => onSubmit(method)}
+            disabled={busy}
+          >
+            {busy ? 'Đang xử lý…' : 'Xác nhận đã trả tiền'}
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }

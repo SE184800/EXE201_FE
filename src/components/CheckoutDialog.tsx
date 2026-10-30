@@ -4,7 +4,8 @@ import type { CatalogProduct } from '../services/catalog.api';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import { getWallet, addMockFunds, type WalletInfo } from '../services/wallet.api';
 
-const money = (n: number) => n.toLocaleString('vi-VN') + ' ₫';
+const roundToThousand = (val: number) => Math.round(val / 1000) * 1000;
+const money = (n: number) => Math.round(n).toLocaleString('vi-VN') + ' ₫';
 const STANDARD_DEPOSIT_RATE = 10; // Mức cọc chuẩn 10% bảo chứng hệ thống
 
 interface CreatedOrderSummary {
@@ -135,13 +136,17 @@ export default function CheckoutDialog({
   // Calculate totals per supplier and overall
   const orderCalculations = useMemo(() => {
     return supplierGroups.map((group) => {
-      const goodsSubtotal = group.items.reduce((sum, item) => {
-        const qty = quantities[item.id] || item.moq;
-        return sum + item.wholesalePrice * qty;
-      }, 0);
-      const deliveryFee = group.supplier.deliveryFee;
-      const orderTotal = goodsSubtotal + deliveryFee;
-      const depositAmount = (orderTotal * STANDARD_DEPOSIT_RATE) / 100;
+      const goodsSubtotal = roundToThousand(
+        group.items.reduce((sum, item) => {
+          const qty = quantities[item.id] || item.moq;
+          return sum + item.wholesalePrice * qty;
+        }, 0)
+      );
+      const rawDeliveryFee = Number(group.supplier.deliveryFee);
+      // Mặc định phí giao hàng tiêu chuẩn 25.000 ₫ nếu vựa chưa cấu hình hoặc = 0đ
+      const deliveryFee = roundToThousand(rawDeliveryFee > 0 ? rawDeliveryFee : 25000);
+      const orderTotal = roundToThousand(goodsSubtotal + deliveryFee);
+      const depositAmount = roundToThousand((orderTotal * STANDARD_DEPOSIT_RATE) / 100);
       const remainingCOD = orderTotal - depositAmount;
 
       return {

@@ -142,7 +142,7 @@ export default function SupplierOnboarding({
         businessName: businessName.trim().replace(/\s+/g, ' '),
         warehouseAddress: warehouseAddress.trim().replace(/\s+/g, ' '),
         deliveryRadiusKm: 10,
-        deliveryFee: 0,
+        deliveryFee: 25000,
         phone: normalizePhone(phone),
         taxCode: taxCode.trim().replace(/\s+/g, '') || null,
         bankName: null,

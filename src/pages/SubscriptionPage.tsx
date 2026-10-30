@@ -8,7 +8,7 @@ import {
   type Subscription,
 } from '../services/subscription.api';
 import './subscription.css';
-import SupplierHeader from '../components/SupplierHeader';
+import SupplierLayout from '../components/SupplierLayout';
 import type { AuthUser } from '../types/auth';
 
 const money = (value: number) => value.toLocaleString('vi-VN') + ' ₫';
@@ -80,23 +80,8 @@ export default function SubscriptionPage({
   }
 
   const workspace = role === 'SUPPLIER' ? '/supplier' : '/store';
-  if (loading)
-    return (
-      <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
-        {role === 'SUPPLIER' && user && (
-          <SupplierHeader user={user} activeNav="subscription" onLogout={onLogout} />
-        )}
-        <section className="subscription-page">
-          <p role="status">Đang kiểm tra gói sử dụng…</p>
-        </section>
-      </div>
-    );
-  return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
-      {role === 'SUPPLIER' && user && (
-        <SupplierHeader user={user} activeNav="subscription" onLogout={onLogout} />
-      )}
-      <section className="subscription-page">
+  const content = (
+    <section className="subscription-page">
       <div className="subscription-hero">
         <div>
           <p>SUPPLYMIND BASIC</p>
@@ -222,6 +207,28 @@ export default function SubscriptionPage({
         </article>
       )}
     </section>
-    </div>
   );
+
+  if (role === 'SUPPLIER' && user) {
+    return (
+      <SupplierLayout user={user} activeNav="subscription" onLogout={onLogout} pageTitle="Gói sử dụng">
+        {loading ? (
+          <section className="subscription-page">
+            <p role="status">Đang kiểm tra gói sử dụng…</p>
+          </section>
+        ) : (
+          content
+        )}
+      </SupplierLayout>
+    );
+  }
+
+  if (loading)
+    return (
+      <section className="subscription-page">
+        <p role="status">Đang kiểm tra gói sử dụng…</p>
+      </section>
+    );
+
+  return content;
 }

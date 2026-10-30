@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import '../catalog.css';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
-import SupplierHeader from '../../components/SupplierHeader';
+import SupplierLayout from '../../components/SupplierLayout';
 import SupplierVerification from './SupplierVerification';
 import SupplierOnboarding from '../../components/SupplierOnboarding';
 import ContractSigningModal from '../../components/ContractSigningModal';
@@ -235,14 +235,13 @@ export default function SupplierDashboard({
 }
 
   return (
-    <main className="supplier-page">
-      <SupplierHeader
-        user={user}
-        activeNav="dashboard"
-        onLogout={handleLogout}
-        loggingOut={busy}
-      />
-      <section className="supplier-main">
+    <SupplierLayout
+      user={user}
+      activeNav="dashboard"
+      onLogout={handleLogout}
+      businessName={data?.profile?.businessName}
+    >
+      <div>
         {contractSigned === false && (
           <div
             style={{
@@ -319,17 +318,6 @@ export default function SupplierDashboard({
             </button>
           </div>
         )}
-        <nav className="catalog-nav" aria-label="Chủ vựa">
-          <Link to="/supplier" aria-current="page">
-            Tổng quan
-          </Link>
-          <Link to="/supplier/products">Sản phẩm đăng bán</Link>
-          <Link to="/supplier/quotes">Báo giá tiếp thị</Link>
-          <Link to="/supplier/orders">Đơn hàng</Link>
-          <Link to="/supplier/inventory">Kho hàng</Link>
-          <Link to="/supplier/wallet">Ví & Ký quỹ</Link>
-          <Link to="/supplier/subscription">Gói sử dụng</Link>
-        </nav>
         <div className="supplier-heading">
           <div>
             <p className="form-eyebrow">WHOLESALE SUPPLIER</p>
@@ -484,7 +472,7 @@ export default function SupplierDashboard({
             </section>
           </>
         )}
-      </section>
+      </div>
       <ContractSigningModal
         isOpen={showContractModal}
         onClose={() => setShowContractModal(false)}
@@ -495,7 +483,7 @@ export default function SupplierDashboard({
         }}
         user={user}
       />
-    </main>
+    </SupplierLayout>
   );
 }
 
