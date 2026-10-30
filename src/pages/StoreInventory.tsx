@@ -16,6 +16,7 @@ import OrderList from '../components/OrderList';
 import StoreQuotes from './StoreQuotes';
 import SubscriptionPage from './SubscriptionPage';
 import WalletPage from './wallet/WalletPage';
+import TopbarBalance from '../components/TopbarBalance';
 import Brand from '../components/Brand';
 import Icon from '../components/Icon';
 import ExportSalesDialog from '../components/ExportSalesDialog';

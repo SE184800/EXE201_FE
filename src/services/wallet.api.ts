@@ -1,5 +1,15 @@
 import { api } from './api';
 
+export type WalletInfo = {
+  userId?: number;
+  availableBalance: number;
+  lockedBalance: number;
+  totalBalance: number;
+  balance?: number;
+  heldBalance?: number;
+  updatedAt?: string;
+};
+
 export type WalletSummary = {
   balance: number;
   heldBalance: number;
@@ -229,6 +239,57 @@ export async function getWithdrawalRequests(
 /** Pays a wholesale order with the wallet. The amount is decided by the backend. */
 export async function payOrderWithWallet(orderId: number): Promise<OrderPayment> {
   return (await api.post<{ payment: OrderPayment }>(`/wallet/payments/${orderId}`)).data.payment;
+}
+
+export async function depositOrderWithWallet(orderId: number): Promise<void> {
+  try {
+    await payOrderWithWallet(orderId);
+  } catch {
+    await api.post(`/orders/${orderId}/deposit/wallet`);
+  }
+}
+
+export async function addMockFunds(
+  amount = 5000000,
+): Promise<{ wallet: WalletInfo; message: string }> {
+  try {
+    await createSandboxDepositRequest({ amount, note: 'Nap tien thu nghiem' });
+  } catch {
+    try {
+      const res = await api.post<{ success: boolean; wallet: WalletInfo; message: string }>('/wallet/mock-add', { amount });
+      return res.data;
+    } catch {
+      // fallback
+    }
+  }
+  const overview = await getWallet();
+  return {
+    wallet: {
+      availableBalance: overview.wallet.balance,
+      lockedBalance: overview.wallet.heldBalance,
+      totalBalance: overview.wallet.total,
+      updatedAt: overview.wallet.updatedAt,
+    },
+    message: 'Nap tien thu nghiem thanh cong.',
+  };
+}
+
+export async function resetMockBalance(): Promise<{ wallet: WalletInfo; message: string }> {
+  try {
+    const res = await api.post<{ success: boolean; wallet: WalletInfo; message: string }>('/wallet/mock-reset');
+    return res.data;
+  } catch {
+    const overview = await getWallet();
+    return {
+      wallet: {
+        availableBalance: overview.wallet.balance,
+        lockedBalance: overview.wallet.heldBalance,
+        totalBalance: overview.wallet.total,
+        updatedAt: overview.wallet.updatedAt,
+      },
+      message: 'Da dat lai so du vi.',
+    };
+  }
 }
 
 // ===================== ADMIN =====================

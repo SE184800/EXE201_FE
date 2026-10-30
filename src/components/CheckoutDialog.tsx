@@ -69,7 +69,16 @@ export default function CheckoutDialog({
   useEffect(() => {
     dialog.current?.showModal();
     getWallet()
-      .then(setWallet)
+      .then((data: any) => {
+        const available = data?.wallet?.balance ?? data?.availableBalance ?? data?.balance ?? 0;
+        const held = data?.wallet?.heldBalance ?? data?.lockedBalance ?? 0;
+        const total = data?.wallet?.total ?? data?.totalBalance ?? (available + held);
+        setWallet({
+          availableBalance: available,
+          lockedBalance: held,
+          totalBalance: total,
+        });
+      })
       .catch(() => {});
 
     api

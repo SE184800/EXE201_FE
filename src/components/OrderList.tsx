@@ -14,7 +14,7 @@ import {
 import Icon from './Icon';
 import ExportDropdown from './ExportDropdown';
 import { exportSupplierOrdersToExcel, exportSupplierOrdersToPdf } from '../utils/exportSupplier';
-import { payOrderWithWallet } from '../services/wallet.api';
+import { payOrderWithWallet, depositOrderWithWallet } from '../services/wallet.api';
 import './complaint-dialog.css';
 
 const statuses = {
@@ -1911,7 +1911,7 @@ export default function OrderList({
                     </button>
                   </div>
                 )}
-                {kind === 'supplier' && actions[order.status] && (
+                {kind === 'supplier' && (
                   <div className="order-actions">
                     {order.status === 'PREPARING' && (
                       <button
