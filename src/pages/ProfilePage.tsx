@@ -7,6 +7,7 @@ import { getMyContract, type UserContract } from '../services/contract.api';
 import type { SupplierProfile } from '../services/supplier.api';
 import ContractSigningModal from '../components/ContractSigningModal';
 import ContractViewModal from '../components/ContractViewModal';
+import { POPULAR_BANKS } from '../constants/banks';
 
 export type StoreProfile = {
   userId: number;
@@ -21,6 +22,10 @@ export type StoreProfile = {
   latitude?: number | null;
   longitude?: number | null;
   isAddressVerified?: boolean;
+  bankName?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountHolder?: string | null;
+  bankQrImageUrl?: string | null;
 };
 
 export type Profile = {
@@ -227,7 +232,14 @@ export default function ProfilePage({
     businessName: '',
     warehouseAddress: '',
     deliveryRadiusKm: 10,
+    bankName: 'Vietcombank',
+    bankAccountNumber: '',
+    bankAccountHolder: '',
+    bankQrImageUrl: '',
   });
+
+  const [uploadingQr, setUploadingQr] = useState(false);
+  const [qrUploadError, setQrUploadError] = useState('');
 
   const [verifyingMap, setVerifyingMap] = useState(false);
   const [mapVerifiedAddress, setMapVerifiedAddress] = useState<string | null>(null);
@@ -274,6 +286,11 @@ export default function ProfilePage({
       businessName: supp?.businessName || '',
       warehouseAddress: supp?.warehouseAddress || '',
       deliveryRadiusKm: supp?.deliveryRadiusKm || 10,
+      bankName: sp?.bankName || supp?.bankName || 'Vietcombank',
+      bankAccountNumber: sp?.bankAccountNumber || supp?.bankAccountNumber || '',
+      bankAccountHolder:
+        sp?.bankAccountHolder || supp?.bankAccountHolder || (value.name || '').toUpperCase(),
+      bankQrImageUrl: sp?.bankQrImageUrl || '',
     });
     setFieldErrors({});
     setMapStatus(sp?.isAddressVerified ? 'success' : 'idle');
@@ -369,6 +386,40 @@ export default function ProfilePage({
     }
   }
 
+  async function handleQrUploadInProfile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setQrUploadError('');
+
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setQrUploadError('Chỉ chấp nhận file ảnh định dạng JPG, PNG hoặc WEBP.');
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      setQrUploadError('Kích thước ảnh mã QR không được vượt quá 3MB.');
+      return;
+    }
+
+    setUploadingQr(true);
+    try {
+      const formData = new FormData();
+      formData.append('qrImage', file);
+      const res = await api.post<{ success: boolean; imageUrl: string; message?: string }>(
+        '/profile/upload-bank-qr',
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      if (res.data.imageUrl) {
+        setForm((prev) => ({ ...prev, bankQrImageUrl: res.data.imageUrl }));
+      }
+    } catch (issue) {
+      setQrUploadError(getApiError(issue));
+    } finally {
+      setUploadingQr(false);
+    }
+  }
+
   async function save(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
@@ -399,6 +450,10 @@ export default function ProfilePage({
         email: form.email.trim().toLowerCase() || null,
         phone: normalizePhone(form.phone) || null,
         dateOfBirth: form.dateOfBirth.trim() || null,
+        bankName: form.bankName || null,
+        bankAccountNumber: form.bankAccountNumber.trim().replace(/[\s.-]/g, '') || null,
+        bankAccountHolder: form.bankAccountHolder.trim().toUpperCase() || null,
+        bankQrImageUrl: form.bankQrImageUrl || null,
         ...(isStoreOwner
           ? {
               storeName: form.storeName.trim().replace(/\s+/g, ' '),
@@ -1223,6 +1278,158 @@ export default function ProfilePage({
               </div>
             </div>
           )}
+
+          {/* Default Banking & Payout Account */}
+          <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: 700, color: '#0f172a', margin: '0 0 4px' }}>
+              Tài khoản thanh toán & Nhận tiền mặc định
+            </h3>
+            <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#64748b' }}>
+              Dùng để tự động điền nhanh khi bạn thực hiện nạp hoặc rút tiền trong Ví. Bạn vẫn có thể nhập tài khoản khác khi rút tiền.
+            </p>
+
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                gap: '14px',
+                marginBottom: '14px',
+              }}
+            >
+              <label>
+                Ngân hàng thụ hưởng
+                <select
+                  disabled={busy}
+                  value={form.bankName}
+                  onChange={(e) => setForm({ ...form, bankName: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    background: '#ffffff',
+                    fontSize: '14px',
+                  }}
+                >
+                  {POPULAR_BANKS.map((b) => (
+                    <option key={b} value={b}>
+                      {b}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Số tài khoản ngân hàng
+                <input
+                  type="text"
+                  disabled={busy}
+                  placeholder="Ví dụ: 0071001234567"
+                  maxLength={34}
+                  value={form.bankAccountNumber}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      bankAccountNumber: e.target.value.replace(/[^A-Za-z0-9]/g, ''),
+                    })
+                  }
+                  style={{ fontFamily: 'monospace' }}
+                />
+              </label>
+
+              <label>
+                Tên chủ tài khoản (In hoa không dấu)
+                <input
+                  type="text"
+                  disabled={busy}
+                  placeholder="Ví dụ: NGUYEN VAN A"
+                  maxLength={100}
+                  value={form.bankAccountHolder}
+                  onChange={(e) =>
+                    setForm({ ...form, bankAccountHolder: e.target.value.toUpperCase() })
+                  }
+                  style={{ textTransform: 'uppercase' }}
+                />
+              </label>
+            </div>
+
+            {/* QR upload preview */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                Ảnh mã QR nhận tiền (Không bắt buộc)
+              </label>
+              {form.bankQrImageUrl ? (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    padding: '12px',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    background: '#f8fafc',
+                    maxWidth: '400px',
+                  }}
+                >
+                  <img
+                    src={form.bankQrImageUrl}
+                    alt="Mã QR ngân hàng"
+                    style={{
+                      width: '70px',
+                      height: '70px',
+                      objectFit: 'cover',
+                      borderRadius: '6px',
+                      border: '1px solid #e2e8f0',
+                    }}
+                  />
+                  <div>
+                    <span style={{ fontSize: '12px', color: '#15803d', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                      Đã lưu ảnh mã QR
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setForm({ ...form, bankQrImageUrl: '' })}
+                      style={{
+                        fontSize: '12px',
+                        color: '#dc2626',
+                        background: 'none',
+                        border: 'none',
+                        padding: 0,
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Xóa ảnh QR
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    disabled={uploadingQr || busy}
+                    onChange={(e) => void handleQrUploadInProfile(e)}
+                    style={{ fontSize: '13px' }}
+                  />
+                  {uploadingQr && (
+                    <span style={{ marginLeft: '8px', fontSize: '12px', color: '#2563eb' }}>
+                      Đang tải ảnh lên…
+                    </span>
+                  )}
+                  {qrUploadError && (
+                    <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#dc2626' }}>
+                      {qrUploadError}
+                    </p>
+                  )}
+                  <small style={{ color: '#64748b', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                    Chấp nhận file ảnh JPG, PNG, WEBP (tối đa 3MB).
+                  </small>
+                </div>
+              )}
+            </div>
+          </div>
 
           {error && (
             <p className="error-notice inventory-name" role="alert">

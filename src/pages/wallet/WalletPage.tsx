@@ -50,21 +50,7 @@ const TRANSACTION_LABELS: Record<string, string> = {
   QR_DEPOSIT: 'Nạp tiền qua QR',
 };
 
-const POPULAR_BANKS = [
-  'Vietcombank',
-  'MB Bank (Quân Đội)',
-  'Techcombank',
-  'Sacombank',
-  'VietinBank',
-  'BIDV',
-  'ACB',
-  'VPBank',
-  'TPBank',
-  'HDBank',
-  'VIB',
-  'Agribank',
-  'Khác',
-];
+import { POPULAR_BANKS } from '../../constants/banks';
 
 export default function WalletPage({
   onLogout,
@@ -163,19 +149,27 @@ export default function WalletPage({
             bankAccountHolder?: string;
             businessName?: string;
           };
+          storeProfile?: {
+            bankName?: string;
+            bankAccountNumber?: string;
+            bankAccountHolder?: string;
+            storeName?: string;
+          };
         };
       }>('/profile')
       .then(({ data }) => {
         const supp = data?.profile?.supplierProfile;
-        if (supp?.bankName || supp?.bankAccountNumber) {
+        const store = data?.profile?.storeProfile;
+        const bankInfo = supp?.bankAccountNumber ? supp : store?.bankAccountNumber ? store : null;
+        if (bankInfo) {
           setWithdrawForm((prev) => ({
             ...prev,
-            bankName: prev.bankName || supp.bankName || 'Vietcombank',
-            bankAccountNumber: prev.bankAccountNumber || supp.bankAccountNumber || '',
+            bankName: prev.bankName || bankInfo.bankName || 'Vietcombank',
+            bankAccountNumber: prev.bankAccountNumber || bankInfo.bankAccountNumber || '',
             bankAccountHolder:
               prev.bankAccountHolder ||
-              supp.bankAccountHolder ||
-              supp.businessName ||
+              bankInfo.bankAccountHolder ||
+              (supp?.businessName || store?.storeName) ||
               data?.profile?.name ||
               '',
           }));

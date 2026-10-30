@@ -1,10 +1,11 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type FormEvent, type ChangeEvent } from 'react';
 import Brand from './Brand';
 import Icon from './Icon';
 import { api, getApiError, getApiFieldErrors, isUnauthenticated } from '../services/api';
 import type { AuthUser } from '../types/auth';
 import type { StoreProfile } from '../pages/ProfilePage';
 import { normalizePhone } from '../validation/registration';
+import { POPULAR_BANKS } from '../constants/banks';
 
 type StoreOnboardingProps = {
   user: AuthUser;
@@ -45,6 +46,16 @@ export default function StoreOnboarding({
   const [fieldErrors, setFieldErrors] = useState<StoreOnboardingErrors>({});
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // 2-Step Onboarding State
+  const [step, setStep] = useState<1 | 2>(1);
+  const [bankName, setBankName] = useState('Vietcombank');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankAccountHolder, setBankAccountHolder] = useState((user.name || '').toUpperCase());
+  const [bankQrImageUrl, setBankQrImageUrl] = useState('');
+  const [uploadingQr, setUploadingQr] = useState(false);
+  const [qrUploadError, setQrUploadError] = useState('');
+  const [bankingError, setBankingError] = useState('');
 
   async function verifyAddressOnMap() {
     const trimmed = storeAddress.trim();
@@ -125,18 +136,80 @@ export default function StoreOnboarding({
     return errors;
   }
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (saving) return;
+  async function handleQrUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setQrUploadError('');
 
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      setQrUploadError('Chỉ chấp nhận file ảnh định dạng JPG, PNG hoặc WEBP.');
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      setQrUploadError('Kích thước ảnh mã QR không được vượt quá 3MB.');
+      return;
+    }
+
+    setUploadingQr(true);
+    try {
+      const formData = new FormData();
+      formData.append('qrImage', file);
+      const res = await api.post<{ success: boolean; imageUrl: string; message?: string }>(
+        '/profile/upload-bank-qr',
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+      if (res.data.imageUrl) {
+        setBankQrImageUrl(res.data.imageUrl);
+      }
+    } catch (issue) {
+      setQrUploadError(getApiError(issue));
+    } finally {
+      setUploadingQr(false);
+    }
+  }
+
+  function goToStep2(event?: FormEvent) {
+    if (event) event.preventDefault();
     setError('');
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
       setFieldErrors(validationErrors);
+      setError('Vui lòng kiểm tra và hoàn thiện các trường thông tin bắt buộc của cửa hàng bên dưới.');
+      return;
+    }
+    setFieldErrors({});
+    setStep(2);
+  }
+
+  async function handleSave(includeBanking: boolean) {
+    if (saving) return;
+
+    setError('');
+    setBankingError('');
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldErrors(validationErrors);
+      setStep(1);
       setError('Vui lòng kiểm tra và hoàn thiện các trường thông tin bắt buộc bên dưới.');
       return;
     }
     setFieldErrors({});
+
+    let cleanAccount = bankAccountNumber.trim().replace(/[\s.-]/g, '');
+    if (includeBanking && cleanAccount) {
+      if (!/^[A-Za-z0-9]{4,34}$/.test(cleanAccount)) {
+        setBankingError('Số tài khoản ngân hàng không hợp lệ (4–34 ký tự, chỉ gồm chữ cái và số).');
+        return;
+      }
+      if (!bankName) {
+        setBankingError('Vui lòng chọn ngân hàng thụ hưởng.');
+        return;
+      }
+    } else if (!includeBanking) {
+      cleanAccount = '';
+    }
 
     setSaving(true);
     try {
@@ -158,6 +231,11 @@ export default function StoreOnboarding({
         latitude,
         longitude,
         isAddressVerified,
+        bankName: includeBanking && cleanAccount ? bankName : null,
+        bankAccountNumber: includeBanking && cleanAccount ? cleanAccount : null,
+        bankAccountHolder:
+          includeBanking && cleanAccount ? bankAccountHolder.trim().toUpperCase() : null,
+        bankQrImageUrl: includeBanking && cleanAccount ? bankQrImageUrl || null : null,
       };
 
       const { data } = await api.put<{ storeProfile: StoreProfile; message?: string }>(
@@ -175,6 +253,7 @@ export default function StoreOnboarding({
       ]);
       if (Object.keys(apiErrors).length > 0) {
         setFieldErrors(apiErrors);
+        setStep(1);
       }
       setError(getApiError(issue));
       if (isUnauthenticated(issue)) {
@@ -269,10 +348,12 @@ export default function StoreOnboarding({
                 marginBottom: '12px',
               }}
             >
-              BƯỚC 1/1 · KHỞI TẠO CỬA HÀNG
+              {step === 1 ? 'BƯỚC 1/2 · THÔNG TIN CỬA HÀNG' : 'BƯỚC 2/2 · TÀI KHOẢN THANH TOÁN (TÙY CHỌN)'}
             </div>
             <h1 style={{ margin: '0 0 8px', fontSize: '24px', fontWeight: 700 }}>
-              Đăng ký thông tin Cửa hàng của bạn
+              {step === 1
+                ? 'Đăng ký thông tin Cửa hàng của bạn'
+                : 'Thiết lập tài khoản thanh toán & Nhận tiền mặc định'}
             </h1>
             <p
               style={{
@@ -283,14 +364,32 @@ export default function StoreOnboarding({
                 opacity: 0.95,
               }}
             >
-              Chào mừng bạn đến với <strong>SupplyMind AI</strong>! Vui lòng hoàn tất thông tin tiệm
-              tạp hóa để kích hoạt hệ thống đo khoảng cách giao hàng, liên kết nguồn sỉ từ các vựa và
-              mở khóa màn hình Tổng quan.
+              {step === 1 ? (
+                <>
+                  Chào mừng bạn đến với <strong>SupplyMind AI</strong>! Vui lòng hoàn tất thông tin tiệm
+                  tạp hóa để kích hoạt hệ thống đo khoảng cách giao hàng, liên kết nguồn sỉ từ các vựa và
+                  mở khóa màn hình Tổng quan.
+                </>
+              ) : (
+                <>
+                  Thông tin này được dùng để tự động điền nhanh khi bạn thực hiện nạp hoặc rút tiền trong
+                  Ví. Bạn có thể <strong>bỏ qua bước này</strong> và cập nhật sau bất kỳ lúc nào trong
+                  phần Hồ sơ cá nhân.
+                </>
+              )}
             </p>
           </div>
 
           {/* Form Content */}
-          <form onSubmit={handleSubmit} style={{ padding: '32px' }} noValidate>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (step === 1) goToStep2();
+              else void handleSave(true);
+            }}
+            style={{ padding: '32px' }}
+            noValidate
+          >
             {error && (
               <div
                 role="alert"
@@ -308,7 +407,8 @@ export default function StoreOnboarding({
               </div>
             )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {step === 1 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               {/* Store Name */}
               <div>
                 <label
@@ -744,40 +844,360 @@ export default function StoreOnboarding({
                 )}
               </div>
             </div>
+          )}
 
-            <div
-              style={{
-                marginTop: '28px',
-                paddingTop: '20px',
-                borderTop: '1px solid #e2e8f0',
-                display: 'flex',
-                justifyContent: 'flex-end',
-                alignItems: 'center',
-                gap: '12px',
-              }}
-            >
-              <button
-                type="submit"
-                disabled={saving}
+            {/* Bottom Actions for Step 1 */}
+            {step === 1 && (
+              <div
                 style={{
-                  background: '#214e39',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: '10px',
-                  padding: '12px 24px',
-                  fontSize: '15px',
-                  fontWeight: 600,
-                  cursor: saving ? 'not-allowed' : 'pointer',
-                  opacity: saving ? 0.7 : 1,
-                  display: 'inline-flex',
+                  marginTop: '28px',
+                  paddingTop: '20px',
+                  borderTop: '1px solid #e2e8f0',
+                  display: 'flex',
+                  justifyContent: 'space-between',
                   alignItems: 'center',
-                  gap: '8px',
-                  boxShadow: '0 2px 4px rgba(33, 78, 57, 0.2)',
+                  flexWrap: 'wrap',
+                  gap: '12px',
                 }}
               >
-                {saving ? 'Đang lưu thông tin…' : 'Hoàn tất đăng ký & Vào Tổng quan →'}
-              </button>
-            </div>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void handleSave(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748b',
+                    fontSize: '14px',
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    padding: '8px 12px',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  Bỏ qua bước tài khoản ngân hàng
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => goToStep2()}
+                  style={{
+                    background: '#214e39',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '10px',
+                    padding: '12px 24px',
+                    fontSize: '15px',
+                    fontWeight: 600,
+                    cursor: saving ? 'not-allowed' : 'pointer',
+                    opacity: saving ? 0.7 : 1,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 2px 4px rgba(33, 78, 57, 0.2)',
+                  }}
+                >
+                  Tiếp tục: Thiết lập tài khoản nhận tiền →
+                </button>
+              </div>
+            )}
+
+            {/* Step 2: Banking & Default Payout Account */}
+            {step === 2 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div
+                  style={{
+                    padding: '14px 16px',
+                    backgroundColor: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
+                    borderRadius: '10px',
+                    color: '#166534',
+                    fontSize: '13px',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  <strong>Tiện ích tự động điền (Không bắt buộc):</strong> Tài khoản này sẽ được lưu làm thông tin mặc định khi bạn thực hiện nạp hoặc rút tiền trong Ví. Khi rút tiền, bạn vẫn có quyền nhập một tài khoản khác nếu cần.
+                </div>
+
+                {bankingError && (
+                  <div
+                    role="alert"
+                    style={{
+                      padding: '12px 16px',
+                      background: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      borderRadius: '8px',
+                      color: '#b91c1c',
+                      fontSize: '13px',
+                    }}
+                  >
+                    {bankingError}
+                  </div>
+                )}
+
+                {/* Ngân hàng */}
+                <div>
+                  <label
+                    htmlFor="onboarding-bankName"
+                    style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: '#1e293b',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Ngân hàng nhận tiền / chuyển khoản
+                  </label>
+                  <select
+                    id="onboarding-bankName"
+                    value={bankName}
+                    disabled={saving}
+                    onChange={(e) => setBankName(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      backgroundColor: '#ffffff',
+                    }}
+                  >
+                    {POPULAR_BANKS.map((b) => (
+                      <option key={b} value={b}>
+                        {b}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Số tài khoản */}
+                <div>
+                  <label
+                    htmlFor="onboarding-bankAccountNumber"
+                    style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: '#1e293b',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Số tài khoản ngân hàng
+                  </label>
+                  <input
+                    id="onboarding-bankAccountNumber"
+                    type="text"
+                    disabled={saving}
+                    value={bankAccountNumber}
+                    onChange={(e) => {
+                      setBankingError('');
+                      setBankAccountNumber(e.target.value.replace(/[^A-Za-z0-9]/g, ''));
+                    }}
+                    placeholder="Ví dụ: 0071001234567"
+                    maxLength={34}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      fontFamily: 'monospace',
+                      letterSpacing: '0.04em',
+                    }}
+                  />
+                  <small style={{ color: '#64748b', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                    Chỉ gồm chữ số và chữ cái (từ 4 đến 34 ký tự), không dấu và không khoảng trắng.
+                  </small>
+                </div>
+
+                {/* Tên chủ tài khoản */}
+                <div>
+                  <label
+                    htmlFor="onboarding-bankAccountHolder"
+                    style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: '#1e293b',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Tên chủ tài khoản (In hoa không dấu)
+                  </label>
+                  <input
+                    id="onboarding-bankAccountHolder"
+                    type="text"
+                    disabled={saving}
+                    value={bankAccountHolder}
+                    onChange={(e) => setBankAccountHolder(e.target.value.toUpperCase())}
+                    placeholder="Ví dụ: NGUYEN VAN A"
+                    maxLength={100}
+                    style={{
+                      width: '100%',
+                      padding: '10px 14px',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      textTransform: 'uppercase',
+                    }}
+                  />
+                </div>
+
+                {/* Tải ảnh mã QR */}
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      color: '#1e293b',
+                      marginBottom: '6px',
+                    }}
+                  >
+                    Ảnh mã QR nhận tiền (Không bắt buộc)
+                  </label>
+                  {bankQrImageUrl ? (
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '16px',
+                        padding: '12px',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '8px',
+                        background: '#f8fafc',
+                      }}
+                    >
+                      <img
+                        src={bankQrImageUrl}
+                        alt="Mã QR ngân hàng"
+                        style={{
+                          width: '80px',
+                          height: '80px',
+                          objectFit: 'cover',
+                          borderRadius: '6px',
+                          border: '1px solid #e2e8f0',
+                        }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <p style={{ margin: '0 0 6px', fontSize: '13px', color: '#15803d', fontWeight: 600 }}>
+                          Đã tải ảnh mã QR lên hệ thống
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setBankQrImageUrl('')}
+                          style={{
+                            fontSize: '12px',
+                            color: '#dc2626',
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          Xóa ảnh QR này
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        disabled={uploadingQr || saving}
+                        onChange={(e) => void handleQrUpload(e)}
+                        style={{ fontSize: '13px' }}
+                      />
+                      {uploadingQr && (
+                        <span style={{ marginLeft: '8px', fontSize: '12px', color: '#2563eb' }}>
+                          Đang tải ảnh lên…
+                        </span>
+                      )}
+                      {qrUploadError && (
+                        <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#dc2626' }}>
+                          {qrUploadError}
+                        </p>
+                      )}
+                      <small style={{ color: '#64748b', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                        Hỗ trợ ảnh JPG, PNG, WEBP tối đa 3MB. Máy chủ tự động kiểm tra định dạng an toàn.
+                      </small>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bottom Actions for Step 2 */}
+                <div
+                  style={{
+                    marginTop: '20px',
+                    paddingTop: '20px',
+                    borderTop: '1px solid #e2e8f0',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '12px',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    disabled={saving}
+                    style={{
+                      background: '#f1f5f9',
+                      color: '#334155',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      padding: '10px 18px',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ← Quay lại sửa thông tin tiệm
+                  </button>
+
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void handleSave(false)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#64748b',
+                        fontSize: '14px',
+                        cursor: saving ? 'not-allowed' : 'pointer',
+                        padding: '10px 14px',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Bỏ qua bước này
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void handleSave(true)}
+                      style={{
+                        background: '#214e39',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '10px',
+                        padding: '12px 24px',
+                        fontSize: '15px',
+                        fontWeight: 600,
+                        cursor: saving ? 'not-allowed' : 'pointer',
+                        opacity: saving ? 0.7 : 1,
+                        boxShadow: '0 2px 4px rgba(33, 78, 57, 0.2)',
+                      }}
+                    >
+                      {saving ? 'Đang lưu…' : 'Lưu tài khoản & Hoàn tất →'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </form>
         </div>
       </main>
