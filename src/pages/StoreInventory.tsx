@@ -677,9 +677,9 @@ export default function StoreInventory({
               </button>
               {accountOpen && (
                 <div id="account-options" className="account-options">
-                  <div className="account-options-user-info">
-                    <span className="account-options-user-name">{user.name || user.username}</span>
-                    <span className="account-options-user-role">Chủ tạp hóa</span>
+                  <div className="account-options-user-info" style={{ padding: '8px 12px 10px', borderBottom: '1px solid #f1f5f9', marginBottom: '6px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>{user.name || user.username}</div>
+                    <span style={{ fontSize: '11px', color: '#15803d', fontWeight: 600, background: '#dcfce7', padding: '2px 8px', borderRadius: '999px', display: 'inline-block' }}>Chủ tạp hóa</span>
                   </div>
                   <button
                     onClick={() => {

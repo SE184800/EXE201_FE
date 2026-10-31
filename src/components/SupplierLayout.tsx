@@ -245,9 +245,9 @@ export default function SupplierLayout({
               </button>
               {accountOpen && (
                 <div id="supplier-account-options" className="account-options">
-                  <div className="account-options-user-info">
-                    <span className="account-options-user-name">{displayName}</span>
-                    <span className="account-options-user-role">Chủ vựa sỉ</span>
+                  <div className="account-options-user-info" style={{ padding: '8px 12px 10px', borderBottom: '1px solid #f1f5f9', marginBottom: '6px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', marginBottom: '4px' }}>{displayName}</div>
+                    <span style={{ fontSize: '11px', color: '#15803d', fontWeight: 600, background: '#dcfce7', padding: '2px 8px', borderRadius: '999px', display: 'inline-block' }}>Chủ vựa sỉ</span>
                   </div>
                   <Link
                     to="/supplier/profile"

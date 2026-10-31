@@ -388,6 +388,42 @@ export default function WalletPage({
 
       {tab === 'overview' && (
         <div className="wallet-overview">
+          <div
+            className="escrow-account-card"
+            style={{
+              background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)',
+              border: '1px solid #bbf7d0',
+              borderRadius: '12px',
+              padding: '16px 20px',
+              marginBottom: '18px',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: '#166534', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '3px' }}>
+                  TÀI KHOẢN TẠM GIỮ TIỀN CỌC TRUNG GIAN (ESCROW)
+                </span>
+                <div style={{ fontSize: '15px', fontWeight: 700, color: '#065f46' }}>
+                  Sacombank · STK: 050138052378 · Chủ TK: LE TRAN MINH DUC
+                </div>
+                <div style={{ fontSize: '12.5px', color: '#15803d', marginTop: '3px' }}>
+                  Hệ thống lưu giữ cọc 10% an toàn tuyệt đối và chỉ tự động giải ngân cho Chủ vựa khi Cửa hàng xác nhận nhận đủ hàng đạt chuẩn.
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  type="button"
+                  className="table-button primary-small"
+                  onClick={() => setTab('deposit')}
+                  style={{ fontSize: '12px', padding: '6px 14px' }}
+                >
+                  Nạp tiền ký quỹ
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="wallet-kpi-grid">
             <div className="wallet-kpi wallet-kpi-primary">
               <span>Số dư khả dụng</span>
@@ -871,7 +907,37 @@ export default function WalletPage({
 
       {tab === 'transactions' && (
         <div className="wallet-list">
-          <h3>Lịch sử giao dịch ví</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h3 style={{ margin: 0 }}>Lịch sử giao dịch ví</h3>
+            <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 600 }}>
+              Tổng cộng {transactions.length} giao dịch
+            </span>
+          </div>
+
+          <div
+            style={{
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '12px 16px',
+              marginBottom: '14px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '8px',
+              fontSize: '13px',
+              color: '#334155',
+            }}
+          >
+            <div>
+              <strong>Tài khoản Escrow trung gian:</strong> Sacombank <code>050138052378</code> (LE TRAN MINH DUC)
+            </div>
+            <div style={{ color: '#059669', fontWeight: 600 }}>
+              Ký quỹ an toàn · Tự động giải ngân khi nhận hàng
+            </div>
+          </div>
+
           {!transactions.length ? (
             <p className="inventory-empty">Chưa có giao dịch nào trong ví.</p>
           ) : (
@@ -879,34 +945,39 @@ export default function WalletPage({
               <table className="supplier-table">
                 <thead>
                   <tr>
-                    <th>Loại</th>
+                    <th>Mã giao dịch</th>
+                    <th>Loại giao dịch</th>
+                    <th>Nội dung chuyển khoản</th>
                     <th>Số tiền</th>
                     <th>Số dư sau</th>
-                    <th>Nguồn</th>
-                    <th>Mã giao dịch</th>
+                    <th>Kênh</th>
                     <th>Thời gian</th>
                   </tr>
                 </thead>
                 <tbody>
                   {transactions.map((transaction) => (
                     <tr key={transaction.id}>
-                      <td>
-                        <strong>
-                          {TRANSACTION_LABELS[transaction.type] || transaction.typeLabel}
-                        </strong>
-                        {transaction.note && <small>{transaction.note}</small>}
+                      <td style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a' }}>
+                        {transaction.reference || `TRX-${transaction.id}`}
+                      </td>
+                      <td style={{ fontSize: '13px', fontWeight: 650, color: '#1e293b' }}>
+                        {TRANSACTION_LABELS[transaction.type] || transaction.typeLabel}
+                      </td>
+                      <td style={{ fontSize: '13px', color: '#334155' }}>
+                        {transaction.note || 'Thanh toán qua hệ thống SupplyMind Escrow'}
                       </td>
                       <td>
                         <span
                           className={
                             transaction.direction === 'CREDIT' ? 'wallet-amount-in' : 'wallet-amount-out'
                           }
+                          style={{ fontSize: '13.5px', fontWeight: 700 }}
                         >
                           {transaction.direction === 'CREDIT' ? '+' : '−'}
                           {money(transaction.amount)}
                         </span>
                       </td>
-                      <td>{money(transaction.balanceAfter)}</td>
+                      <td style={{ fontSize: '13px', fontWeight: 600 }}>{money(transaction.balanceAfter)}</td>
                       <td>
                         <span
                           className={`wallet-status wallet-status-${
@@ -916,11 +987,8 @@ export default function WalletPage({
                           {transaction.method === 'SANDBOX' ? 'Thử nghiệm' : 'Chính thức'}
                         </span>
                       </td>
-                      <td>
-                        <small>{transaction.reference}</small>
-                      </td>
-                      <td>
-                        <small>{dateTime(transaction.createdAt)}</small>
+                      <td style={{ fontSize: '12.5px', color: '#475569', whiteSpace: 'nowrap' }}>
+                        {dateTime(transaction.createdAt)}
                       </td>
                     </tr>
                   ))}

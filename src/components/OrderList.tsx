@@ -322,8 +322,11 @@ export default function OrderList({
     null,
   );
   const [rescheduleOrderTarget, setRescheduleOrderTarget] = useState<SupplierOrder | null>(null);
-  const [rescheduleTimeChoice, setRescheduleTimeChoice] = useState<'1_HOUR' | 'THIS_AFTERNOON' | 'TOMORROW_MORNING' | 'CUSTOM'>('1_HOUR');
-  const [customRescheduleTime, setCustomRescheduleTime] = useState('');
+  const [rescheduleDate, setRescheduleDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [rescheduleTime, setRescheduleTime] = useState(() => {
+    const d = new Date(Date.now() + 60 * 60 * 1000);
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  });
   const [rescheduleReason, setRescheduleReason] = useState('');
   const [rescheduleBusy, setRescheduleBusy] = useState(false);
   const [rescheduleMessage, setRescheduleMessage] = useState('');
@@ -469,22 +472,35 @@ export default function OrderList({
   async function handleReschedule(event: FormEvent) {
     event.preventDefault();
     if (!rescheduleOrderTarget || rescheduleBusy) return;
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (rescheduleDate < todayStr) {
+      setRescheduleMessage('Ngày hẹn dời lịch giao hàng không được ở trong quá khứ.');
+      return;
+    }
+
+    if (rescheduleDate === todayStr && rescheduleTime) {
+      const now = new Date();
+      const [h, m] = rescheduleTime.split(':').map(Number);
+      const chosenMinutes = h * 60 + m;
+      const currentMinutes = now.getHours() * 60 + now.getMinutes();
+      if (chosenMinutes < currentMinutes) {
+        setRescheduleMessage('Giờ hẹn giao không được ở quá khứ so với thời điểm hiện tại.');
+        return;
+      }
+    }
+
     setRescheduleBusy(true);
     setRescheduleMessage('');
-    const timeText = rescheduleTimeChoice === '1_HOUR'
-      ? 'Sau 1 tiếng nữa'
-      : rescheduleTimeChoice === 'THIS_AFTERNOON'
-        ? 'Buổi chiều nay (14h00 – 16h30)'
-        : rescheduleTimeChoice === 'TOMORROW_MORNING'
-          ? 'Buổi sáng mai (8h00 – 11h00)'
-          : customRescheduleTime.trim() || 'Thời gian đã thỏa thuận';
+    const formattedDate = rescheduleDate.split('-').reverse().join('/');
+    const timeText = `${rescheduleTime} ngày ${formattedDate}`;
+
     try {
       await rescheduleOrder(rescheduleOrderTarget.id, timeText, rescheduleReason.trim() || undefined);
       setRescheduleMessage('Đã gửi yêu cầu dời giờ giao hàng cho chủ vựa thành công.');
       setTimeout(() => {
         setRescheduleOrderTarget(null);
         setRescheduleReason('');
-        setCustomRescheduleTime('');
         setReload((n) => n + 1);
       }, 1000);
     } catch (issue) {
@@ -1201,8 +1217,9 @@ export default function OrderList({
                           style={{ fontSize: '11px', padding: '4px 10px' }}
                           onClick={() => {
                             setRescheduleOrderTarget(order);
-                            setRescheduleTimeChoice('1_HOUR');
-                            setCustomRescheduleTime('');
+                            setRescheduleDate(new Date().toISOString().slice(0, 10));
+                            const d = new Date(Date.now() + 60 * 60 * 1000);
+                            setRescheduleTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
                             setRescheduleReason('');
                             setRescheduleMessage('');
                           }}
@@ -1383,22 +1400,28 @@ export default function OrderList({
                     )}
                   {kind === 'supplier' &&
                     order.status === 'PENDING' &&
-                    order.depositStatus === 'SUBMITTED' && (
+                    ['PENDING', 'SUBMITTED'].includes(order.depositStatus) && (
                       <div className="order-deposit-actions">
                         <button
                           className="table-button primary-small"
                           disabled={depositBusy !== null}
                           onClick={() => void reviewDeposit(order, 'CONFIRM')}
                         >
-                          {depositBusy === order.id ? 'Đang xử lý…' : 'Xác nhận đã nhận cọc'}
+                          {depositBusy === order.id
+                            ? 'Đang xử lý…'
+                            : order.depositStatus === 'SUBMITTED'
+                            ? 'Xác nhận đã nhận cọc'
+                            : 'Xác nhận đã nhận cọc trực tiếp'}
                         </button>
-                        <button
-                          className="ghost-button"
-                          disabled={depositBusy !== null}
-                          onClick={() => void reviewDeposit(order, 'REJECT')}
-                        >
-                          Chưa nhận được
-                        </button>
+                        {order.depositStatus === 'SUBMITTED' && (
+                          <button
+                            className="ghost-button"
+                            disabled={depositBusy !== null}
+                            onClick={() => void reviewDeposit(order, 'REJECT')}
+                          >
+                            Chưa nhận được
+                          </button>
+                        )}
                       </div>
                     )}
                   {kind === 'supplier' && order.depositStatus === 'REFUND_PENDING' && (
@@ -2659,59 +2682,91 @@ export default function OrderList({
               <strong>{rescheduleOrderTarget.supplier?.businessName || 'Chủ vựa'}</strong>) nếu bạn có việc bận đột xuất để dời lịch giao, hoàn toàn không tính là bùng đơn.
             </p>
 
-            <div style={{ margin: '14px 0' }}>
-              <span style={{ fontWeight: 600, display: 'block', marginBottom: '8px', fontSize: '13px' }}>
-                Chọn thời gian mong muốn dời lại:
+            <div style={{ margin: '14px 0', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <span style={{ fontWeight: 650, display: 'block', marginBottom: '10px', fontSize: '13px', color: '#1e293b' }}>
+                Chọn thời gian mong muốn dời lại (chọn ngày và giờ cụ thể, không ở quá khứ):
               </span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {[
-                  { code: '1_HOUR', label: 'Dời lại 1 tiếng nữa (Tôi đang ra ngoài có việc gấp)' },
-                  { code: 'THIS_AFTERNOON', label: 'Giao vào buổi chiều nay (14h00 – 16h30)' },
-                  { code: 'TONIGHT', label: 'Giao vào tối nay / ca đêm (19h00 – 22h30)' },
-                  { code: 'TOMORROW_MORNING', label: 'Giao vào sáng mai (8h00 – 11h00)' },
-                  { code: 'TOMORROW_AFTERNOON', label: 'Giao vào chiều mai (14h00 – 17h00)' },
-                  { code: 'CUSTOM', label: 'Tự nhập thời gian khác (thương lượng riêng)...' },
-                ].map((item) => (
-                  <label
-                    key={item.code}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '10px 12px',
-                      borderRadius: '6px',
-                      border: rescheduleTimeChoice === item.code ? '2px solid #2563eb' : '1px solid #d1d5db',
-                      backgroundColor: rescheduleTimeChoice === item.code ? '#eff6ff' : '#fff',
-                      cursor: 'pointer',
-                      fontWeight: rescheduleTimeChoice === item.code ? 600 : 400,
-                      fontSize: '13px',
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="rescheduleTime"
-                      value={item.code}
-                      checked={rescheduleTimeChoice === item.code}
-                      onChange={() => setRescheduleTimeChoice(item.code as any)}
-                    />
-                    <span>{item.label}</span>
-                  </label>
-                ))}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <label style={{ display: 'block' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                    Chọn ngày giao mới:
+                  </span>
+                  <input
+                    type="date"
+                    required
+                    min={new Date().toISOString().slice(0, 10)}
+                    value={rescheduleDate}
+                    onChange={(e) => setRescheduleDate(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </label>
+                <label style={{ display: 'block' }}>
+                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                    Chọn giờ giao đến cụ thể:
+                  </span>
+                  <input
+                    type="time"
+                    required
+                    value={rescheduleTime}
+                    onChange={(e) => setRescheduleTime(e.target.value)}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
+                  />
+                </label>
+              </div>
+
+              {/* Quick shortcut buttons */}
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '10px' }}>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  style={{ fontSize: '11px', padding: '3px 8px' }}
+                  onClick={() => {
+                    const today = new Date();
+                    setRescheduleDate(today.toISOString().slice(0, 10));
+                    const plus1h = new Date(Date.now() + 60 * 60 * 1000);
+                    setRescheduleTime(`${String(plus1h.getHours()).padStart(2, '0')}:${String(plus1h.getMinutes()).padStart(2, '0')}`);
+                  }}
+                >
+                  Sau 1 tiếng nữa
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  style={{ fontSize: '11px', padding: '3px 8px' }}
+                  onClick={() => {
+                    const today = new Date();
+                    setRescheduleDate(today.toISOString().slice(0, 10));
+                    setRescheduleTime('15:30');
+                  }}
+                >
+                  Chiều nay (15:30)
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  style={{ fontSize: '11px', padding: '3px 8px' }}
+                  onClick={() => {
+                    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                    setRescheduleDate(tomorrow.toISOString().slice(0, 10));
+                    setRescheduleTime('09:00');
+                  }}
+                >
+                  Sáng mai (09:00)
+                </button>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  style={{ fontSize: '11px', padding: '3px 8px' }}
+                  onClick={() => {
+                    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                    setRescheduleDate(tomorrow.toISOString().slice(0, 10));
+                    setRescheduleTime('14:30');
+                  }}
+                >
+                  Chiều mai (14:30)
+                </button>
               </div>
             </div>
-
-            {rescheduleTimeChoice === 'CUSTOM' && (
-              <label className="supplier-dialog-field">
-                <span>Thời gian bạn có thể nhận hàng:</span>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Khoảng 17h30 chiều nay..."
-                  value={customRescheduleTime}
-                  onChange={(e) => setCustomRescheduleTime(e.target.value)}
-                />
-              </label>
-            )}
 
             <label className="supplier-dialog-field">
               <span>Lý do dời giờ (Không bắt buộc):</span>

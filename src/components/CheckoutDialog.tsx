@@ -1,3 +1,4 @@
+import '../pages/catalog.css';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { CatalogProduct } from '../services/catalog.api';

@@ -664,6 +664,15 @@ function DispatchDriverDialog({
   );
 }
 
+function parseItemPackaging(packagingStr?: string) {
+  if (!packagingStr) return { multiplier: 1, unit: 'đơn vị' };
+  const m = packagingStr.match(/(?:thùng|két|hộp|lốc|khay|kiện)\s+(\d+)\s*([a-zA-ZÀ-ỹ]+)/i);
+  if (m) {
+    return { multiplier: parseInt(m[1], 10), unit: m[2].trim() };
+  }
+  return { multiplier: 1, unit: 'đơn vị' };
+}
+
 function SupplierIncidentDialog({
   order,
   busy,
@@ -691,9 +700,10 @@ function SupplierIncidentDialog({
   }, []);
 
   const [selectedItems, setSelectedItems] = useState<Record<number, number>>({});
+  const [looseItems, setLooseItems] = useState<Record<number, { isLoose: boolean; looseQty: number }>>({});
   const [damageType, setDamageType] = useState('DAMAGED_TRANSIT');
   const [notes, setNotes] = useState('');
-  const [action, setAction] = useState('REPLACE_0VND');
+  const [action, setAction] = useState('DEDUCT_COD');
   const [evidenceImages, setEvidenceImages] = useState<string[]>([]);
   const [error, setError] = useState('');
 
@@ -709,6 +719,7 @@ function SupplierIncidentDialog({
     const isAll = Object.keys(selectedItems).length === order.items.length;
     if (isAll) {
       setSelectedItems({});
+      setLooseItems({});
     } else {
       const map: Record<number, number> = {};
       order.items.forEach((it) => {
@@ -721,6 +732,25 @@ function SupplierIncidentDialog({
   function handleQuantityChange(productId: number, qty: number, maxQty: number) {
     const cleanQty = Math.max(1, Math.min(qty, maxQty));
     setSelectedItems((prev) => ({ ...prev, [productId]: cleanQty }));
+  }
+
+  function handleLooseQtyChange(productId: number, qty: number, maxLoose: number) {
+    const cleanQty = Math.max(1, Math.min(qty, maxLoose));
+    setLooseItems((prev) => ({
+      ...prev,
+      [productId]: { isLoose: true, looseQty: cleanQty },
+    }));
+  }
+
+  function toggleLooseMode(productId: number) {
+    setLooseItems((prev) => {
+      const current = prev[productId];
+      const isLoose = !current?.isLoose;
+      return {
+        ...prev,
+        [productId]: { isLoose, looseQty: current?.looseQty || 1 },
+      };
+    });
   }
 
   function toggleItem(productId: number, maxQty: number) {
@@ -759,11 +789,25 @@ function SupplierIncidentDialog({
       .map(([productIdStr, qty]) => {
         const item = order.items.find((it) => it.productId === Number(productIdStr));
         if (!item) return null;
+        const packInfo = parseItemPackaging(item.packaging);
+        const loose = looseItems[item.productId];
+        const isLoose = loose?.isLoose && packInfo.multiplier > 1;
+
+        let displayName = item.productName;
+        let displayPkg = item.packaging;
+        let finalQty = qty;
+
+        if (isLoose) {
+          displayName = `${item.productName} (Hỏng lẻ ${loose.looseQty}/${packInfo.multiplier} ${packInfo.unit})`;
+          displayPkg = `${loose.looseQty} ${packInfo.unit}`;
+          finalQty = Math.max(1, Math.round(loose.looseQty / packInfo.multiplier) || 1);
+        }
+
         return {
           productId: item.productId,
-          productName: item.productName,
-          packaging: item.packaging,
-          quantity: qty,
+          productName: displayName,
+          packaging: displayPkg,
+          quantity: finalQty,
         };
       })
       .filter(Boolean) as Array<{ productId: number; productName: string; packaging?: string; quantity: number }>;
@@ -788,205 +832,272 @@ function SupplierIncidentDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="incident-dialog-title"
-        style={{ maxWidth: '580px', maxHeight: '92vh', overflowY: 'auto' }}
+        style={{ maxWidth: '620px', maxHeight: '90vh', display: 'flex', flexDirection: 'column', boxSizing: 'border-box' }}
       >
-        <span className="supplier-panel-label" style={{ color: '#dc2626' }}>
-          SỰ CỐ VẬN CHUYỂN · ĐƠN #{order.id}
-        </span>
-        <h2 id="incident-dialog-title" style={{ color: '#991b1b' }}>
-          Lập báo cáo sự cố hư hại hàng khi giao
-        </h2>
-        <p style={{ fontSize: '13px', color: '#64748b', marginTop: '2px', marginBottom: '14px' }}>
-          Tài xế trong lúc giao gặp sự cố làm hỏng hàng. Chọn mặt hàng bị hỏng để tiếp tục giao phần còn lại hoặc nhận lại hàng và tự động tạo đơn giao bù 0đ.
-        </p>
+        <div style={{ flexShrink: 0 }}>
+          <span className="supplier-panel-label" style={{ color: '#dc2626' }}>
+            SỰ CỐ VẬN CHUYỂN · ĐƠN #{order.id}
+          </span>
+          <h2 id="incident-dialog-title" style={{ color: '#991b1b', margin: '4px 0' }}>
+            Lập báo cáo sự cố hư hại hàng khi giao
+          </h2>
+          <p style={{ fontSize: '13px', color: '#64748b', marginTop: '2px', marginBottom: '12px' }}>
+            Tài xế trong lúc giao gặp sự cố làm hỏng hàng. Chọn mặt hàng bị hỏng (nguyên thùng hoặc hỏng lẻ gói/lon bên trong) và phương án xử lý luồng tiền.
+          </p>
 
-        {error && (
-          <div className="error-notice" style={{ marginBottom: '12px' }}>
-            {error}
-          </div>
-        )}
-
-        {/* 1. Checklist các mặt hàng trong đơn */}
-        <div style={{ marginBottom: '14px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={{ fontSize: '13px', fontWeight: 650, color: '#1e293b' }}>
-              Chọn các mặt hàng bị hư hỏng ({Object.keys(selectedItems).length}/{order.items.length}):
-            </span>
-            <button
-              type="button"
-              className="ghost-button"
-              style={{ fontSize: '11px', padding: '2px 8px' }}
-              onClick={toggleAll}
-            >
-              {Object.keys(selectedItems).length === order.items.length ? 'Bỏ chọn' : 'Chọn tất cả'}
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '180px', overflowY: 'auto' }}>
-            {order.items.map((item) => {
-              const isSelected = selectedItems[item.productId] !== undefined;
-              return (
-                <div
-                  key={item.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    borderRadius: '6px',
-                    backgroundColor: isSelected ? '#fef2f2' : '#f8fafc',
-                    border: `1px solid ${isSelected ? '#fecaca' : '#e2e8f0'}`,
-                  }}
-                >
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', flex: 1 }}>
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleItem(item.productId, item.quantity)}
-                      style={{ width: '16px', height: '16px' }}
-                    />
-                    <span style={{ fontSize: '13px', color: isSelected ? '#991b1b' : '#1e293b' }}>
-                      <strong>{item.productName}</strong> ({item.packaging})
-                    </span>
-                  </label>
-
-                  {isSelected && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span style={{ fontSize: '11px', color: '#64748b' }}>SL hỏng:</span>
-                      <input
-                        type="number"
-                        min={1}
-                        max={item.quantity}
-                        value={selectedItems[item.productId]}
-                        onChange={(e) =>
-                          handleQuantityChange(item.productId, Number(e.target.value), item.quantity)
-                        }
-                        style={{
-                          width: '60px',
-                          padding: '4px 6px',
-                          textAlign: 'center',
-                          borderRadius: '4px',
-                          border: '1px solid #cbd5e1',
-                          fontSize: '12.5px',
-                        }}
-                      />
-                      <span style={{ fontSize: '11.5px', color: '#64748b' }}>/ {item.quantity}</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 2. Loại hư hỏng */}
-        <div style={{ marginBottom: '12px' }}>
-          <label className="supplier-dialog-field" style={{ margin: 0 }}>
-            <span>Loại sự cố / hư hỏng:</span>
-            <select
-              value={damageType}
-              onChange={(e) => setDamageType(e.target.value)}
-              disabled={busy}
-              style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-            >
-              {DAMAGE_TYPES.map((d) => (
-                <option key={d.code} value={d.code}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {/* 3. Ảnh chụp bằng chứng */}
-        <div style={{ marginBottom: '12px' }}>
-          <label className="supplier-dialog-field" style={{ margin: 0 }}>
-            <span>Ảnh chụp bằng chứng hàng hư hỏng (tối đa 3 ảnh):</span>
-            <input type="file" accept="image/*" onChange={handleFileSelect} disabled={busy} />
-          </label>
-          {evidenceImages.length > 0 && (
-            <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
-              {evidenceImages.map((src, idx) => (
-                <div key={idx} style={{ position: 'relative' }}>
-                  <img
-                    src={src}
-                    alt={`Ảnh bằng chứng ${idx + 1}`}
-                    style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #fed7aa' }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setEvidenceImages((prev) => prev.filter((_, i) => i !== idx))}
-                    style={{
-                      position: 'absolute',
-                      top: '-6px',
-                      right: '-6px',
-                      background: '#ef4444',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '50%',
-                      width: '18px',
-                      height: '18px',
-                      fontSize: '10px',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
+          {error && (
+            <div className="error-notice" style={{ marginBottom: '12px' }}>
+              {error}
             </div>
           )}
         </div>
 
-        {/* 4. Phương án xử lý */}
-        <div style={{ marginBottom: '12px', padding: '10px 12px', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
-          <span style={{ fontSize: '13px', fontWeight: 650, color: '#166534', display: 'block', marginBottom: '6px' }}>
-            Phương án giải quyết của Chủ vựa:
-          </span>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', marginBottom: '4px', fontSize: '13px' }}>
-            <input
-              type="radio"
-              name="incidentAction"
-              checked={action === 'REPLACE_0VND'}
-              onChange={() => setAction('REPLACE_0VND')}
-            />
-            <span>
-              <strong>Tiếp tục giao hàng lành & Tự động tạo đơn bù 0đ (Giao bổ sung)</strong>
-              <small style={{ display: 'block', color: '#15803d' }}>
-                Hệ thống tự động khởi tạo đơn mới giá 0đ chứa các món hàng bị hư hỏng để giao chuyến sau.
-              </small>
-            </span>
-          </label>
+        {/* Scrollable Form Body */}
+        <div style={{ flex: 1, overflowY: 'auto', paddingRight: '4px', minHeight: '120px' }}>
+          {/* 1. Checklist các mặt hàng trong đơn */}
+          <div style={{ marginBottom: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 650, color: '#1e293b' }}>
+                Chọn các mặt hàng bị hư hỏng ({Object.keys(selectedItems).length}/{order.items.length}):
+              </span>
+              <button
+                type="button"
+                className="ghost-button"
+                style={{ fontSize: '11px', padding: '2px 8px' }}
+                onClick={toggleAll}
+              >
+                {Object.keys(selectedItems).length === order.items.length ? 'Bỏ chọn' : 'Chọn tất cả'}
+              </button>
+            </div>
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', marginTop: '6px' }}>
-            <input
-              type="radio"
-              name="incidentAction"
-              checked={action === 'RETURN_ALL'}
-              onChange={() => setAction('RETURN_ALL')}
-            />
-            <span>
-              <strong>Thu hồi toàn bộ hàng về kho</strong>
-              <small style={{ display: 'block', color: '#64748b' }}>
-                Tài xế mang toàn bộ hàng về kho vựa để kiểm đếm lại.
-              </small>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {order.items.map((item) => {
+                const isSelected = selectedItems[item.productId] !== undefined;
+                const packInfo = parseItemPackaging(item.packaging);
+                const hasSubUnits = packInfo.multiplier > 1;
+                const looseState = looseItems[item.productId] || { isLoose: false, looseQty: 1 };
+
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      padding: '10px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: isSelected ? '#fef2f2' : '#f8fafc',
+                      border: `1px solid ${isSelected ? '#fecaca' : '#e2e8f0'}`,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', flex: 1 }}>
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleItem(item.productId, item.quantity)}
+                          style={{ width: '16px', height: '16px' }}
+                        />
+                        <span style={{ fontSize: '13px', color: isSelected ? '#991b1b' : '#1e293b' }}>
+                          <strong>{item.productName}</strong> ({item.packaging})
+                        </span>
+                      </label>
+
+                      {isSelected && !looseState.isLoose && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>SL thùng hỏng:</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={item.quantity}
+                            value={selectedItems[item.productId]}
+                            onChange={(e) =>
+                              handleQuantityChange(item.productId, Number(e.target.value), item.quantity)
+                            }
+                            style={{
+                              width: '56px',
+                              padding: '4px 6px',
+                              textAlign: 'center',
+                              borderRadius: '4px',
+                              border: '1px solid #cbd5e1',
+                              fontSize: '12.5px',
+                            }}
+                          />
+                          <span style={{ fontSize: '11.5px', color: '#64748b' }}>/ {item.quantity}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Loose items selector if packaging contains sub-units (e.g. thùng 24 gói) */}
+                    {isSelected && hasSubUnits && (
+                      <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #fca5a5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', color: '#7f1d1d' }}>
+                          <input
+                            type="checkbox"
+                            checked={looseState.isLoose}
+                            onChange={() => toggleLooseMode(item.productId)}
+                          />
+                          <span>Chỉ hỏng lẻ {packInfo.unit} bên trong (không hỏng cả thùng nguyên)</span>
+                        </label>
+
+                        {looseState.isLoose && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '11.5px', color: '#991b1b', fontWeight: 600 }}>SL {packInfo.unit} bị hư:</span>
+                            <input
+                              type="number"
+                              min={1}
+                              max={packInfo.multiplier * item.quantity}
+                              value={looseState.looseQty}
+                              onChange={(e) =>
+                                handleLooseQtyChange(item.productId, Number(e.target.value), packInfo.multiplier * item.quantity)
+                              }
+                              style={{
+                                width: '60px',
+                                padding: '4px 6px',
+                                textAlign: 'center',
+                                borderRadius: '4px',
+                                border: '1px solid #f87171',
+                                fontSize: '12.5px',
+                                fontWeight: 700,
+                                color: '#991b1b',
+                              }}
+                            />
+                            <span style={{ fontSize: '11.5px', color: '#64748b' }}>/ {packInfo.multiplier * item.quantity} {packInfo.unit}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 2. Loại sự cố */}
+          <div style={{ marginBottom: '12px' }}>
+            <label className="supplier-dialog-field" style={{ margin: 0 }}>
+              <span>Nguyên nhân sự cố:</span>
+              <select
+                value={damageType}
+                onChange={(e) => setDamageType(e.target.value)}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+              >
+                {DAMAGE_TYPES.map((d) => (
+                  <option key={d.code} value={d.code}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {/* 3. Ảnh chụp bằng chứng */}
+          <div style={{ marginBottom: '12px' }}>
+            <label className="supplier-dialog-field" style={{ margin: 0 }}>
+              <span>Ảnh chụp bằng chứng hàng hư hỏng (tối đa 3 ảnh):</span>
+              <input type="file" accept="image/*" onChange={handleFileSelect} disabled={busy} />
+            </label>
+            {evidenceImages.length > 0 && (
+              <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                {evidenceImages.map((src, idx) => (
+                  <div key={idx} style={{ position: 'relative' }}>
+                    <img
+                      src={src}
+                      alt={`Ảnh bằng chứng ${idx + 1}`}
+                      style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #fed7aa' }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEvidenceImages((prev) => prev.filter((_, i) => i !== idx))}
+                      style={{
+                        position: 'absolute',
+                        top: '-6px',
+                        right: '-6px',
+                        background: '#ef4444',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '50%',
+                        width: '18px',
+                        height: '18px',
+                        fontSize: '10px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 4. Phương án xử lý luồng tiền */}
+          <div style={{ marginBottom: '12px', padding: '12px', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+            <span style={{ fontSize: '13px', fontWeight: 650, color: '#166534', display: 'block', marginBottom: '8px' }}>
+              Phương án xử lý luồng tiền bồi thường:
             </span>
+
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', marginBottom: '8px', fontSize: '13px' }}>
+              <input
+                type="radio"
+                name="incidentAction"
+                checked={action === 'DEDUCT_COD'}
+                onChange={() => setAction('DEDUCT_COD')}
+                style={{ marginTop: '3px' }}
+              />
+              <span>
+                <strong>Trừ thẳng tiền hàng hỏng vào COD khi nhận hàng (Khuyên dùng)</strong>
+                <small style={{ display: 'block', color: '#15803d', marginTop: '2px' }}>
+                  Tiệm chỉ trả tiền cho các món nguyên vẹn. Khoản tiền hàng hỏng được trừ trực tiếp trên tiền mặt tài xế thu khi giao.
+                </small>
+              </span>
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', marginBottom: '8px', fontSize: '13px' }}>
+              <input
+                type="radio"
+                name="incidentAction"
+                checked={action === 'REPLACE_0VND'}
+                onChange={() => setAction('REPLACE_0VND')}
+                style={{ marginTop: '3px' }}
+              />
+              <span>
+                <strong>Tiếp tục giao hàng lành & Tự động tạo đơn bù 0đ (Giao chuyến sau)</strong>
+                <small style={{ display: 'block', color: '#15803d', marginTop: '2px' }}>
+                  Tiệm nhận phần lành, hệ thống tự động khởi tạo đơn mới giá 0đ chứa các món hàng bị hư hỏng để giao bù miễn phí ở chuyến xe tiếp theo.
+                </small>
+              </span>
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '13px' }}>
+              <input
+                type="radio"
+                name="incidentAction"
+                checked={action === 'RETURN_ALL'}
+                onChange={() => setAction('RETURN_ALL')}
+                style={{ marginTop: '3px' }}
+              />
+              <span>
+                <strong>Thu hồi toàn bộ hàng về kho & Hoàn 100% tiền cọc</strong>
+                <small style={{ display: 'block', color: '#64748b', marginTop: '2px' }}>
+                  Tài xế mang toàn bộ hàng về kho vựa. Tiền cọc trong Escrow hoàn trả 100% về ví tiệm tạp hóa.
+                </small>
+              </span>
+            </label>
+          </div>
+
+          <label className="supplier-dialog-field" style={{ marginBottom: '8px' }}>
+            <span>Ghi chú thêm về sự cố:</span>
+            <textarea
+              placeholder="VD: Thùng bị móp cạnh làm vỡ 6 gói bánh bên trong, các gói còn lại nguyên vẹn..."
+              rows={2}
+              maxLength={300}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              disabled={busy}
+            />
           </label>
         </div>
 
-        <label className="supplier-dialog-field">
-          <span>Ghi chú thêm về sự cố:</span>
-          <textarea
-            placeholder="VD: Xe máy va quẹt nhẹ làm vỡ 2 lốc nước ngọt, thùng bia vẫn nguyên vẹn..."
-            rows={2}
-            maxLength={300}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            disabled={busy}
-          />
-        </label>
-
-        <div className="supplier-dialog-actions" style={{ marginTop: '16px' }}>
+        {/* Modal Actions Footer (Fixed at bottom) */}
+        <div className="supplier-dialog-actions" style={{ marginTop: '14px', paddingTop: '10px', borderTop: '1px solid #e2e8f0', flexShrink: 0 }}>
           <button type="button" className="ghost-button" onClick={onCancel} disabled={busy}>
             Hủy
           </button>
@@ -997,7 +1108,7 @@ function SupplierIncidentDialog({
             disabled={busy}
             style={{ fontWeight: 650 }}
           >
-            {busy ? 'Đang xử lý…' : 'Xác nhận sự cố & Tạo đơn giao bù 0đ'}
+            {busy ? 'Đang xử lý…' : action === 'DEDUCT_COD' ? 'Xác nhận trừ tiền COD' : action === 'REPLACE_0VND' ? 'Xác nhận & Tạo đơn bù 0đ' : 'Xác nhận thu hồi đơn'}
           </button>
         </div>
       </section>
