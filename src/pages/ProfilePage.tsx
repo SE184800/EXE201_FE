@@ -363,13 +363,18 @@ export default function ProfilePage({
     }
     setVerifyingMap(true);
     setMapStatus('idle');
+
+    let fetched = false;
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&countrycodes=vn&limit=1&q=${encodeURIComponent(
           trimmed
         )}`,
-        { headers: { 'Accept-Language': 'vi' } }
+        { headers: { 'Accept-Language': 'vi' }, signal: controller.signal }
       );
+      clearTimeout(timeoutId);
       const results = await response.json();
       if (Array.isArray(results) && results.length > 0) {
         const first = results[0];
@@ -384,24 +389,13 @@ export default function ProfilePage({
         setMapVerifiedAddress(first.display_name || trimmed);
         setMapStatus('success');
         setFieldErrors((prev) => ({ ...prev, [fieldKey]: undefined }));
-      } else {
-        const fallback = resolveAddressCoordinates(trimmed);
-        if (fallback) {
-          setForm((prev) => ({
-            ...prev,
-            latitude: fallback.lat,
-            longitude: fallback.lon,
-            isAddressVerified: true,
-          }));
-          setMapVerifiedAddress(trimmed);
-          setMapStatus('success');
-          setFieldErrors((prev) => ({ ...prev, [fieldKey]: undefined }));
-        } else {
-          setMapStatus('not_found');
-          setForm((prev) => ({ ...prev, isAddressVerified: false }));
-        }
+        fetched = true;
       }
     } catch {
+      // Offline / network failure -> fallback to local geocoder
+    }
+
+    if (!fetched) {
       const fallback = resolveAddressCoordinates(trimmed);
       if (fallback) {
         setForm((prev) => ({
@@ -410,15 +404,16 @@ export default function ProfilePage({
           longitude: fallback.lon,
           isAddressVerified: true,
         }));
-        setMapVerifiedAddress(trimmed);
+        setMapVerifiedAddress(fallback.displayName || trimmed);
         setMapStatus('success');
         setFieldErrors((prev) => ({ ...prev, [fieldKey]: undefined }));
       } else {
-        setMapStatus('error');
+        setMapStatus('not_found');
+        setForm((prev) => ({ ...prev, isAddressVerified: false }));
       }
-    } finally {
-      setVerifyingMap(false);
     }
+
+    setVerifyingMap(false);
   }
 
   async function handleQrUploadInProfile(e: React.ChangeEvent<HTMLInputElement>) {

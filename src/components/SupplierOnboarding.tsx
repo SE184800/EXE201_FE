@@ -5,6 +5,7 @@ import { getApiError, getApiFieldErrors, isUnauthenticated } from '../services/a
 import { quickVerifySupplier, saveSupplierProfile, type SupplierProfile } from '../services/supplier.api';
 import type { AuthUser } from '../types/auth';
 import { normalizePhone } from '../validation/registration';
+import { resolveAddressCoordinates } from '../utils/geo';
 
 type SupplierOnboardingProps = {
   user: AuthUser;
@@ -55,13 +56,18 @@ export default function SupplierOnboarding({
     }
     setVerifyingMap(true);
     setMapStatus('idle');
+
+    let fetched = false;
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&countrycodes=vn&limit=1&q=${encodeURIComponent(
           trimmed
         )}`,
-        { headers: { 'Accept-Language': 'vi' } }
+        { headers: { 'Accept-Language': 'vi' }, signal: controller.signal }
       );
+      clearTimeout(timeoutId);
       const results = await response.json();
       if (Array.isArray(results) && results.length > 0) {
         const first = results[0];
@@ -73,15 +79,28 @@ export default function SupplierOnboarding({
         setMapVerifiedAddress(first.display_name || trimmed);
         setMapStatus('success');
         setFieldErrors((prev) => ({ ...prev, warehouseAddress: undefined }));
+        fetched = true;
+      }
+    } catch {
+      // Fall through to local resolver
+    }
+
+    if (!fetched) {
+      const fallback = resolveAddressCoordinates(trimmed);
+      if (fallback) {
+        setLatitude(fallback.lat);
+        setLongitude(fallback.lon);
+        setIsAddressVerified(true);
+        setMapVerifiedAddress(fallback.displayName || trimmed);
+        setMapStatus('success');
+        setFieldErrors((prev) => ({ ...prev, warehouseAddress: undefined }));
       } else {
         setMapStatus('not_found');
         setIsAddressVerified(false);
       }
-    } catch {
-      setMapStatus('error');
-    } finally {
-      setVerifyingMap(false);
     }
+
+    setVerifyingMap(false);
   }
 
   function validate(): SupplierOnboardingErrors {
