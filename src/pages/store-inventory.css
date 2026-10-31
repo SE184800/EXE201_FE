@@ -2052,6 +2052,29 @@
   /* Xoay ngược mũi tên khi mở menu */
 }
 
+
+.account-options-user-info {
+  padding: 8px 12px 10px;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 4px;
+}
+.account-options-user-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  display: block;
+}
+.account-options-user-role {
+  font-size: 11px;
+  color: #15803d;
+  font-weight: 600;
+  background: #dcfce7;
+  padding: 1px 8px;
+  border-radius: 999px;
+  display: inline-block;
+  margin-top: 3px;
+}
+
 .account-options {
   position: absolute;
   right: 0;

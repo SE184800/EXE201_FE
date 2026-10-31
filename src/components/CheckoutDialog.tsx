@@ -209,8 +209,9 @@ export default function CheckoutDialog({
         supplierDeliveryRadiusKm: Number(group.supplier.deliveryRadiusKm) || 35,
       });
 
-      const deliveryFee = roundToThousand(deliveryCalc.deliveryFee);
-      const orderTotal = roundToThousand(goodsSubtotal + deliveryFee);
+      // Phí shipper thỏa thuận ngoài với chủ vựa/tài xế, không tính vào ký quỹ sàn
+      const deliveryFee = 0;
+      const orderTotal = roundToThousand(goodsSubtotal);
       const depositAmount = roundToThousand((orderTotal * STANDARD_DEPOSIT_RATE) / 100);
       const remainingCOD = orderTotal - depositAmount;
 
@@ -438,12 +439,11 @@ export default function CheckoutDialog({
                           <strong>{calc.supplier.businessName}</strong>
                           <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
                             Địa chỉ kho: <strong>{calc.supplier.warehouseAddress || '120 Lý Thường Kiệt, Q. Tân Bình, TP. Hồ Chí Minh'}</strong>
-                            {calc.deliveryCalc.isAlley ? ' · Trong hẻm' : ' · Mặt tiền đường lớn'}
                           </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                          <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Phí shipper</span>
-                          <strong style={{ fontSize: '14px', color: '#166534' }}>{money(calc.deliveryFee)}</strong>
+                          <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Vận chuyển</span>
+                          <strong style={{ fontSize: '12.5px', color: '#475569' }}>Tự thỏa thuận</strong>
                         </div>
                       </div>
 
@@ -482,7 +482,7 @@ export default function CheckoutDialog({
                                     disabled={busy}
                                     value={currentQty}
                                     onChange={(e) => handleQuantityChange(prod.id, Number(e.target.value), prod.moq, prod.stockQty)}
-                                    className="checkout-qty-input"
+                                    className="checkout-qty-input" style={{ MozAppearance: "textfield", WebkitAppearance: "none" }}
                                   />
                                   <button
                                     type="button"
@@ -518,7 +518,7 @@ export default function CheckoutDialog({
                       {/* Group Summary Footer */}
                       <div className="checkout-supplier-footer">
                         <span>
-                          Tiền hàng: <strong>{money(calc.goodsSubtotal)}</strong> + Phí shipper: <strong>{money(calc.deliveryFee)}</strong>
+                          Tiền hàng: <strong>{money(calc.goodsSubtotal)}</strong> (Phí vận chuyển: Tự thỏa thuận ngoài)
                         </span>
                         <span style={{ color: '#0f172a' }}>
                           Tổng đơn #{groupIdx + 1}: <strong>{money(calc.orderTotal)}</strong> (Cọc 10%: <strong>{money(calc.depositAmount)}</strong>)
@@ -645,7 +645,7 @@ export default function CheckoutDialog({
                         className="table-button"
                         onClick={() => {
                           onClose();
-                          navigate('/wallet');
+                          navigate('/store/wallet');
                         }}
                         style={{
                           fontSize: '11.5px',

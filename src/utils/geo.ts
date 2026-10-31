@@ -309,7 +309,7 @@ export function calculateDeliveryFee({
   const extraKm = Math.max(0, distanceKm - baseKm);
   const distanceExtraFee = Math.round(extraKm * 5000);
   const isAlley = locationType === 'ALLEY';
-  const alleySurcharge = isAlley ? 5000 : 0;
+  const alleySurcharge = 0; // Da bo phu phi hem
 
   const total = baseFee + distanceExtraFee + alleySurcharge;
   const deliveryFee = Math.round(total / 1000) * 1000;

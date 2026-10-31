@@ -19,7 +19,26 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
       return [];
     }
   });
-  const [checkoutProducts, setCheckoutProducts] = useState<CatalogProduct[] | null>(null);
+  const [checkoutProducts, setCheckoutProducts] = useState<CatalogProduct[] | null>(() => {
+    try {
+      const isCheckoutOpen = localStorage.getItem('supplymind_checkout_is_open') === 'true';
+      const saved = localStorage.getItem('supplymind_catalog_selected_products');
+      const parsed = saved ? JSON.parse(saved) : [];
+      return isCheckoutOpen && parsed.length > 0 ? parsed : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (checkoutProducts && checkoutProducts.length > 0) {
+        localStorage.setItem('supplymind_checkout_is_open', 'true');
+      } else {
+        localStorage.removeItem('supplymind_checkout_is_open');
+      }
+    } catch {}
+  }, [checkoutProducts]);
 
   useEffect(() => {
     try {
@@ -427,11 +446,17 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
       {checkoutProducts && checkoutProducts.length > 0 && (
         <CheckoutDialog
           products={checkoutProducts}
-          onClose={() => setCheckoutProducts(null)}
+          onClose={() => {
+            setCheckoutProducts(null);
+            try {
+              localStorage.removeItem('supplymind_checkout_is_open');
+            } catch {}
+          }}
           onOrderSuccess={() => {
             setCheckoutProducts(null);
             setSelectedProducts([]);
             try {
+              localStorage.removeItem('supplymind_checkout_is_open');
               localStorage.removeItem('supplymind_catalog_selected_products');
             } catch {}
           }}

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import '../catalog.css';
 import SupplierLayout from '../../components/SupplierLayout';
 import OrderList from '../../components/OrderList';
+import { calculateDeliveryFee } from '../../utils/geo';
 import { getApiError, isUnauthenticated } from '../../services/api';
 import { logout } from '../../services/auth.api';
 import {
@@ -324,24 +325,48 @@ function DispatchDriverDialog({
   const [customVehicle, setCustomVehicle] = useState('');
   const [licensePlate, setLicensePlate] = useState(initialData?.licensePlate || '');
 
-  // Calendar date & flexible time frame picker
+  const TIME_SLOT_OPTIONS = [
+    { code: 'EARLY_MORNING', label: 'Sáng sớm (06:00 - 08:00)', endHour: 8, endMinute: 0 },
+    { code: 'MORNING', label: 'Buổi sáng (08:00 - 10:30)', endHour: 10, endMinute: 30 },
+    { code: 'MIDDAY', label: 'Buổi trưa (11:00 - 12:30)', endHour: 12, endMinute: 30 },
+    { code: 'AFTERNOON_EARLY', label: 'Đầu chiều (13:30 - 15:30)', endHour: 15, endMinute: 30 },
+    { code: 'AFTERNOON_LATE', label: 'Cuối chiều (15:30 - 18:00)', endHour: 18, endMinute: 0 },
+    { code: 'EVENING', label: 'Buổi tối (18:00 - 20:30)', endHour: 20, endMinute: 30 },
+    { code: 'NIGHT', label: 'Ca đêm / Tiệm bán khuya (21:00 - 23:30)', endHour: 23, endMinute: 30 },
+    { code: 'CUSTOM', label: 'Thương lượng riêng (Tự nhập khung giờ thỏa thuận)', endHour: 24, endMinute: 0 },
+  ];
+
+  // Tính toán khoảng cách và thời gian di chuyển thực tế từ vựa đến tiệm
+  const deliveryCalc = calculateDeliveryFee({
+    storeAddress: order.deliveryAddress || '',
+    supplierWarehouseAddress: order.supplier?.warehouseAddress || '',
+  });
+  const distanceKm = deliveryCalc.distanceKm || 3.0;
+  // Ước tính vận tốc xe giao hàng trong đô thị: 20 km/h, tối thiểu 15 phút di chuyển
+  const driveMinutes = Math.max(15, Math.ceil((distanceKm / 20) * 60));
+  // Thời gian chuẩn bị kho tối thiểu: 2 tiếng (120 phút) + thời gian chạy xe
+  const minLeadMinutes = 120 + driveMinutes;
+  const now = new Date();
+  const earliestDeliveryDate = new Date(now.getTime() + minLeadMinutes * 60 * 1000);
+  const earliestTimeStr = `${String(earliestDeliveryDate.getHours()).padStart(2, '0')}:${String(earliestDeliveryDate.getMinutes()).padStart(2, '0')}`;
+
   const todayStr = new Date().toISOString().split('T')[0];
   const [deliveryDate, setDeliveryDate] = useState(todayStr);
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState('MORNING');
+  const isToday = deliveryDate === todayStr;
+
+  // Chọn slot mặc định đầu tiên còn khả dụng hôm nay
+  const initialAvailableSlot = TIME_SLOT_OPTIONS.find((s) => {
+    if (s.code === 'CUSTOM') return true;
+    const slotEndTime = new Date();
+    slotEndTime.setHours(s.endHour, s.endMinute, 0, 0);
+    return slotEndTime > earliestDeliveryDate;
+  })?.code || 'CUSTOM';
+
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState(initialAvailableSlot);
   const [customTimeSlot, setCustomTimeSlot] = useState('');
   const [deliveryNotes, setDeliveryNotes] = useState(initialData?.deliveryNotes || '');
   const [error, setError] = useState('');
 
-  const TIME_SLOT_OPTIONS = [
-    { code: 'EARLY_MORNING', label: 'Sáng sớm (06:00 - 08:00)' },
-    { code: 'MORNING', label: 'Buổi sáng (08:00 - 10:30)' },
-    { code: 'MIDDAY', label: 'Buổi trưa (11:00 - 12:30)' },
-    { code: 'AFTERNOON_EARLY', label: 'Đầu chiều (13:30 - 15:30)' },
-    { code: 'AFTERNOON_LATE', label: 'Cuối chiều (15:30 - 18:00)' },
-    { code: 'EVENING', label: 'Buổi tối (18:00 - 20:30)' },
-    { code: 'EXPRESS', label: 'Giao hỏa tốc (Trong 30 - 45 phút tới)' },
-    { code: 'CUSTOM', label: 'Khác (Tự nhập khung giờ)' },
-  ];
 
   const quickVehicleTypes = [
     'Xe ba gác chở hàng',
@@ -404,6 +429,34 @@ function DispatchDriverDialog({
       setError('Số điện thoại tài xế không hợp lệ (cần 10 chữ số bắt đầu bằng 0).');
       return;
     }
+    // Kiểm tra không chọn ngày trong quá khứ
+    if (deliveryDate < todayStr) {
+      setError('Ngày giao hàng không thể ở trong quá khứ.');
+      return;
+    }
+
+    // Kiểm tra thời gian cách tối thiểu 2 tiếng chuẩn bị + thời gian di chuyển
+    if (isToday) {
+      if (selectedTimeSlot === 'CUSTOM') {
+        if (!customTimeSlot.trim()) {
+          setError('Vui lòng nhập khung giờ thỏa thuận chi tiết giữa vựa và tiệm.');
+          return;
+        }
+      } else {
+        const slot = TIME_SLOT_OPTIONS.find((s) => s.code === selectedTimeSlot);
+        if (slot && slot.code !== 'CUSTOM') {
+          const slotEndTime = new Date();
+          slotEndTime.setHours(slot.endHour, slot.endMinute, 0, 0);
+          if (slotEndTime <= earliestDeliveryDate) {
+            setError(
+              `Thời gian giao hàng phải cách hiện tại ít nhất 2 tiếng chuẩn bị kho và ${driveMinutes} phút di chuyển (~ ${distanceKm.toFixed(1)} km). Khung giờ sớm nhất khả thi hôm nay là từ ${earliestTimeStr} trở đi hoặc dời sang ngày mai.`
+            );
+            return;
+          }
+        }
+      }
+    }
+
     const finalVehicle = vehicleType === 'Khác' ? customVehicle.trim() || 'Xe giao hàng' : vehicleType;
     const finalDeliveryTime = computeEstimatedDeliveryTime();
 
@@ -547,6 +600,15 @@ function DispatchDriverDialog({
 
         {/* 2. Lịch và Khung thời gian giao hàng linh hoạt */}
         <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
+          <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px' }}>
+            <div style={{ fontSize: '12.5px', color: '#166534', fontWeight: 700 }}>
+              Khoảng cách giao: ~{distanceKm.toFixed(1)} km · Ước tính xe chạy: ~{driveMinutes} phút
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#15803d', marginTop: '3px' }}>
+              Quy chuẩn giao hàng: Tối thiểu 2 tiếng soạn hàng kho + {driveMinutes} phút vận chuyển. Sớm nhất hôm nay: <strong>từ {earliestTimeStr}</strong>.
+            </div>
+          </div>
+
           <span style={{ fontSize: '13px', fontWeight: 650, color: '#166534', display: 'block', marginBottom: '8px' }}>
             Lịch giao & Khung giờ giao hàng linh hoạt:
           </span>
@@ -571,11 +633,19 @@ function DispatchDriverDialog({
                 disabled={busy}
                 style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #86efac', backgroundColor: '#ffffff' }}
               >
-                {TIME_SLOT_OPTIONS.map((slot) => (
-                  <option key={slot.code} value={slot.code}>
-                    {slot.label}
-                  </option>
-                ))}
+                {TIME_SLOT_OPTIONS.map((slot) => {
+                  let disabled = false;
+                  if (isToday && slot.code !== 'CUSTOM') {
+                    const slotEnd = new Date();
+                    slotEnd.setHours(slot.endHour, slot.endMinute, 0, 0);
+                    if (slotEnd <= earliestDeliveryDate) disabled = true;
+                  }
+                  return (
+                    <option key={slot.code} value={slot.code} disabled={disabled}>
+                      {slot.label} {disabled ? '(Không kịp giờ hôm nay)' : ''}
+                    </option>
+                  );
+                })}
               </select>
             </label>
           </div>

@@ -677,6 +677,10 @@ export default function StoreInventory({
               </button>
               {accountOpen && (
                 <div id="account-options" className="account-options">
+                  <div className="account-options-user-info">
+                    <span className="account-options-user-name">{user.name || user.username}</span>
+                    <span className="account-options-user-role">Chủ tạp hóa</span>
+                  </div>
                   <button
                     onClick={() => {
                       setActiveTab('profile');

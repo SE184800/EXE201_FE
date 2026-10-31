@@ -198,7 +198,9 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
     }
     setSubmitting(true);
     try {
-      onLogin(await login({ username: username.trim(), password }));
+      const authedUser = await login({ username: username.trim(), password });
+      sessionStorage.setItem('supplymind_active_tab', 'true');
+      onLogin(authedUser);
     } catch (error) {
       if (isSubscriptionRequiredError(error)) {
         setPayment({ renewalToken: error.renewalToken, subscription: error.subscription });
@@ -219,7 +221,9 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
     setPaymentError('');
     try {
       await renewExpiredSubscription(payment.renewalToken, paymentRequest.current);
-      onLogin(await login({ username: username.trim(), password }));
+      const authedUser = await login({ username: username.trim(), password });
+      sessionStorage.setItem('supplymind_active_tab', 'true');
+      onLogin(authedUser);
     } catch (error) {
       setPaymentError(getApiError(error));
     } finally {

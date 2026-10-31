@@ -1,3 +1,9 @@
+function isEscrowRef(ref?: string | null): boolean {
+  if (!ref) return false;
+  const s = ref.toUpperCase();
+  return s.includes('VI_HE_THONG') || s.includes('VÍ_HỆ_THỐNG') || s.includes('VI_H') || s.includes('ESCROW') || s.startsWith('VI_');
+}
+
 import { useEffect, useState, type FormEvent } from 'react';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import {
@@ -812,14 +818,47 @@ export default function OrderList({
                           <span
                             style={{
                               flex: 1,
-                              textDecoration: isChecked ? 'line-through' : 'none',
-                              color: isChecked ? '#166534' : '#1e293b',
+                              textDecoration: 'none',
+                              color: isChecked ? '#14532d' : '#0f172a',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '12px',
+                              flexWrap: 'wrap',
                             }}
                           >
-                            <strong>{item.productName}</strong> · SL: <strong>{item.quantity}</strong> × {item.packaging} ({money(item.lineTotal)})
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                              <strong style={{ fontSize: '13px', color: isChecked ? '#166534' : '#0f172a' }}>{item.productName}</strong>
+                              <span
+                                style={{
+                                  backgroundColor: isChecked ? '#dcfce7' : '#fef3c7',
+                                  color: isChecked ? '#166534' : '#92400e',
+                                  border: `1px solid ${isChecked ? '#86efac' : '#fde68a'}`,
+                                  padding: '2px 8px',
+                                  borderRadius: '4px',
+                                  fontWeight: 700,
+                                  fontSize: '11.5px',
+                                  letterSpacing: '0.3px',
+                                }}
+                              >
+                                CẦN LẤY: {item.quantity} {item.packaging}
+                              </span>
+                            </span>
+                            <span style={{ fontSize: '12px', color: '#64748b' }}>
+                              {money(item.lineTotal)}
+                            </span>
                           </span>
-                          <span style={{ fontSize: '11px', fontWeight: 650, color: isChecked ? '#15803d' : '#94a3b8' }}>
-                            {isChecked ? 'Đã chuẩn bị' : 'Chưa lấy'}
+                          <span
+                            style={{
+                              fontSize: '11px',
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              backgroundColor: isChecked ? '#16a34a' : '#f1f5f9',
+                              color: isChecked ? '#ffffff' : '#64748b',
+                            }}
+                          >
+                            {isChecked ? 'ĐÃ SOẠN XONG' : 'Chưa lấy'}
                           </span>
                         </label>
                       );
@@ -898,7 +937,7 @@ export default function OrderList({
                           className="ghost-button"
                           style={{ fontSize: '11px', padding: '4px 8px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                         >
-                          Gọi cho Tiệm (${order.recipientPhone || '0908 123 456'})
+                          Gọi cho Tiệm ({order.recipientPhone || '0908 123 456'})
                         </a>
                         <button
                           type="button"
@@ -1173,9 +1212,9 @@ export default function OrderList({
                       Đặt cọc {order.depositRate}% · {money(order.depositAmount)}
                     </strong>
                     <span>
-                      {order.depositReference === 'VÍ_HỆ_THỐNG' && order.depositStatus === 'PAID'
+                      {isEscrowRef(order.depositReference) && order.depositStatus === 'PAID'
                         ? 'Đã ký quỹ qua Ví hệ thống (An toàn)'
-                        : order.depositReference === 'VÍ_HỆ_THỐNG' && order.depositStatus === 'REFUNDED'
+                        : isEscrowRef(order.depositReference) && order.depositStatus === 'REFUNDED'
                           ? 'Đã hoàn cọc vào Ví hệ thống'
                           : order.depositStatus === 'PENDING'
                             ? 'Chờ cửa hàng chuyển cọc'
@@ -1190,7 +1229,7 @@ export default function OrderList({
                                     : order.depositStatus}
                     </span>
                   </div>
-                  {order.depositReference === 'VÍ_HỆ_THỐNG' ? (
+                  {isEscrowRef(order.depositReference) ? (
                     <div
                       style={{
                         margin: '6px 0',
@@ -1214,7 +1253,7 @@ export default function OrderList({
                           : `Sàn đã khóa cọc ${money(order.depositAmount)} từ Ví của cửa hàng. Tiền cọc sẽ tự động giải ngân vào Ví của bạn khi giao hàng thành công.`}
                       </span>
                       <strong style={{ color: '#1f2937', marginTop: '2px' }}>
-                        Thanh toán COD khi giao: ${money(order.total - order.depositAmount)}
+                        Thanh toán COD khi giao: {money(order.total - order.depositAmount)}
                       </strong>
                     </div>
                   ) : (
@@ -1229,7 +1268,7 @@ export default function OrderList({
                         </div>
                       )}
                       {order.depositReference && (
-                        <small>Mã/nội dung cửa hàng cung cấp: {order.depositReference}</small>
+                        <small>Mã giao dịch / Nội dung chuyển: {order.depositReference}</small>
                       )}
                     </>
                   )}
@@ -2618,8 +2657,10 @@ export default function OrderList({
                 {[
                   { code: '1_HOUR', label: 'Dời lại 1 tiếng nữa (Tôi đang ra ngoài có việc gấp)' },
                   { code: 'THIS_AFTERNOON', label: 'Giao vào buổi chiều nay (14h00 – 16h30)' },
+                  { code: 'TONIGHT', label: 'Giao vào tối nay / ca đêm (19h00 – 22h30)' },
                   { code: 'TOMORROW_MORNING', label: 'Giao vào sáng mai (8h00 – 11h00)' },
-                  { code: 'CUSTOM', label: 'Tự nhập thời gian khác...' },
+                  { code: 'TOMORROW_AFTERNOON', label: 'Giao vào chiều mai (14h00 – 17h00)' },
+                  { code: 'CUSTOM', label: 'Tự nhập thời gian khác (thương lượng riêng)...' },
                 ].map((item) => (
                   <label
                     key={item.code}

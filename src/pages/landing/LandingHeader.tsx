@@ -1,3 +1,4 @@
+import { ROLE_DETAILS, type AuthUser } from '../../types/auth';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Brand from '../../components/Brand';
@@ -9,7 +10,7 @@ const NAV_LINKS = [
   { id: 'roles', label: 'Vai trò' },
 ];
 
-export default function LandingHeader() {
+export default function LandingHeader({ user, onLogout }: { user?: AuthUser | null; onLogout?: () => void }) {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState('');
@@ -102,12 +103,30 @@ export default function LandingHeader() {
         </nav>
 
         <div className="landing-header-actions">
-          <Link className="landing-button landing-button-ghost" to="/login">
-            Đăng nhập
-          </Link>
-          <Link className="landing-button landing-button-solid" to="/register">
-            Đăng ký
-          </Link>
+          {user ? (
+            <>
+              <Link className="landing-button landing-button-solid" to={ROLE_DETAILS[user.role].path}>
+                Vào bảng điều khiển
+              </Link>
+              <button
+                type="button"
+                className="landing-button landing-button-ghost"
+                onClick={onLogout}
+                style={{ cursor: 'pointer', background: 'transparent', border: '1px solid rgba(255,255,255,0.4)', color: '#fff' }}
+              >
+                Đăng xuất
+              </button>
+            </>
+          ) : (
+            <>
+              <Link className="landing-button landing-button-ghost" to="/login">
+                Đăng nhập
+              </Link>
+              <Link className="landing-button landing-button-solid" to="/register">
+                Đăng ký
+              </Link>
+            </>
+          )}
         </div>
 
         <button
@@ -142,16 +161,40 @@ export default function LandingHeader() {
           ))}
         </nav>
         <div className="landing-mobile-actions">
-          <Link className="landing-button landing-button-ghost" to="/login" onClick={() => setOpen(false)}>
-            Đăng nhập
-          </Link>
-          <Link
-            className="landing-button landing-button-solid"
-            to="/register"
-            onClick={() => setOpen(false)}
-          >
-            Đăng ký
-          </Link>
+          {user ? (
+            <>
+              <Link
+                className="landing-button landing-button-solid"
+                to={ROLE_DETAILS[user.role].path}
+                onClick={() => setOpen(false)}
+              >
+                Vào bảng điều khiển
+              </Link>
+              <button
+                type="button"
+                className="landing-button landing-button-ghost"
+                onClick={() => {
+                  setOpen(false);
+                  onLogout?.();
+                }}
+              >
+                Đăng xuất
+              </button>
+            </>
+          ) : (
+            <>
+              <Link className="landing-button landing-button-ghost" to="/login" onClick={() => setOpen(false)}>
+                Đăng nhập
+              </Link>
+              <Link
+                className="landing-button landing-button-solid"
+                to="/register"
+                onClick={() => setOpen(false)}
+              >
+                Đăng ký
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </header>

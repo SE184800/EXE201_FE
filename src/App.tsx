@@ -13,19 +13,22 @@ import SupplierWallet from './pages/supplier/SupplierWallet';
 import AdminPage from './pages/admin/AdminPage';
 import SubscriptionPage from './pages/SubscriptionPage';
 import SupplierProfilePage from './pages/supplier/SupplierProfilePage';
-import { getMe } from './services/auth.api';
+import { getMe, logout } from './services/auth.api';
 import { ROLE_DETAILS, type AuthUser } from './types/auth';
 
 
 function LogoutToast() {
-  const [show, setShow] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     function checkLogoutNotice() {
       try {
-        if (sessionStorage.getItem('just_logged_out')) {
+        if (sessionStorage.getItem('idle_logged_out')) {
+          sessionStorage.removeItem('idle_logged_out');
+          setNotice('Phiên đăng nhập đã kết thúc sau 15 phút không hoạt động để bảo mật thông tin.');
+        } else if (sessionStorage.getItem('just_logged_out')) {
           sessionStorage.removeItem('just_logged_out');
-          setShow(true);
+          setNotice('Đã đăng xuất thành công. Hẹn gặp lại bạn!');
         }
       } catch {
         // ignore
@@ -40,13 +43,13 @@ function LogoutToast() {
   }, []);
 
   useEffect(() => {
-    if (show) {
-      const timer = setTimeout(() => setShow(false), 2000);
+    if (notice) {
+      const timer = setTimeout(() => setNotice(null), 4000);
       return () => clearTimeout(timer);
     }
-  }, [show]);
+  }, [notice]);
 
-  if (!show) return null;
+  if (!notice) return null;
 
   return (
     <div
@@ -57,7 +60,7 @@ function LogoutToast() {
         top: '20px',
         right: '20px',
         zIndex: 99999,
-        backgroundColor: '#10B981',
+        backgroundColor: notice.includes('15 phút') ? '#d97706' : '#10B981',
         color: '#FFFFFF',
         padding: '12px 20px',
         borderRadius: '12px',
@@ -85,7 +88,7 @@ function LogoutToast() {
       >
         OK
       </span>
-      <span>Đã đăng xuất thành công. Hẹn gặp lại bạn!</span>
+      <span>{notice}</span>
     </div>
   );
 }
@@ -93,17 +96,36 @@ function LogoutToast() {
 export default function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
-  const clearUser = useCallback(() => setUser(null), []);
+
+  const handleSetUser = useCallback((u: AuthUser | null) => {
+    if (u) {
+      sessionStorage.setItem('supplymind_active_tab', 'true');
+    } else {
+      sessionStorage.removeItem('supplymind_active_tab');
+    }
+    setUser(u);
+  }, []);
+
+  const clearUser = useCallback(() => {
+    sessionStorage.removeItem('supplymind_active_tab');
+    setUser(null);
+  }, []);
 
   useEffect(() => {
     let active = true;
+    const isTabActive = sessionStorage.getItem('supplymind_active_tab') === 'true';
+    if (!isTabActive) {
+      // Khi mở tab mới hoặc tắt mở lại trình duyệt: yêu cầu đăng nhập lại
+      setCheckingSession(false);
+      return;
+    }
+
     getMe()
       .then((currentUser) => {
         if (active) setUser(currentUser);
       })
       .catch(() => {
-        // A failed probe must not hide the login screen while a cold database
-        // or a serverless function is waking up.
+        sessionStorage.removeItem('supplymind_active_tab');
       })
       .finally(() => {
         if (active) setCheckingSession(false);
@@ -112,6 +134,40 @@ export default function App() {
       active = false;
     };
   }, []);
+
+  // Tự động đăng xuất sau 15 phút không có thao tác để đảm bảo bảo mật
+  useEffect(() => {
+    if (!user) return;
+
+    const INACTIVITY_MS = 15 * 60 * 1000;
+    let timer: NodeJS.Timeout;
+
+    const onTimeout = async () => {
+      try {
+        sessionStorage.removeItem('supplymind_active_tab');
+        sessionStorage.setItem('idle_logged_out', 'true');
+        await logout();
+      } catch {
+        // ignore
+      } finally {
+        setUser(null);
+      }
+    };
+
+    const resetTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(onTimeout, INACTIVITY_MS);
+    };
+
+    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach((evt) => window.addEventListener(evt, resetTimer, { passive: true }));
+    resetTimer();
+
+    return () => {
+      clearTimeout(timer);
+      events.forEach((evt) => window.removeEventListener(evt, resetTimer));
+    };
+  }, [user]);
 
   const destination = user ? ROLE_DETAILS[user.role].path : '/';
   // Keep protected deep links while /me restores the session; login stays usable
@@ -128,11 +184,11 @@ export default function App() {
       <Routes>
         <Route
           path="/"
-          element={user ? <Navigate to={destination} replace /> : <LandingPage />}
+          element={<LandingPage user={user} onLogout={clearUser} />}
         />
         <Route
           path="/login"
-          element={user ? <Navigate to={destination} replace /> : <LoginPage onLogin={setUser} />}
+          element={user ? <Navigate to={destination} replace /> : <LoginPage onLogin={handleSetUser} />}
         />
         <Route
           path="/register"

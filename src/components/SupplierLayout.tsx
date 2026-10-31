@@ -1,3 +1,4 @@
+import './SupplierHeader.css';
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Brand from './Brand';
@@ -244,6 +245,10 @@ export default function SupplierLayout({
               </button>
               {accountOpen && (
                 <div id="supplier-account-options" className="account-options">
+                  <div className="account-options-user-info">
+                    <span className="account-options-user-name">{displayName}</span>
+                    <span className="account-options-user-role">Chủ vựa sỉ</span>
+                  </div>
                   <Link
                     to="/supplier/profile"
                     onClick={() => setAccountOpen(false)}
