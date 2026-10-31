@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import type { CatalogProduct } from '../services/catalog.api';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import { getWallet, addMockFunds, type WalletInfo } from '../services/wallet.api';
@@ -17,19 +17,39 @@ interface CreatedOrderSummary {
   itemCount: number;
 }
 
+interface CheckoutFormState {
+  recipientName: string;
+  recipientPhone: string;
+  deliveryAddress: string;
+  note: string;
+  proposedPrice: string;
+}
+
 export default function CheckoutDialog({
   product,
   products,
   onClose,
+  onOrderSuccess,
   onLogout,
 }: {
   product?: CatalogProduct | null;
   products?: CatalogProduct[];
   onClose: () => void;
+  onOrderSuccess?: () => void;
   onLogout: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const lock = useRef(false);
+  const navigate = useNavigate();
+
+  // Lock background scroll when dialog is mounted
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
 
   // Normalize list of products
   const initialList = useMemo(() => {
@@ -40,6 +60,10 @@ export default function CheckoutDialog({
 
   const [items, setItems] = useState<CatalogProduct[]>(initialList);
   const [quantities, setQuantities] = useState<Record<number, number>>(() => {
+    try {
+      const saved = localStorage.getItem('supplymind_checkout_quantities');
+      if (saved) return JSON.parse(saved);
+    } catch {}
     const q: Record<number, number> = {};
     for (const item of initialList) {
       q[item.id] = item.moq;
@@ -47,13 +71,31 @@ export default function CheckoutDialog({
     return q;
   });
 
-  const [form, setForm] = useState({
-    recipientName: '',
-    recipientPhone: '',
-    deliveryAddress: '',
-    note: '',
-    proposedPrice: '',
+  const [form, setForm] = useState<CheckoutFormState>(() => {
+    try {
+      const saved = localStorage.getItem('supplymind_checkout_form_draft');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      recipientName: '',
+      recipientPhone: '',
+      deliveryAddress: '',
+      note: '',
+      proposedPrice: '',
+    };
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('supplymind_checkout_quantities', JSON.stringify(quantities));
+    } catch {}
+  }, [quantities]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('supplymind_checkout_form_draft', JSON.stringify(form));
+    } catch {}
+  }, [form]);
 
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
   const [mockAdding, setMockAdding] = useState(false);
@@ -63,7 +105,6 @@ export default function CheckoutDialog({
 
   // Address selection state
   const [storeAddress, setStoreAddress] = useState('');
-  const [storeName, setStoreName] = useState('');
   const [storeLocationType, setStoreLocationType] = useState<'STREET_FRONT' | 'ALLEY'>('STREET_FRONT');
   const [storeCoords, setStoreCoords] = useState<{ lat?: number | null; lon?: number | null } | null>(null);
   const [addressOption, setAddressOption] = useState<'DEFAULT' | 'CUSTOM'>('DEFAULT');
@@ -90,17 +131,16 @@ export default function CheckoutDialog({
         const p = data.profile;
         const sp = p?.storeProfile;
         const sAddr = sp?.storeAddress || '';
-        const sName = sp?.storeName || '';
         setStoreAddress(sAddr);
-        setStoreName(sName);
         if (sp?.locationType) setStoreLocationType(sp.locationType);
         if (sp?.latitude && sp?.longitude) {
           setStoreCoords({ lat: sp.latitude, lon: sp.longitude });
         }
-        setForm((prev) => ({
+        const defaultPhone = sp?.storePhone || p?.phone || '';
+        setForm((prev: CheckoutFormState) => ({
           ...prev,
           recipientName: prev.recipientName || p?.name || '',
-          recipientPhone: prev.recipientPhone || p?.phone || '',
+          recipientPhone: prev.recipientPhone || defaultPhone,
           deliveryAddress: prev.deliveryAddress || sAddr,
         }));
       })
@@ -110,9 +150,9 @@ export default function CheckoutDialog({
   function handleAddressOptionChange(option: 'DEFAULT' | 'CUSTOM') {
     setAddressOption(option);
     if (option === 'DEFAULT') {
-      setForm((prev) => ({ ...prev, deliveryAddress: storeAddress }));
+      setForm((prev: CheckoutFormState) => ({ ...prev, deliveryAddress: storeAddress }));
     } else {
-      setForm((prev) => ({ ...prev, deliveryAddress: customAddress }));
+      setForm((prev: CheckoutFormState) => ({ ...prev, deliveryAddress: customAddress }));
     }
   }
 
@@ -248,7 +288,12 @@ export default function CheckoutDialog({
         });
       }
 
+      try {
+        localStorage.removeItem('supplymind_checkout_quantities');
+        localStorage.removeItem('supplymind_checkout_form_draft');
+      } catch {}
       setCreatedOrders(results);
+      onOrderSuccess?.();
     } catch (err) {
       setError(getApiError(err));
       if (isUnauthenticated(err)) onLogout();
@@ -392,15 +437,12 @@ export default function CheckoutDialog({
                           </span>{' '}
                           <strong>{calc.supplier.businessName}</strong>
                           <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
-                            Kho cách tiệm: <strong>{calc.deliveryCalc.distanceKm.toFixed(1)} km</strong>
+                            Địa chỉ kho: <strong>{calc.supplier.warehouseAddress || '120 Lý Thường Kiệt, Q. Tân Bình, TP. Hồ Chí Minh'}</strong>
                             {calc.deliveryCalc.isAlley ? ' · Trong hẻm' : ' · Mặt tiền đường lớn'}
-                            {calc.deliveryCalc.exceedsRadius && (
-                              <span style={{ color: '#dc2626', marginLeft: '6px' }}>(Vượt bán kính {calc.deliveryCalc.supplierRadiusKm} km)</span>
-                            )}
                           </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
-                          <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Phí ship theo khoảng cách</span>
+                          <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Phí shipper</span>
                           <strong style={{ fontSize: '14px', color: '#166534' }}>{money(calc.deliveryFee)}</strong>
                         </div>
                       </div>
@@ -476,7 +518,7 @@ export default function CheckoutDialog({
                       {/* Group Summary Footer */}
                       <div className="checkout-supplier-footer">
                         <span>
-                          Tiền hàng: <strong>{money(calc.goodsSubtotal)}</strong> + Giao xe: <strong>{money(calc.deliveryFee)}</strong>
+                          Tiền hàng: <strong>{money(calc.goodsSubtotal)}</strong> + Phí shipper: <strong>{money(calc.deliveryFee)}</strong>
                         </span>
                         <span style={{ color: '#0f172a' }}>
                           Tổng đơn #{groupIdx + 1}: <strong>{money(calc.orderTotal)}</strong> (Cọc 10%: <strong>{money(calc.depositAmount)}</strong>)
@@ -532,7 +574,7 @@ export default function CheckoutDialog({
                   disabled={busy}
                 >
                   <option value="DEFAULT">
-                    Địa chỉ tiệm mặc định ({storeName ? `${storeName} - ` : ''}{storeAddress || 'Chưa lưu địa chỉ tiệm trong hồ sơ'})
+                    {storeAddress || 'Địa chỉ tiệm chưa lưu trong hồ sơ'}
                   </option>
                   <option value="CUSTOM">Giao đến địa chỉ khác...</option>
                 </select>
@@ -588,15 +630,37 @@ export default function CheckoutDialog({
                     <p>
                       Số dư ví không đủ để cọc {money(totalDepositRequired)}. Bạn có thể nạp thử nghiệm ngay bên dưới.
                     </p>
-                    <button
-                      type="button"
-                      className="table-button primary-small"
-                      disabled={mockAdding}
-                      onClick={handleQuickAddMock}
-                      style={{ fontSize: '11px', padding: '4px 10px', marginTop: '2px' }}
-                    >
-                      {mockAdding ? 'Đang cộng…' : '+ Nạp 5 triệu thử nghiệm (Mock)'}
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
+                      <button
+                        type="button"
+                        className="table-button primary-small"
+                        disabled={mockAdding}
+                        onClick={handleQuickAddMock}
+                        style={{ fontSize: '11.5px', padding: '5px 12px' }}
+                      >
+                        {mockAdding ? 'Đang cộng…' : '+ Nạp 5 triệu thử nghiệm (Mock)'}
+                      </button>
+                      <button
+                        type="button"
+                        className="table-button"
+                        onClick={() => {
+                          onClose();
+                          navigate('/wallet');
+                        }}
+                        style={{
+                          fontSize: '11.5px',
+                          padding: '5px 12px',
+                          backgroundColor: '#ffffff',
+                          color: '#214e39',
+                          border: '1px solid #214e39',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontWeight: 600,
+                        }}
+                      >
+                        Nạp tiền vào ví
+                      </button>
+                    </div>
                   </div>
                 )}
 

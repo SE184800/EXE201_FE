@@ -6,6 +6,8 @@ import type { AuthUser } from '../types/auth';
 import type { StoreProfile } from '../pages/ProfilePage';
 import { normalizePhone } from '../validation/registration';
 import { POPULAR_BANKS } from '../constants/banks';
+import { validateQrCodeImage } from '../utils/qrValidator';
+import { resolveAddressCoordinates } from '../utils/geo';
 
 type StoreOnboardingProps = {
   user: AuthUser;
@@ -50,6 +52,7 @@ export default function StoreOnboarding({
   // 2-Step Onboarding State
   const [step, setStep] = useState<1 | 2>(1);
   const [bankName, setBankName] = useState('Vietcombank');
+  const [customBankName, setCustomBankName] = useState('');
   const [bankAccountNumber, setBankAccountNumber] = useState('');
   const [bankAccountHolder, setBankAccountHolder] = useState((user.name || '').toUpperCase());
   const [bankQrImageUrl, setBankQrImageUrl] = useState('');
@@ -87,11 +90,31 @@ export default function StoreOnboarding({
         setMapStatus('success');
         setFieldErrors((prev) => ({ ...prev, storeAddress: undefined }));
       } else {
-        setMapStatus('not_found');
-        setIsAddressVerified(false);
+        const fallback = resolveAddressCoordinates(trimmed);
+        if (fallback) {
+          setLatitude(fallback.lat);
+          setLongitude(fallback.lon);
+          setIsAddressVerified(true);
+          setMapVerifiedAddress(trimmed);
+          setMapStatus('success');
+          setFieldErrors((prev) => ({ ...prev, storeAddress: undefined }));
+        } else {
+          setMapStatus('not_found');
+          setIsAddressVerified(false);
+        }
       }
     } catch {
-      setMapStatus('error');
+      const fallback = resolveAddressCoordinates(trimmed);
+      if (fallback) {
+        setLatitude(fallback.lat);
+        setLongitude(fallback.lon);
+        setIsAddressVerified(true);
+        setMapVerifiedAddress(trimmed);
+        setMapStatus('success');
+        setFieldErrors((prev) => ({ ...prev, storeAddress: undefined }));
+      } else {
+        setMapStatus('error');
+      }
     } finally {
       setVerifyingMap(false);
     }
@@ -153,6 +176,15 @@ export default function StoreOnboarding({
 
     setUploadingQr(true);
     try {
+      const qrCheck = await validateQrCodeImage(file);
+      if (!qrCheck.isValid) {
+        setQrUploadError(
+          qrCheck.message ||
+            'Ảnh được đăng lên không phải là mã QR. Vui lòng chụp hoặc tải lại đúng ảnh mã QR thanh toán của ngân hàng.'
+        );
+        return;
+      }
+
       const formData = new FormData();
       formData.append('qrImage', file);
       const res = await api.post<{ success: boolean; imageUrl: string; message?: string }>(
@@ -220,6 +252,9 @@ export default function StoreOnboarding({
             }`
           : null;
 
+      const effectiveBankName =
+        bankName === 'Khác' ? customBankName.trim() || 'Khác' : bankName;
+
       const payload = {
         storeName: storeName.trim().replace(/\s+/g, ' '),
         storeAddress: storeAddress.trim().replace(/\s+/g, ' '),
@@ -231,7 +266,7 @@ export default function StoreOnboarding({
         latitude,
         longitude,
         isAddressVerified,
-        bankName: includeBanking && cleanAccount ? bankName : null,
+        bankName: includeBanking && cleanAccount ? effectiveBankName : null,
         bankAccountNumber: includeBanking && cleanAccount ? cleanAccount : null,
         bankAccountHolder:
           includeBanking && cleanAccount ? bankAccountHolder.trim().toUpperCase() : null,
@@ -530,7 +565,7 @@ export default function StoreOnboarding({
                       margin: 0,
                     }}
                   >
-                    Mã số thuế (Hộ kinh doanh / Doanh nghiệp)
+                    Mã số thuế (Hộ kinh doanh / Doanh nghiệp) <span style={{ color: '#dc2626' }}>*</span>
                   </label>
                   <a
                     href="https://masothue.com"
@@ -968,6 +1003,40 @@ export default function StoreOnboarding({
                       </option>
                     ))}
                   </select>
+
+                  {bankName === 'Khác' && (
+                    <div style={{ marginTop: '10px' }}>
+                      <label
+                        htmlFor="onboarding-customBankName"
+                        style={{
+                          display: 'block',
+                          fontSize: '13px',
+                          fontWeight: 600,
+                          color: '#1e293b',
+                          marginBottom: '4px',
+                        }}
+                      >
+                        Nhập tên ngân hàng của bạn
+                      </label>
+                      <input
+                        id="onboarding-customBankName"
+                        type="text"
+                        disabled={saving}
+                        value={customBankName}
+                        onChange={(e) => setCustomBankName(e.target.value)}
+                        placeholder="Ví dụ: Shinhan Bank, Woori Bank, PVcomBank..."
+                        maxLength={100}
+                        style={{
+                          width: '100%',
+                          padding: '10px 14px',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '8px',
+                          fontSize: '14px',
+                          boxSizing: 'border-box',
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Số tài khoản */}

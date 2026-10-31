@@ -8,6 +8,8 @@ import type { SupplierProfile } from '../services/supplier.api';
 import ContractSigningModal from '../components/ContractSigningModal';
 import ContractViewModal from '../components/ContractViewModal';
 import { POPULAR_BANKS } from '../constants/banks';
+import { validateQrCodeImage } from '../utils/qrValidator';
+import { resolveAddressCoordinates } from '../utils/geo';
 
 export type StoreProfile = {
   userId: number;
@@ -244,6 +246,7 @@ export default function ProfilePage({
   const [verifyingMap, setVerifyingMap] = useState(false);
   const [mapVerifiedAddress, setMapVerifiedAddress] = useState<string | null>(null);
   const [mapStatus, setMapStatus] = useState<'idle' | 'success' | 'not_found' | 'error'>('idle');
+  const [customBankName, setCustomBankName] = useState('');
 
   const [fieldErrors, setFieldErrors] = useState<ProfileFieldErrors>({});
   const [loading, setLoading] = useState(true);
@@ -266,6 +269,12 @@ export default function ProfilePage({
       if (parts.length > 1) alleyNoteStr = parts.slice(1).join(' · ');
     }
 
+    const rawBank = sp?.bankName || supp?.bankName || 'Vietcombank';
+    const isOtherBank = rawBank && !POPULAR_BANKS.filter((b) => b !== 'Khác').includes(rawBank);
+    if (isOtherBank) {
+      setCustomBankName(rawBank);
+    }
+
     setForm({
       name: value.name,
       email: value.email || '',
@@ -286,7 +295,7 @@ export default function ProfilePage({
       businessName: supp?.businessName || '',
       warehouseAddress: supp?.warehouseAddress || '',
       deliveryRadiusKm: supp?.deliveryRadiusKm || 10,
-      bankName: sp?.bankName || supp?.bankName || 'Vietcombank',
+      bankName: isOtherBank ? 'Khác' : rawBank,
       bankAccountNumber: sp?.bankAccountNumber || supp?.bankAccountNumber || '',
       bankAccountHolder:
         sp?.bankAccountHolder || supp?.bankAccountHolder || (value.name || '').toUpperCase(),
@@ -376,11 +385,37 @@ export default function ProfilePage({
         setMapStatus('success');
         setFieldErrors((prev) => ({ ...prev, [fieldKey]: undefined }));
       } else {
-        setMapStatus('not_found');
-        setForm((prev) => ({ ...prev, isAddressVerified: false }));
+        const fallback = resolveAddressCoordinates(trimmed);
+        if (fallback) {
+          setForm((prev) => ({
+            ...prev,
+            latitude: fallback.lat,
+            longitude: fallback.lon,
+            isAddressVerified: true,
+          }));
+          setMapVerifiedAddress(trimmed);
+          setMapStatus('success');
+          setFieldErrors((prev) => ({ ...prev, [fieldKey]: undefined }));
+        } else {
+          setMapStatus('not_found');
+          setForm((prev) => ({ ...prev, isAddressVerified: false }));
+        }
       }
     } catch {
-      setMapStatus('error');
+      const fallback = resolveAddressCoordinates(trimmed);
+      if (fallback) {
+        setForm((prev) => ({
+          ...prev,
+          latitude: fallback.lat,
+          longitude: fallback.lon,
+          isAddressVerified: true,
+        }));
+        setMapVerifiedAddress(trimmed);
+        setMapStatus('success');
+        setFieldErrors((prev) => ({ ...prev, [fieldKey]: undefined }));
+      } else {
+        setMapStatus('error');
+      }
     } finally {
       setVerifyingMap(false);
     }
@@ -403,6 +438,15 @@ export default function ProfilePage({
 
     setUploadingQr(true);
     try {
+      const qrCheck = await validateQrCodeImage(file);
+      if (!qrCheck.isValid) {
+        setQrUploadError(
+          qrCheck.message ||
+            'Ảnh được đăng lên không phải là mã QR. Vui lòng chụp hoặc tải lại đúng ảnh mã QR thanh toán của ngân hàng.'
+        );
+        return;
+      }
+
       const formData = new FormData();
       formData.append('qrImage', file);
       const res = await api.post<{ success: boolean; imageUrl: string; message?: string }>(
@@ -445,12 +489,15 @@ export default function ProfilePage({
             }`
           : null;
 
+      const effectiveBank =
+        form.bankName === 'Khác' ? customBankName.trim() || 'Khác' : form.bankName || null;
+
       const payload = {
         name: form.name.trim().replace(/\s+/g, ' '),
         email: form.email.trim().toLowerCase() || null,
         phone: normalizePhone(form.phone) || null,
         dateOfBirth: form.dateOfBirth.trim() || null,
-        bankName: form.bankName || null,
+        bankName: effectiveBank,
         bankAccountNumber: form.bankAccountNumber.trim().replace(/[\s.-]/g, '') || null,
         bankAccountHolder: form.bankAccountHolder.trim().toUpperCase() || null,
         bankQrImageUrl: form.bankQrImageUrl || null,
@@ -1392,6 +1439,22 @@ export default function ProfilePage({
                     </option>
                   ))}
                 </select>
+                {form.bankName === 'Khác' && (
+                  <div style={{ marginTop: '8px' }}>
+                    <small style={{ fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                      Nhập tên ngân hàng của bạn:
+                    </small>
+                    <input
+                      type="text"
+                      disabled={busy}
+                      placeholder="Ví dụ: Shinhan Bank, Woori Bank, PVcomBank..."
+                      value={customBankName}
+                      onChange={(e) => setCustomBankName(e.target.value)}
+                      maxLength={100}
+                      style={{ width: '100%', boxSizing: 'border-box' }}
+                    />
+                  </div>
+                )}
               </label>
 
               <label>

@@ -191,11 +191,6 @@ export default function SupplierHeader({
 
           {accountOpen && (
             <div id="supplier-account-options" className="account-options">
-              <div className="account-options-user-info">
-                <span className="account-options-user-name">{displayName}</span>
-                <span className="account-options-user-role">Chủ vựa sỉ</span>
-              </div>
-
               <Link
                 to="/supplier/profile"
                 onClick={() => setAccountOpen(false)}

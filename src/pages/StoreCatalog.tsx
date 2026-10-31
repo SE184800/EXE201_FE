@@ -11,8 +11,21 @@ import './catalog.css';
 export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
   const [data, setData] = useState<CatalogPage>({ products: [], page: 1, hasMore: false });
   const [suppliers, setSuppliers] = useState<SupplierProfile[]>([]);
-  const [selectedProducts, setSelectedProducts] = useState<CatalogProduct[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<CatalogProduct[]>(() => {
+    try {
+      const saved = localStorage.getItem('supplymind_catalog_selected_products');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [checkoutProducts, setCheckoutProducts] = useState<CatalogProduct[] | null>(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('supplymind_catalog_selected_products', JSON.stringify(selectedProducts));
+    } catch {}
+  }, [selectedProducts]);
 
   const uniqueSupplierCount = useMemo(() => {
     return new Set(selectedProducts.map((p) => p.supplier.id)).size;
@@ -392,7 +405,12 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
             <button
               type="button"
               className="catalog-selection-clear-btn"
-              onClick={() => setSelectedProducts([])}
+              onClick={() => {
+                setSelectedProducts([]);
+                try {
+                  localStorage.removeItem('supplymind_catalog_selected_products');
+                } catch {}
+              }}
             >
               Bỏ chọn tất cả
             </button>
@@ -409,9 +427,13 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
       {checkoutProducts && checkoutProducts.length > 0 && (
         <CheckoutDialog
           products={checkoutProducts}
-          onClose={() => {
+          onClose={() => setCheckoutProducts(null)}
+          onOrderSuccess={() => {
             setCheckoutProducts(null);
             setSelectedProducts([]);
+            try {
+              localStorage.removeItem('supplymind_catalog_selected_products');
+            } catch {}
           }}
           onLogout={onLogout}
         />

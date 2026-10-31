@@ -1179,6 +1179,7 @@
   max-width: 760px;
   max-height: 90vh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid #dce5da;
   border-radius: 18px;
   padding: 24px 28px;
@@ -1309,6 +1310,12 @@
   color: #183e2c;
   padding: 0 !important;
   background: #ffffff !important;
+  -moz-appearance: textfield !important;
+}
+.checkout-qty-input::-webkit-outer-spin-button,
+.checkout-qty-input::-webkit-inner-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
 }
 
 .checkout-item-price {
