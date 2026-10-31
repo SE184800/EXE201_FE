@@ -48,6 +48,12 @@ const TRANSACTION_LABELS: Record<string, string> = {
   SANDBOX_DEPOSIT: 'Nạp tiền thử nghiệm',
   SANDBOX_WITHDRAWAL: 'Rút tiền thử nghiệm',
   QR_DEPOSIT: 'Nạp tiền qua QR',
+  ESCROW_LOCK: 'Tạm khóa cọc đơn hàng',
+  ESCROW_RELEASE: 'Giải phóng cọc đơn hàng',
+  ESCROW_RECEIVED: 'Nhận cọc đơn giao xong',
+  ESCROW_REFUND: 'Hoàn trả cọc đơn hàng',
+  PENALTY_CONFISCATION: 'Khấu trừ cọc vi phạm',
+  COMPENSATION_RECEIVED: 'Nhận bồi thường cọc',
 };
 
 import { POPULAR_BANKS } from '../../constants/banks';

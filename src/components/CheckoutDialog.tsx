@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import type { CatalogProduct } from '../services/catalog.api';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import { getWallet, addMockFunds, type WalletInfo } from '../services/wallet.api';
+import { calculateDeliveryFee, type DeliveryFeeResult } from '../utils/geo';
 
 const roundToThousand = (val: number) => Math.round(val / 1000) * 1000;
 const money = (n: number) => Math.round(n).toLocaleString('vi-VN') + ' ₫';
@@ -63,6 +64,8 @@ export default function CheckoutDialog({
   // Address selection state
   const [storeAddress, setStoreAddress] = useState('');
   const [storeName, setStoreName] = useState('');
+  const [storeLocationType, setStoreLocationType] = useState<'STREET_FRONT' | 'ALLEY'>('STREET_FRONT');
+  const [storeCoords, setStoreCoords] = useState<{ lat?: number | null; lon?: number | null } | null>(null);
   const [addressOption, setAddressOption] = useState<'DEFAULT' | 'CUSTOM'>('DEFAULT');
   const [customAddress, setCustomAddress] = useState('');
 
@@ -85,10 +88,15 @@ export default function CheckoutDialog({
       .get<{ profile: any }>('/profile')
       .then(({ data }) => {
         const p = data.profile;
-        const sAddr = p?.storeProfile?.storeAddress || '';
-        const sName = p?.storeProfile?.storeName || '';
+        const sp = p?.storeProfile;
+        const sAddr = sp?.storeAddress || '';
+        const sName = sp?.storeName || '';
         setStoreAddress(sAddr);
         setStoreName(sName);
+        if (sp?.locationType) setStoreLocationType(sp.locationType);
+        if (sp?.latitude && sp?.longitude) {
+          setStoreCoords({ lat: sp.latitude, lon: sp.longitude });
+        }
         setForm((prev) => ({
           ...prev,
           recipientName: prev.recipientName || p?.name || '',
@@ -151,9 +159,17 @@ export default function CheckoutDialog({
           return sum + item.wholesalePrice * qty;
         }, 0)
       );
-      const rawDeliveryFee = Number(group.supplier.deliveryFee);
-      // Mặc định phí giao hàng tiêu chuẩn 25.000 ₫ nếu vựa chưa cấu hình hoặc = 0đ
-      const deliveryFee = roundToThousand(rawDeliveryFee > 0 ? rawDeliveryFee : 25000);
+      // Tự động tính phí ship theo khoảng cách giữa tiệm tạp hóa và kho vựa
+      const deliveryCalc: DeliveryFeeResult = calculateDeliveryFee({
+        storeCoords,
+        storeAddress: form.deliveryAddress || storeAddress,
+        locationType: storeLocationType,
+        supplierWarehouseAddress: group.supplier.warehouseAddress,
+        supplierDeliveryFee: Number(group.supplier.deliveryFee) || 0,
+        supplierDeliveryRadiusKm: Number(group.supplier.deliveryRadiusKm) || 35,
+      });
+
+      const deliveryFee = roundToThousand(deliveryCalc.deliveryFee);
       const orderTotal = roundToThousand(goodsSubtotal + deliveryFee);
       const depositAmount = roundToThousand((orderTotal * STANDARD_DEPOSIT_RATE) / 100);
       const remainingCOD = orderTotal - depositAmount;
@@ -163,12 +179,13 @@ export default function CheckoutDialog({
         items: group.items,
         goodsSubtotal,
         deliveryFee,
+        deliveryCalc,
         orderTotal,
         depositAmount,
         remainingCOD,
       };
     });
-  }, [supplierGroups, quantities]);
+  }, [supplierGroups, quantities, storeCoords, form.deliveryAddress, storeAddress, storeLocationType]);
 
   const totalAllOrders = orderCalculations.reduce((sum, o) => sum + o.orderTotal, 0);
   const totalDepositRequired = orderCalculations.reduce((sum, o) => sum + o.depositAmount, 0);
@@ -368,16 +385,24 @@ export default function CheckoutDialog({
                   {orderCalculations.map((calc, groupIdx) => (
                     <div key={calc.supplier.id} className="checkout-supplier-card">
                       {/* Supplier Group Header */}
-                      <div className="checkout-supplier-header">
+                      <div className="checkout-supplier-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                         <div>
                           <span style={{ color: '#5b7060', fontSize: '11px', fontWeight: 700, textTransform: 'uppercase' }}>
                             ĐƠN #{groupIdx + 1} TỪ CHỦ VỰA:
                           </span>{' '}
                           <strong>{calc.supplier.businessName}</strong>
+                          <div style={{ fontSize: '11.5px', color: '#64748b', marginTop: '2px' }}>
+                            Kho cách tiệm: <strong>{calc.deliveryCalc.distanceKm.toFixed(1)} km</strong>
+                            {calc.deliveryCalc.isAlley ? ' · Trong hẻm' : ' · Mặt tiền đường lớn'}
+                            {calc.deliveryCalc.exceedsRadius && (
+                              <span style={{ color: '#dc2626', marginLeft: '6px' }}>(Vượt bán kính {calc.deliveryCalc.supplierRadiusKm} km)</span>
+                            )}
+                          </div>
                         </div>
-                        <span>
-                          Phí giao xe: <strong>{money(calc.deliveryFee)}</strong>
-                        </span>
+                        <div style={{ textAlign: 'right' }}>
+                          <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Phí ship theo khoảng cách</span>
+                          <strong style={{ fontSize: '14px', color: '#166534' }}>{money(calc.deliveryFee)}</strong>
+                        </div>
                       </div>
 
                       {/* Items in this group */}
