@@ -176,6 +176,74 @@ type Props = {
   onReportIncident?: (order: SupplierOrder) => void;
 };
 
+
+function parseItemPackaging(packagingStr?: string) {
+  if (!packagingStr) return { multiplier: 1, unit: 'đơn vị' };
+  const m = packagingStr.match(/(?:thùng|két|hộp|lốc|khay|kiện)\s+(\d+)\s*([\p{L}\w]+)/iu);
+  if (m) {
+    return { multiplier: parseInt(m[1], 10), unit: m[2].trim() };
+  }
+  return { multiplier: 1, unit: 'đơn vị' };
+}
+
+function getIntactItemArrived(order: SupplierOrder, item: SupplierOrder['items'][number]) {
+  const packInfo = parseItemPackaging(item.packaging);
+  const totalLoose = (packInfo.multiplier || 1) * item.quantity;
+  const transitDamaged = order.driverInfo?.incidentReport?.damagedItems || [];
+
+  let transitDamagedLoose = 0;
+  for (const d of transitDamaged) {
+    if (d.productId === item.productId || d.productName.startsWith(item.productName)) {
+      const match = d.productName.match(/Hỏng lẻ\s+(\d+)\/(\d+)/i) || (d.packaging && d.packaging.match(/(\d+)\s+(chai|lon|gói|hộp|lốc)/i));
+      if (match) {
+        transitDamagedLoose += parseInt(match[1], 10);
+      } else {
+        transitDamagedLoose += (d.quantity || 1) * (packInfo.multiplier || 1);
+      }
+    }
+  }
+
+  const remainingLoose = Math.max(0, totalLoose - transitDamagedLoose);
+  const intactCartons = Math.floor(remainingLoose / (packInfo.multiplier || 1));
+  return {
+    packInfo,
+    totalLoose,
+    transitDamagedLoose,
+    remainingLoose,
+    intactCartons,
+  };
+}
+
+function computeOrderLossAmount(order: SupplierOrder): number {
+  const inc = order.driverInfo?.incidentReport;
+  if (!inc || !inc.damagedItems || inc.damagedItems.length === 0) return 0;
+  if (typeof inc.lossAmount === 'number' && inc.lossAmount > 0) return inc.lossAmount;
+
+  let totalLoss = 0;
+  for (const damaged of inc.damagedItems) {
+    const orderItem = order.items.find(
+      (it) => it.productId === damaged.productId || it.productName === damaged.productName || damaged.productName.startsWith(it.productName)
+    );
+    if (!orderItem) continue;
+
+    const looseMatch = damaged.productName.match(/Hỏng lẻ\s+(\d+)\/(\d+)/i) || (damaged.packaging && damaged.packaging.match(/(\d+)\s+(chai|lon|gói|hộp|lốc)/i));
+    if (looseMatch) {
+      const looseQty = parseInt(looseMatch[1], 10);
+      const mult = parseInt(looseMatch[2], 10) || 12;
+      const totalUnitsInOrder = mult * orderItem.quantity;
+      if (totalUnitsInOrder > 0) {
+        totalLoss += (looseQty / totalUnitsInOrder) * orderItem.lineTotal;
+      }
+    } else {
+      totalLoss += (damaged.quantity / orderItem.quantity) * orderItem.lineTotal;
+    }
+  }
+  return Math.round(totalLoss);
+}
+
+const RESCHEDULE_HOURS = Array.from({ length: 18 }, (_, i) => String(i + 6).padStart(2, '0')); // 06 to 23
+const RESCHEDULE_MINUTES = ['00', '15', '30', '45'];
+
 export default function OrderList({
   kind,
   onLogout,
@@ -211,6 +279,7 @@ export default function OrderList({
   const [complaintResponse, setComplaintResponse] = useState('');
   const [complaintActionBusy, setComplaintActionBusy] = useState(false);
   const [complaintSelectedItems, setComplaintSelectedItems] = useState<Record<number, number>>({});
+  const [complaintLooseItems, setComplaintLooseItems] = useState<Record<number, { isLoose: boolean; looseQty: number | string }>>({});
   const [complaintResolution, setComplaintResolution] = useState<string>('REFUND');
   const [complaintImages, setComplaintImages] = useState<string[]>([]);
   const [supplierPlan, setSupplierPlan] = useState<string>('AGREE_REFUND');
@@ -555,9 +624,22 @@ export default function OrderList({
       .map(([idStr, qty]) => {
         const it = complaintOrder.items.find((item) => item.id === Number(idStr));
         if (!it) return '';
-        const lineCost = qty * it.unitPrice;
+        const intact = getIntactItemArrived(complaintOrder, it);
+        const loose = complaintLooseItems[it.id];
+        let lineCost = 0;
+        let summaryLabel = '';
+        if (loose?.isLoose && intact.packInfo.multiplier > 1) {
+          const eff = typeof loose.looseQty === 'number' && loose.looseQty > 0
+            ? Math.min(loose.looseQty, intact.remainingLoose)
+            : (typeof loose.looseQty === 'string' && parseInt(loose.looseQty, 10) > 0 ? Math.min(parseInt(loose.looseQty, 10), intact.remainingLoose) : 1);
+          lineCost = (eff / intact.totalLoose) * it.lineTotal;
+          summaryLabel = `${it.productName} (Hỏng lẻ ${eff}/${intact.packInfo.multiplier} ${intact.packInfo.unit}: ${money(Math.round(lineCost))})`;
+        } else {
+          lineCost = qty * it.unitPrice;
+          summaryLabel = `${it.productName} (x${qty} ${it.packaging || 'phần'}: ${money(lineCost)})`;
+        }
         totalDamage += lineCost;
-        return `${it.productName} (x${qty} ${it.packaging || 'phần'}: ${money(lineCost)})`;
+        return summaryLabel;
       })
       .filter(Boolean);
 
@@ -1224,7 +1306,7 @@ export default function OrderList({
                             setRescheduleMessage('');
                           }}
                         >
-                          Hẹn dời giờ nhận hàng
+                          Hẹn giờ nhận hàng
                         </button>
                       )}
                     </div>
@@ -1699,7 +1781,11 @@ export default function OrderList({
               )}
 
               {/* Báo cáo sự cố khi đang giao của tài xế */}
-              {order.driverInfo?.incidentReport && (
+              {order.driverInfo?.incidentReport && (() => {
+                const inc = order.driverInfo.incidentReport;
+                const loss = computeOrderLossAmount(order);
+                const isDeductCod = inc.action === 'DEDUCT_COD';
+                return (
                 <div
                   style={{
                     margin: '10px 0',
@@ -1721,7 +1807,7 @@ export default function OrderList({
                     }}
                   >
                     <strong style={{ color: '#991b1b', fontSize: '13px' }}>
-                      Sự cố khi đang giao: {order.driverInfo.incidentReport.damageTypeLabel || order.driverInfo.incidentReport.damageType}
+                      Sự cố khi đang giao: {inc.damageTypeLabel || inc.damageType}
                     </strong>
                     <span
                       style={{
@@ -1738,9 +1824,39 @@ export default function OrderList({
                   </div>
                   <div style={{ color: '#7f1d1d' }}>
                     <strong>Mặt hàng bị hỏng:</strong>{' '}
-                    {order.driverInfo.incidentReport.damagedItems
+                    {inc.damagedItems
                       ?.map((d) => `${d.productName} (x${d.quantity})`)
                       .join(', ')}
+                  </div>
+
+                  {/* Hiển thị phương án chủ vựa đã chọn */}
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #fca5a5',
+                      color: '#991b1b',
+                    }}
+                  >
+                    <strong>Phương án xử lý của chủ vựa: </strong>
+                    {isDeductCod ? (
+                      <span>
+                        <strong>Trừ thẳng tiền hàng hỏng vào COD khi nhận hàng</strong>
+                        <span style={{ display: 'block', color: '#15803d', fontWeight: 600, marginTop: '2px' }}>
+                          Đã giảm trừ {money(loss)} vào tiền thu COD. Tiệm chỉ thanh toán phần hàng nguyên vẹn.
+                        </span>
+                      </span>
+                    ) : inc.action === 'RETURN_ALL' ? (
+                      <span>
+                        <strong>Thu hồi toàn bộ hàng về kho vựa</strong> & Hoàn 100% tiền cọc về ví tiệm.
+                      </span>
+                    ) : (
+                      <span>
+                        <strong>Tiếp tục giao hàng lành & Tạo đơn bù 0đ</strong> cho chuyến xe sau.
+                      </span>
+                    )}
                   </div>
                   {order.driverInfo.incidentReport.notes && (
                     <div style={{ marginTop: '4px', fontStyle: 'italic', color: '#991b1b' }}>
@@ -1784,11 +1900,12 @@ export default function OrderList({
                         border: '1px solid #bbf7d0',
                       }}
                     >
-                      Chủ vựa đã tạo đơn giao bổ sung 0đ #{order.driverInfo.incidentReport.supplementaryOrderId} để bù hàng hỏng chuyến sau cho tiệm.
+                      Chủ vựa đã tạo đơn giao bổ sung 0đ #{inc.supplementaryOrderId} để bù hàng hỏng chuyến sau cho tiệm.
                     </div>
                   )}
                 </div>
-              )}
+                );
+              })()}
 
               {/* Tiến trình thanh toán & Xác nhận 2 bước */}
               {order.driverInfo?.paymentInfo?.status === 'PENDING_SUPPLIER_CONFIRM' && (
@@ -1912,9 +2029,32 @@ export default function OrderList({
                 </div>
               )}
 
-              <p className="catalog-hint">
-                Tiền hàng {money(order.subtotal)} + giao hàng {money(order.deliveryFee)}
-              </p>
+              {(() => {
+                const loss = order.driverInfo?.incidentReport?.action === 'DEDUCT_COD' ? computeOrderLossAmount(order) : 0;
+                const adjustedSubtotal = Math.max(0, order.subtotal - loss);
+                const depositPaid = order.depositStatus === 'PAID' ? order.depositAmount : 0;
+
+                return loss > 0 && order.driverInfo?.incidentReport?.action === 'DEDUCT_COD' ? (
+                  <div style={{ margin: '8px 0', fontSize: '12.5px', color: '#475569' }}>
+                    <div>
+                      Tiền hàng gốc: <strong>{money(order.subtotal)}</strong>
+                      <span style={{ color: '#dc2626', fontWeight: 600 }}> - Trừ hàng hỏng ({money(loss)})</span>
+                      {' = '}
+                      <strong style={{ color: '#166534' }}>{money(adjustedSubtotal)}</strong>
+                      {order.deliveryFee > 0 && ` + Giao hàng ${money(order.deliveryFee)}`}
+                    </div>
+                    {depositPaid > 0 && (
+                      <div style={{ color: '#15803d', marginTop: '2px' }}>
+                        Đã đặt cọc 10%: <strong>- {money(depositPaid)}</strong> (Giữ nguyên ký quỹ an toàn)
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="catalog-hint">
+                    Tiền hàng {money(order.subtotal)} + giao hàng {money(order.deliveryFee)}
+                  </p>
+                );
+              })()}
 
               <div className="order-card-bottom">
                 <strong>
@@ -1925,9 +2065,11 @@ export default function OrderList({
                       : 'Tổng đơn'}
                   :{' '}
                   {money(
-                    order.depositStatus === 'PAID'
-                      ? order.total - order.depositAmount
-                      : order.total,
+                    order.driverInfo?.incidentReport?.action === 'DEDUCT_COD'
+                      ? Math.max(0, Math.max(0, order.subtotal - computeOrderLossAmount(order)) + order.deliveryFee - (order.depositStatus === 'PAID' ? order.depositAmount : 0))
+                      : order.depositStatus === 'PAID'
+                        ? order.total - order.depositAmount
+                        : order.total,
                   )}
                 </strong>
                 {kind === 'supplier' && (
@@ -2197,25 +2339,43 @@ export default function OrderList({
 
                         <div className="complaint-checklist-body">
                           {complaintOrder.items.map((item) => {
+                            const intact = getIntactItemArrived(complaintOrder, item);
+                            const isAllDamagedInTransit = intact.remainingLoose <= 0;
                             const isChecked = (complaintSelectedItems[item.id] || 0) > 0;
-                            const currentQty = complaintSelectedItems[item.id] || 0;
-                            const itemSubtotal = currentQty * item.unitPrice;
+                            const looseState = complaintLooseItems[item.id] || { isLoose: false, looseQty: 1 };
+                            const hasLooseUnits = intact.packInfo.multiplier > 1;
+
+                            let itemDamageValue = 0;
+                            if (isChecked) {
+                              if (looseState.isLoose && hasLooseUnits) {
+                                const effLoose = typeof looseState.looseQty === 'number' && looseState.looseQty > 0
+                                  ? Math.min(looseState.looseQty, intact.remainingLoose)
+                                  : (typeof looseState.looseQty === 'string' && parseInt(looseState.looseQty, 10) > 0 ? Math.min(parseInt(looseState.looseQty, 10), intact.remainingLoose) : 1);
+                                itemDamageValue = (effLoose / intact.totalLoose) * item.lineTotal;
+                              } else {
+                                const currentQty = complaintSelectedItems[item.id] || 1;
+                                itemDamageValue = currentQty * item.unitPrice;
+                              }
+                            }
 
                             return (
                               <div
                                 key={item.id}
                                 className={`complaint-checklist-row ${isChecked ? 'checked' : ''}`}
+                                style={isAllDamagedInTransit ? { opacity: 0.65, backgroundColor: '#f1f5f9' } : {}}
                               >
                                 <div className="complaint-row-left">
                                   <input
                                     type="checkbox"
                                     className="complaint-item-check"
+                                    disabled={isAllDamagedInTransit}
                                     checked={isChecked}
                                     onChange={(e) => {
+                                      if (isAllDamagedInTransit) return;
                                       setComplaintSelectedItems((prev) => {
                                         const next = { ...prev };
                                         if (e.target.checked) {
-                                          next[item.id] = item.quantity;
+                                          next[item.id] = Math.max(1, intact.intactCartons || 1);
                                         } else {
                                           delete next[item.id];
                                         }
@@ -2230,44 +2390,117 @@ export default function OrderList({
                                     <span className="complaint-item-meta">
                                       Đơn giá: {money(item.unitPrice)} / {item.packaging || 'phần'} (Tổng mua: {item.quantity})
                                     </span>
+                                    {isAllDamagedInTransit ? (
+                                      <div style={{ fontSize: '11.5px', color: '#dc2626', fontWeight: 600, marginTop: '2px' }}>
+                                        Toàn bộ {intact.totalLoose} {intact.packInfo.unit} đã được tài xế báo hỏng khi đang giao (đã trừ tiền / giao bù 0đ).
+                                      </div>
+                                    ) : intact.transitDamagedLoose > 0 ? (
+                                      <div style={{ fontSize: '11.5px', color: '#b45309', fontWeight: 600, marginTop: '2px' }}>
+                                        Đã báo hỏng khi giao: {intact.transitDamagedLoose} {intact.packInfo.unit} · Số lượng nguyên vẹn khi nhận: {intact.remainingLoose}/{intact.totalLoose} {intact.packInfo.unit}
+                                      </div>
+                                    ) : (
+                                      <div style={{ fontSize: '11.5px', color: '#166534', fontWeight: 500, marginTop: '2px' }}>
+                                        Nguyên vẹn khi nhận: {intact.totalLoose} {intact.packInfo.unit} ({item.quantity} {item.packaging || 'thùng'})
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
 
                                 <div className="complaint-row-right">
                                   {isChecked ? (
-                                    <>
+                                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                                      {hasLooseUnits && (
+                                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#166534', cursor: 'pointer' }}>
+                                          <input
+                                            type="checkbox"
+                                            checked={looseState.isLoose}
+                                            onChange={() => {
+                                              setComplaintLooseItems((prev) => ({
+                                                ...prev,
+                                                [item.id]: { isLoose: !prev[item.id]?.isLoose, looseQty: prev[item.id]?.looseQty || 1 },
+                                              }));
+                                            }}
+                                          />
+                                          Chỉ hỏng lẻ {intact.packInfo.unit}
+                                        </label>
+                                      )}
+
                                       <div className="complaint-qty-control">
                                         <span style={{ fontSize: '11.5px', color: '#55725e' }}>
                                           SL lỗi:
                                         </span>
-                                        <input
-                                          type="number"
-                                          className="complaint-qty-input"
-                                          min={1}
-                                          max={item.quantity}
-                                          value={currentQty}
-                                          onChange={(e) => {
-                                            const val = Math.max(
-                                              1,
-                                              Math.min(item.quantity, Number(e.target.value) || 1),
-                                            );
-                                            setComplaintSelectedItems((prev) => ({
-                                              ...prev,
-                                              [item.id]: val,
-                                            }));
-                                          }}
-                                        />
-                                        <span style={{ fontSize: '11px', color: '#728477' }}>
-                                          /{item.quantity}
-                                        </span>
+                                        {looseState.isLoose && hasLooseUnits ? (
+                                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                            <input
+                                              type="text"
+                                              inputMode="numeric"
+                                              pattern="[0-9]*"
+                                              className="complaint-qty-input"
+                                              value={looseState.looseQty === '' ? '' : looseState.looseQty}
+                                              onChange={(e) => {
+                                                let digits = e.target.value.replace(/\D/g, '');
+                                                if (digits.startsWith('0')) digits = digits.replace(/^0+/, '');
+                                                let qty: number | string = digits;
+                                                if (digits !== '') {
+                                                  const num = parseInt(digits, 10);
+                                                  if (num > intact.remainingLoose) qty = intact.remainingLoose;
+                                                  else qty = num;
+                                                }
+                                                setComplaintLooseItems((prev) => ({
+                                                  ...prev,
+                                                  [item.id]: { isLoose: true, looseQty: qty },
+                                                }));
+                                              }}
+                                              onBlur={() => {
+                                                if (looseState.looseQty === '' || looseState.looseQty === 0) {
+                                                  setComplaintLooseItems((prev) => ({
+                                                    ...prev,
+                                                    [item.id]: { isLoose: true, looseQty: 1 },
+                                                  }));
+                                                }
+                                              }}
+                                              style={{ width: '54px', textAlign: 'center' }}
+                                            />
+                                            <span style={{ fontSize: '11px', color: '#728477' }}>
+                                              /{intact.remainingLoose} {intact.packInfo.unit}
+                                            </span>
+                                          </div>
+                                        ) : (
+                                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                            <input
+                                              type="text"
+                                              inputMode="numeric"
+                                              pattern="[0-9]*"
+                                              className="complaint-qty-input"
+                                              value={complaintSelectedItems[item.id] || ''}
+                                              onChange={(e) => {
+                                                let digits = e.target.value.replace(/\D/g, '');
+                                                if (digits.startsWith('0')) digits = digits.replace(/^0+/, '');
+                                                let val = 1;
+                                                if (digits !== '') {
+                                                  val = Math.max(1, Math.min(intact.intactCartons || item.quantity, parseInt(digits, 10)));
+                                                }
+                                                setComplaintSelectedItems((prev) => ({
+                                                  ...prev,
+                                                  [item.id]: val,
+                                                }));
+                                              }}
+                                              style={{ width: '54px', textAlign: 'center' }}
+                                            />
+                                            <span style={{ fontSize: '11px', color: '#728477' }}>
+                                              /{intact.intactCartons || item.quantity}
+                                            </span>
+                                          </div>
+                                        )}
                                       </div>
+
                                       <span className="complaint-row-subtotal">
-                                        {money(itemSubtotal)}
+                                        {money(Math.round(itemDamageValue))}
                                       </span>
-                                    </>
+                                    </div>
                                   ) : (
                                     <span style={{ fontSize: '12px', color: '#94a3b8' }}>
-                                      Chưa chọn
+                                      {isAllDamagedInTransit ? 'Đã xử lý' : 'Chưa chọn'}
                                     </span>
                                   )}
                                 </div>
@@ -2280,15 +2513,21 @@ export default function OrderList({
                           <span>Tổng thiệt hại ước tính:</span>
                           <span className="complaint-total-badge">
                             {money(
-                              Object.entries(complaintSelectedItems).reduce(
-                                (sum, [id, qty]) => {
-                                  const it = complaintOrder.items.find(
-                                    (i) => i.id === Number(id),
-                                  );
-                                  return sum + (it ? it.unitPrice * qty : 0);
-                                },
-                                0,
-                              ),
+                              Math.round(
+                                Object.entries(complaintSelectedItems).reduce((sum, [idStr, qty]) => {
+                                  const item = complaintOrder.items.find((i) => i.id === Number(idStr));
+                                  if (!item) return sum;
+                                  const intact = getIntactItemArrived(complaintOrder, item);
+                                  const loose = complaintLooseItems[item.id];
+                                  if (loose?.isLoose && intact.packInfo.multiplier > 1) {
+                                    const eff = typeof loose.looseQty === 'number' && loose.looseQty > 0
+                                      ? Math.min(loose.looseQty, intact.remainingLoose)
+                                      : (typeof loose.looseQty === 'string' && parseInt(loose.looseQty, 10) > 0 ? Math.min(parseInt(loose.looseQty, 10), intact.remainingLoose) : 1);
+                                    return sum + (eff / intact.totalLoose) * item.lineTotal;
+                                  }
+                                  return sum + qty * item.unitPrice;
+                                }, 0)
+                              )
                             )}
                           </span>
                         </div>
@@ -2676,97 +2915,66 @@ export default function OrderList({
             style={{ maxWidth: '520px' }}
             onSubmit={handleReschedule}
           >
-            <h2>Hẹn dời giờ nhận hàng (Đơn #{rescheduleOrderTarget.id})</h2>
+            <h2>Hẹn giờ nhận hàng (Đơn #{rescheduleOrderTarget.id})</h2>
             <p className="catalog-hint" style={{ marginTop: 0 }}>
               Thông báo trước cho tài xế và chủ vựa (
-              <strong>{rescheduleOrderTarget.supplier?.businessName || 'Chủ vựa'}</strong>) nếu bạn có việc bận đột xuất để dời lịch giao, hoàn toàn không tính là bùng đơn.
+              <strong>{rescheduleOrderTarget.supplier?.businessName || 'Chủ vựa'}</strong>) thời gian thuận tiện nhất để nhận hàng tại tiệm.
             </p>
 
-            <div style={{ margin: '14px 0', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontWeight: 650, display: 'block', marginBottom: '10px', fontSize: '13px', color: '#1e293b' }}>
-                Chọn thời gian mong muốn dời lại (chọn ngày và giờ cụ thể, không ở quá khứ):
-              </span>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <label style={{ display: 'block' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                    Chọn ngày giao mới:
-                  </span>
-                  <input
-                    type="date"
-                    required
-                    min={new Date().toISOString().slice(0, 10)}
-                    value={rescheduleDate}
-                    onChange={(e) => setRescheduleDate(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
-                  />
-                </label>
-                <label style={{ display: 'block' }}>
-                  <span style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
-                    Chọn giờ giao đến cụ thể:
-                  </span>
-                  <input
-                    type="time"
-                    required
-                    value={rescheduleTime}
-                    onChange={(e) => setRescheduleTime(e.target.value)}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
-                  />
-                </label>
-              </div>
+            {(() => {
+              const [rescheduleHour = '08', rescheduleMinute = '00'] = rescheduleTime ? rescheduleTime.split(':') : ['08', '00'];
+              const rescheduleMinuteOptions = RESCHEDULE_MINUTES.includes(rescheduleMinute)
+                ? RESCHEDULE_MINUTES
+                : [...RESCHEDULE_MINUTES, rescheduleMinute].sort();
 
-              {/* Quick shortcut buttons */}
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '10px' }}>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  style={{ fontSize: '11px', padding: '3px 8px' }}
-                  onClick={() => {
-                    const today = new Date();
-                    setRescheduleDate(today.toISOString().slice(0, 10));
-                    const plus1h = new Date(Date.now() + 60 * 60 * 1000);
-                    setRescheduleTime(`${String(plus1h.getHours()).padStart(2, '0')}:${String(plus1h.getMinutes()).padStart(2, '0')}`);
-                  }}
-                >
-                  Sau 1 tiếng nữa
-                </button>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  style={{ fontSize: '11px', padding: '3px 8px' }}
-                  onClick={() => {
-                    const today = new Date();
-                    setRescheduleDate(today.toISOString().slice(0, 10));
-                    setRescheduleTime('15:30');
-                  }}
-                >
-                  Chiều nay (15:30)
-                </button>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  style={{ fontSize: '11px', padding: '3px 8px' }}
-                  onClick={() => {
-                    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-                    setRescheduleDate(tomorrow.toISOString().slice(0, 10));
-                    setRescheduleTime('09:00');
-                  }}
-                >
-                  Sáng mai (09:00)
-                </button>
-                <button
-                  type="button"
-                  className="ghost-button"
-                  style={{ fontSize: '11px', padding: '3px 8px' }}
-                  onClick={() => {
-                    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-                    setRescheduleDate(tomorrow.toISOString().slice(0, 10));
-                    setRescheduleTime('14:30');
-                  }}
-                >
-                  Chiều mai (14:30)
-                </button>
-              </div>
-            </div>
+              return (
+                <div style={{ margin: '14px 0', padding: '14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
+                  <span style={{ fontWeight: 650, display: 'block', marginBottom: '10px', fontSize: '13px', color: '#1e293b' }}>
+                    Chọn thời gian nhận hàng (chọn ngày và giờ cụ thể, không ở quá khứ):
+                  </span>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <label style={{ display: 'block' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                        Chọn ngày nhận hàng:
+                      </span>
+                      <input
+                        type="date"
+                        required
+                        min={new Date().toISOString().slice(0, 10)}
+                        value={rescheduleDate}
+                        onChange={(e) => setRescheduleDate(e.target.value)}
+                        style={{ width: '100%', padding: '9px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box', backgroundColor: '#ffffff' }}
+                      />
+                    </label>
+                    <div style={{ display: 'block' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                        Chọn giờ nhận hàng:
+                      </span>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                        <select
+                          value={rescheduleHour}
+                          onChange={(e) => setRescheduleTime(`${e.target.value}:${rescheduleMinute}`)}
+                          style={{ width: '100%', padding: '9px 6px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff', cursor: 'pointer', boxSizing: 'border-box' }}
+                        >
+                          {RESCHEDULE_HOURS.map((h) => (
+                            <option key={h} value={h}>{h} giờ</option>
+                          ))}
+                        </select>
+                        <select
+                          value={rescheduleMinute}
+                          onChange={(e) => setRescheduleTime(`${rescheduleHour}:${e.target.value}`)}
+                          style={{ width: '100%', padding: '9px 6px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff', cursor: 'pointer', boxSizing: 'border-box' }}
+                        >
+                          {rescheduleMinuteOptions.map((m) => (
+                            <option key={m} value={m}>{m} phút</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             <label className="supplier-dialog-field">
               <span>Lý do dời giờ (Không bắt buộc):</span>
@@ -2799,7 +3007,7 @@ export default function OrderList({
                 Đóng
               </button>
               <button className="table-button primary-small" disabled={rescheduleBusy}>
-                {rescheduleBusy ? 'Đang gửi…' : 'Gửi yêu cầu dời giờ'}
+                {rescheduleBusy ? 'Đang gửi…' : 'Xác nhận hẹn giờ'}
               </button>
             </div>
           </form>
@@ -2877,14 +3085,18 @@ function PaymentDialog({
   onSubmit: (method: 'COD' | 'QR') => void;
 }) {
   const [method, setMethod] = useState<'COD' | 'QR'>('COD');
+  const lossAmount = order.driverInfo?.incidentReport?.action === 'DEDUCT_COD'
+    ? computeOrderLossAmount(order)
+    : 0;
   const depositPaid = order.depositStatus === 'PAID' ? order.depositAmount : 0;
-  const remainingAmount = Math.max(0, order.total - depositPaid);
+  const adjustedTotal = Math.max(0, order.subtotal - lossAmount) + order.deliveryFee;
+  const remainingAmount = Math.max(0, adjustedTotal - depositPaid);
 
-  // Thông tin tài khoản trung gian ký quỹ Escrow của nền tảng SupplyMind AI
-  const isEscrowBank = !order.supplier?.bankAccountNumber || order.depositBankAccountNumber === 'ESCROW' || order.depositBankName?.includes('SupplyMind');
-  const bankName = isEscrowBank ? 'Sacombank' : (order.supplier?.bankName || order.depositBankName || 'Sacombank');
-  const bankAcc = isEscrowBank ? '050138052378' : (order.supplier?.bankAccountNumber || order.depositBankAccountNumber || '050138052378');
-  const bankHolder = isEscrowBank ? 'LE TRAN MINH DUC' : (order.supplier?.bankAccountHolder || order.depositBankAccountHolder || 'LE TRAN MINH DUC');
+  // Kiểm tra tài khoản ngân hàng của chủ vựa. Nếu chưa có, chuyển về tài khoản Escrow an toàn.
+  const hasSupplierBank = Boolean(order.supplier?.bankAccountNumber && order.supplier?.bankName);
+  const bankName = hasSupplierBank ? order.supplier!.bankName! : 'Sacombank';
+  const bankAcc = hasSupplierBank ? order.supplier!.bankAccountNumber! : '050138052378';
+  const bankHolder = hasSupplierBank ? order.supplier!.bankAccountHolder! : 'LE TRAN MINH DUC';
   const qrUrl = `https://img.vietqr.io/image/${encodeURIComponent(bankName)}-${encodeURIComponent(bankAcc)}-compact2.png?amount=${remainingAmount}&addInfo=THANH%20TOAN%20DH${order.id}&accountName=${encodeURIComponent(bankHolder)}`;
 
   return (
@@ -2932,8 +3144,22 @@ function PaymentDialog({
                 color: '#15803d',
               }}
             >
-              <span>Đã thanh toán / cọc trước:</span>
+              <span>Đã thanh toán / cọc trước (10%):</span>
               <strong>- {money(depositPaid)}</strong>
+            </div>
+          )}
+          {lossAmount > 0 && (
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginBottom: '4px',
+                fontSize: '13px',
+                color: '#dc2626',
+              }}
+            >
+              <span>Giảm trừ hàng hỏng theo thỏa thuận sự cố:</span>
+              <strong>- {money(lossAmount)}</strong>
             </div>
           )}
           <div

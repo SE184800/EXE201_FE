@@ -69,6 +69,7 @@ export type IncidentReport = {
   evidenceImageUrl?: string | null;
   notes?: string | null;
   action: string;
+  lossAmount?: number;
   supplementaryOrderId?: number | null;
   reportedBy?: string;
   reportedAt: string;
@@ -357,6 +358,7 @@ export async function reportSupplierIncident(
     evidenceImageUrl?: string | null;
     notes?: string | null;
     action: string;
+    lossAmount?: number;
   },
 ): Promise<{ success: boolean; incidentReport: IncidentReport; supplementaryOrder: SupplierOrder | null; message: string }> {
   const { data } = await api.post(`/supplier/orders/${orderId}/incident`, payload);

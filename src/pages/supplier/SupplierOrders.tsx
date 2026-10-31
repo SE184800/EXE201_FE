@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import '../catalog.css';
 import SupplierLayout from '../../components/SupplierLayout';
 import OrderList from '../../components/OrderList';
+import { POPULAR_BANKS } from '../../constants/banks';
+import { validateQrCodeImage } from '../../utils/qrValidator';
+import { api } from '../../services/api';
 import { calculateDeliveryFee } from '../../utils/geo';
 import { getApiError, isUnauthenticated } from '../../services/api';
 import { logout } from '../../services/auth.api';
@@ -15,6 +18,8 @@ import {
   type SavedDriver,
 } from '../../services/supplier.api';
 import type { AuthUser } from '../../types/auth';
+
+const money = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
 
 const STATUS_ACTIONS: Record<string, { next: string; label: string }> = {
   PENDING: { next: 'PREPARING', label: 'Duyệt đơn & Bắt đầu soạn hàng' },
@@ -38,6 +43,7 @@ export default function SupplierOrders({
   const [rejectError, setRejectError] = useState('');
   const [dispatchOrder, setDispatchOrder] = useState<SupplierOrder | null>(null);
   const [incidentOrder, setIncidentOrder] = useState<SupplierOrder | null>(null);
+  const [showBankModal, setShowBankModal] = useState(false);
 
   useEffect(() => {
     document.title = 'SupplyMind AI · Đơn hàng từ cửa hàng';
@@ -117,6 +123,7 @@ export default function SupplierOrders({
     evidenceImageUrl?: string | null;
     notes?: string | null;
     action: string;
+    lossAmount?: number;
   }) {
     if (!incidentOrder) return;
     const orderId = incidentOrder.id;
@@ -240,6 +247,16 @@ export default function SupplierOrders({
           onSubmit={handleIncidentSubmit}
         />
       )}
+      {showBankModal && (
+        <SupplierBankAccountDialog
+          onClose={() => setShowBankModal(false)}
+          onSaved={(msg) => {
+            setNotice(msg);
+            setNoticeError(false);
+            setOrderRevision((n) => n + 1);
+          }}
+        />
+      )}
     </SupplierLayout>
   );
 }
@@ -303,6 +320,9 @@ function RejectDialog({
   );
 }
 
+const DELIVERY_HOURS = Array.from({ length: 18 }, (_, i) => String(i + 6).padStart(2, '0')); // 06 to 23
+const DELIVERY_MINUTES = ['00', '15', '30', '45'];
+
 function DispatchDriverDialog({
   order,
   initialData,
@@ -343,8 +363,11 @@ function DispatchDriverDialog({
   const todayStr = new Date().toISOString().split('T')[0];
   const [deliveryDate, setDeliveryDate] = useState(todayStr);
   const isToday = deliveryDate === todayStr;
-
   const [deliveryTime, setDeliveryTime] = useState(earliestTimeStr);
+  const [currDeliveryHour = '08', currDeliveryMinute = '00'] = deliveryTime ? deliveryTime.split(':') : ['08', '00'];
+  const deliveryMinuteOptions = DELIVERY_MINUTES.includes(currDeliveryMinute)
+    ? DELIVERY_MINUTES
+    : [...DELIVERY_MINUTES, currDeliveryMinute].sort();
   const [deliveryNotes, setDeliveryNotes] = useState(initialData?.deliveryNotes || '');
   const [error, setError] = useState('');
 
@@ -594,16 +617,33 @@ function DispatchDriverDialog({
               />
             </label>
 
-            <label className="supplier-dialog-field" style={{ margin: 0 }}>
-              <span style={{ color: '#166534', fontWeight: 600 }}>Chọn giờ giao đến:</span>
-              <input
-                type="time"
-                value={deliveryTime}
-                onChange={(e) => setDeliveryTime(e.target.value)}
-                disabled={busy}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #86efac', backgroundColor: '#ffffff', fontSize: '13px' }}
-              />
-            </label>
+            <div style={{ margin: 0 }}>
+              <span style={{ color: '#166534', fontWeight: 600, fontSize: '13px', display: 'block', marginBottom: '4px' }}>
+                Chọn giờ giao đến:
+              </span>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                <select
+                  value={currDeliveryHour}
+                  onChange={(e) => setDeliveryTime(`${e.target.value}:${currDeliveryMinute}`)}
+                  disabled={busy}
+                  style={{ width: '100%', padding: '8px 8px', borderRadius: '6px', border: '1px solid #86efac', backgroundColor: '#ffffff', fontSize: '13px', cursor: 'pointer' }}
+                >
+                  {DELIVERY_HOURS.map((h) => (
+                    <option key={h} value={h}>{h} giờ</option>
+                  ))}
+                </select>
+                <select
+                  value={currDeliveryMinute}
+                  onChange={(e) => setDeliveryTime(`${currDeliveryHour}:${e.target.value}`)}
+                  disabled={busy}
+                  style={{ width: '100%', padding: '8px 8px', borderRadius: '6px', border: '1px solid #86efac', backgroundColor: '#ffffff', fontSize: '13px', cursor: 'pointer' }}
+                >
+                  {deliveryMinuteOptions.map((m) => (
+                    <option key={m} value={m}>{m} phút</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
 
           <div style={{ marginTop: '8px', fontSize: '11.5px', color: '#15803d', fontWeight: 500 }}>
@@ -689,6 +729,7 @@ function SupplierIncidentDialog({
     evidenceImageUrl?: string | null;
     notes?: string | null;
     action: string;
+    lossAmount?: number;
   }) => void;
 }) {
   useEffect(() => {
@@ -700,7 +741,7 @@ function SupplierIncidentDialog({
   }, []);
 
   const [selectedItems, setSelectedItems] = useState<Record<number, number>>({});
-  const [looseItems, setLooseItems] = useState<Record<number, { isLoose: boolean; looseQty: number }>>({});
+  const [looseItems, setLooseItems] = useState<Record<number, { isLoose: boolean; looseQty: number | string }>>({});
   const [damageType, setDamageType] = useState('DAMAGED_TRANSIT');
   const [notes, setNotes] = useState('');
   const [action, setAction] = useState('DEDUCT_COD');
@@ -734,12 +775,33 @@ function SupplierIncidentDialog({
     setSelectedItems((prev) => ({ ...prev, [productId]: cleanQty }));
   }
 
-  function handleLooseQtyChange(productId: number, qty: number, maxLoose: number) {
-    const cleanQty = Math.max(1, Math.min(qty, maxLoose));
+  function handleLooseQtyChange(productId: number, rawVal: string, maxLoose: number) {
+    let digits = rawVal.replace(/\D/g, '');
+    if (digits.startsWith('0')) {
+      digits = digits.replace(/^0+/, '');
+    }
+    let qty: number | string = digits;
+    if (digits !== '') {
+      const num = parseInt(digits, 10);
+      if (num > maxLoose) {
+        qty = maxLoose;
+      } else {
+        qty = num;
+      }
+    }
     setLooseItems((prev) => ({
       ...prev,
-      [productId]: { isLoose: true, looseQty: cleanQty },
+      [productId]: { isLoose: true, looseQty: qty },
     }));
+  }
+
+  function getEffectiveLooseQty(looseQty: number | string | undefined, maxLoose: number): number {
+    if (typeof looseQty === 'number' && looseQty > 0) return Math.min(looseQty, maxLoose);
+    if (typeof looseQty === 'string' && looseQty.trim() !== '') {
+      const n = parseInt(looseQty, 10);
+      if (n > 0) return Math.min(n, maxLoose);
+    }
+    return 1;
   }
 
   function toggleLooseMode(productId: number) {
@@ -778,6 +840,19 @@ function SupplierIncidentDialog({
     reader.readAsDataURL(files[0]);
   }
 
+  const totalCalculatedLoss = Object.entries(selectedItems).reduce((sum, [pIdStr, qty]) => {
+    const item = order.items.find((it) => it.productId === Number(pIdStr));
+    if (!item) return sum;
+    const packInfo = parseItemPackaging(item.packaging);
+    const loose = looseItems[item.productId];
+    const isLoose = loose?.isLoose && packInfo.multiplier > 1;
+    if (isLoose) {
+      const eff = getEffectiveLooseQty(loose.looseQty, packInfo.multiplier * item.quantity);
+      return sum + (eff / (packInfo.multiplier * item.quantity)) * item.lineTotal;
+    }
+    return sum + (qty / item.quantity) * item.lineTotal;
+  }, 0);
+
   function handleSubmit() {
     const entries = Object.entries(selectedItems);
     if (entries.length === 0) {
@@ -785,6 +860,7 @@ function SupplierIncidentDialog({
       return;
     }
 
+    let calculatedLoss = 0;
     const damagedItems = entries
       .map(([productIdStr, qty]) => {
         const item = order.items.find((it) => it.productId === Number(productIdStr));
@@ -798,9 +874,13 @@ function SupplierIncidentDialog({
         let finalQty = qty;
 
         if (isLoose) {
-          displayName = `${item.productName} (Hỏng lẻ ${loose.looseQty}/${packInfo.multiplier} ${packInfo.unit})`;
-          displayPkg = `${loose.looseQty} ${packInfo.unit}`;
-          finalQty = Math.max(1, Math.round(loose.looseQty / packInfo.multiplier) || 1);
+          const effectiveLoose = getEffectiveLooseQty(loose.looseQty, packInfo.multiplier * item.quantity);
+          displayName = `${item.productName} (Hỏng lẻ ${effectiveLoose}/${packInfo.multiplier} ${packInfo.unit})`;
+          displayPkg = `${effectiveLoose} ${packInfo.unit}`;
+          finalQty = Math.max(1, Math.round(effectiveLoose / packInfo.multiplier) || 1);
+          calculatedLoss += (effectiveLoose / (packInfo.multiplier * item.quantity)) * item.lineTotal;
+        } else {
+          calculatedLoss += (qty / item.quantity) * item.lineTotal;
         }
 
         return {
@@ -822,6 +902,7 @@ function SupplierIncidentDialog({
       evidenceImageUrl: evidenceImages.length > 0 ? evidenceImages.join('|||') : null,
       notes: notes.trim() || undefined,
       action,
+      lossAmount: Math.round(calculatedLoss),
     });
   }
 
@@ -941,22 +1022,29 @@ function SupplierIncidentDialog({
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ fontSize: '11.5px', color: '#991b1b', fontWeight: 600 }}>SL {packInfo.unit} bị hư:</span>
                             <input
-                              type="number"
-                              min={1}
-                              max={packInfo.multiplier * item.quantity}
-                              value={looseState.looseQty}
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              placeholder="Nhập SL"
+                              value={looseState.looseQty === '' ? '' : looseState.looseQty}
                               onChange={(e) =>
-                                handleLooseQtyChange(item.productId, Number(e.target.value), packInfo.multiplier * item.quantity)
+                                handleLooseQtyChange(item.productId, e.target.value, packInfo.multiplier * item.quantity)
                               }
+                              onBlur={() => {
+                                if (looseState.looseQty === '' || looseState.looseQty === 0) {
+                                  handleLooseQtyChange(item.productId, '1', packInfo.multiplier * item.quantity);
+                                }
+                              }}
                               style={{
-                                width: '60px',
+                                width: '64px',
                                 padding: '4px 6px',
                                 textAlign: 'center',
                                 borderRadius: '4px',
                                 border: '1px solid #f87171',
-                                fontSize: '12.5px',
+                                fontSize: '13px',
                                 fontWeight: 700,
                                 color: '#991b1b',
+                                backgroundColor: '#ffffff',
                               }}
                             />
                             <span style={{ fontSize: '11.5px', color: '#64748b' }}>/ {packInfo.multiplier * item.quantity} {packInfo.unit}</span>
@@ -1027,6 +1115,13 @@ function SupplierIncidentDialog({
               </div>
             )}
           </div>
+
+          {totalCalculatedLoss > 0 && (
+            <div style={{ marginBottom: '12px', padding: '10px 14px', backgroundColor: '#fef2f2', borderRadius: '8px', border: '1px solid #fecaca', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '12.5px', color: '#991b1b', fontWeight: 600 }}>Giá trị thiệt hại ước tính:</span>
+              <strong style={{ fontSize: '14.5px', color: '#b91c1c' }}>{money(Math.round(totalCalculatedLoss))}</strong>
+            </div>
+          )}
 
           {/* 4. Phương án xử lý luồng tiền */}
           <div style={{ marginBottom: '12px', padding: '12px', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
@@ -1111,6 +1206,276 @@ function SupplierIncidentDialog({
             {busy ? 'Đang xử lý…' : action === 'DEDUCT_COD' ? 'Xác nhận trừ tiền COD' : action === 'REPLACE_0VND' ? 'Xác nhận & Tạo đơn bù 0đ' : 'Xác nhận thu hồi đơn'}
           </button>
         </div>
+      </section>
+    </div>
+  );
+}
+
+function SupplierBankAccountDialog({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: (msg: string) => void;
+}) {
+  const [bankName, setBankName] = useState('Vietcombank');
+  const [customBankName, setCustomBankName] = useState('');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankAccountHolder, setBankAccountHolder] = useState('');
+  const [bankQrImageUrl, setBankQrImageUrl] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [uploadingQr, setUploadingQr] = useState(false);
+  const [error, setError] = useState('');
+  const [qrError, setQrError] = useState('');
+
+  useEffect(() => {
+    let ignore = false;
+    api.get<{ profile: any }>('/supplier/profile').then((res) => {
+      if (ignore) return;
+      const p = res.data?.profile;
+      if (p) {
+        if (p.bankName) {
+          if (POPULAR_BANKS.includes(p.bankName)) {
+            setBankName(p.bankName);
+          } else {
+            setBankName('Khác');
+            setCustomBankName(p.bankName);
+          }
+        }
+        if (p.bankAccountNumber) setBankAccountNumber(p.bankAccountNumber);
+        if (p.bankAccountHolder) setBankAccountHolder(p.bankAccountHolder);
+      }
+      setLoading(false);
+    }).catch(() => {
+      if (!ignore) setLoading(false);
+    });
+    return () => { ignore = true; };
+  }, []);
+
+  async function handleQrUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setQrError('');
+
+    const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.type)) {
+      setQrError('Chỉ chấp nhận file ảnh định dạng JPG, PNG hoặc WEBP.');
+      return;
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      setQrError('Kích thước ảnh mã QR không được vượt quá 3MB.');
+      return;
+    }
+
+    setUploadingQr(true);
+    try {
+      const qrCheck = await validateQrCodeImage(file);
+      if (!qrCheck.isValid) {
+        setQrError(
+          qrCheck.message ||
+            'Ảnh được đăng lên không phải là mã QR. Vui lòng chụp hoặc tải lại đúng ảnh mã QR thanh toán của ngân hàng.'
+        );
+        return;
+      }
+      const formData = new FormData();
+      formData.append('qrImage', file);
+      const res = await api.post<{ success: boolean; imageUrl: string }>('/profile/upload-bank-qr', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (res.data?.imageUrl) {
+        setBankQrImageUrl(res.data.imageUrl);
+      }
+    } catch (err) {
+      setQrError(getApiError(err));
+    } finally {
+      setUploadingQr(false);
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+
+    const finalBankName = bankName === 'Khác' ? customBankName.trim() : bankName;
+    if (!finalBankName || finalBankName.length < 2) {
+      setError('Vui lòng chọn hoặc nhập tên ngân hàng hợp lệ.');
+      return;
+    }
+    const cleanAcc = bankAccountNumber.trim().replace(/\s+/g, '');
+    if (!/^[A-Za-z0-9]{4,34}$/.test(cleanAcc)) {
+      setError('Số tài khoản ngân hàng cần từ 4 đến 34 chữ số hoặc chữ cái, không chứa khoảng trắng.');
+      return;
+    }
+    const cleanHolder = bankAccountHolder.trim().toUpperCase();
+    if (!cleanHolder || cleanHolder.length < 2) {
+      setError('Vui lòng nhập tên chủ tài khoản (in hoa không dấu).');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await api.put('/supplier/profile', {
+        bankName: finalBankName,
+        bankAccountNumber: cleanAcc,
+        bankAccountHolder: cleanHolder,
+      });
+      onSaved('Đã cập nhật thông tin tài khoản ngân hàng nhận tiền của vựa thành công.');
+      onClose();
+    } catch (err) {
+      setError(getApiError(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="supplier-dialog-backdrop" role="presentation">
+      <section
+        className="supplier-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bank-dialog-title"
+        style={{ maxWidth: '540px', maxHeight: '90vh', overflowY: 'auto' }}
+      >
+        <span className="supplier-panel-label">TÀI KHOẢN THANH TOÁN VỰA</span>
+        <h2 id="bank-dialog-title">Thông tin tài khoản nhận tiền</h2>
+        <p className="catalog-hint" style={{ marginTop: 0 }}>
+          Thông tin ngân hàng này sẽ hiển thị cho tiệm tạp hóa khi quét mã VietQR thanh toán tiền hàng trực tiếp cho bạn khi xe giao đến tiệm.
+        </p>
+
+        {loading ? (
+          <p style={{ textAlign: 'center', padding: '20px', color: '#64748b' }}>Đang tải thông tin tài khoản...</p>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            {error && <p className="error-notice" role="alert">{error}</p>}
+
+            <label className="supplier-dialog-field">
+              <span>Ngân hàng nhận tiền: *</span>
+              <select
+                value={bankName}
+                onChange={(e) => setBankName(e.target.value)}
+                disabled={saving}
+                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13.5px', backgroundColor: '#ffffff' }}
+              >
+                {POPULAR_BANKS.map((b) => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </label>
+
+            {bankName === 'Khác' && (
+              <label className="supplier-dialog-field">
+                <span>Nhập tên ngân hàng của bạn: *</span>
+                <input
+                  type="text"
+                  required
+                  placeholder="VD: Shinhan Bank, Woori Bank, PVcomBank..."
+                  value={customBankName}
+                  onChange={(e) => setCustomBankName(e.target.value)}
+                  disabled={saving}
+                  maxLength={100}
+                />
+              </label>
+            )}
+
+            <label className="supplier-dialog-field">
+              <span>Số tài khoản ngân hàng: *</span>
+              <input
+                type="text"
+                required
+                placeholder="VD: 0071001234567"
+                value={bankAccountNumber}
+                onChange={(e) => setBankAccountNumber(e.target.value.replace(/[^A-Za-z0-9]/g, ''))}
+                disabled={saving}
+                maxLength={34}
+                style={{ fontFamily: 'monospace', letterSpacing: '0.04em' }}
+              />
+              <small style={{ color: '#64748b', fontSize: '11.5px', marginTop: '2px', display: 'block' }}>
+                Từ 4 đến 34 chữ số hoặc chữ cái, không dấu và không khoảng trắng.
+              </small>
+            </label>
+
+            <label className="supplier-dialog-field">
+              <span>Tên chủ tài khoản: *</span>
+              <input
+                type="text"
+                required
+                placeholder="VD: NGUYEN VAN A"
+                value={bankAccountHolder}
+                onChange={(e) => setBankAccountHolder(e.target.value.toUpperCase())}
+                disabled={saving}
+                maxLength={100}
+                style={{ textTransform: 'uppercase' }}
+              />
+            </label>
+
+            <div style={{ margin: '14px 0', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              <span style={{ fontSize: '13px', fontWeight: 650, color: '#1e293b', display: 'block', marginBottom: '4px' }}>
+                Ảnh mã QR nhận tiền (Tùy chọn):
+              </span>
+              <small style={{ color: '#64748b', fontSize: '12px', display: 'block', marginBottom: '8px' }}>
+                Hệ thống tự động kiểm tra ảnh tải lên phải đúng là mã QR ngân hàng.
+              </small>
+
+              {qrError && (
+                <div style={{ padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', color: '#b91c1c', fontSize: '12px', marginBottom: '8px' }}>
+                  {qrError}
+                </div>
+              )}
+
+              {bankQrImageUrl ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '6px' }}>
+                  <img
+                    src={bankQrImageUrl}
+                    alt="Mã QR vựa"
+                    style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                  />
+                  <div>
+                    <span style={{ fontSize: '12px', color: '#166534', fontWeight: 600, display: 'block' }}>Đã xác thực mã QR thành công</span>
+                    <button
+                      type="button"
+                      className="ghost-button"
+                      style={{ fontSize: '11px', padding: '2px 8px', marginTop: '4px', color: '#dc2626' }}
+                      onClick={() => setBankQrImageUrl('')}
+                    >
+                      Xóa ảnh QR
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <input
+                    type="file"
+                    id="supplier-qr-file-input"
+                    accept="image/jpeg,image/png,image/webp"
+                    style={{ display: 'none' }}
+                    onChange={handleQrUpload}
+                    disabled={uploadingQr || saving}
+                  />
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    style={{ fontSize: '12.5px', padding: '6px 14px' }}
+                    onClick={() => document.getElementById('supplier-qr-file-input')?.click()}
+                    disabled={uploadingQr || saving}
+                  >
+                    {uploadingQr ? 'Đang kiểm tra ảnh QR...' : 'Tải lên ảnh mã QR'}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="supplier-dialog-actions" style={{ marginTop: '16px' }}>
+              <button type="button" className="ghost-button" onClick={onClose} disabled={saving}>
+                Đóng
+              </button>
+              <button type="submit" className="table-button primary-small" disabled={saving} style={{ backgroundColor: '#166534', fontWeight: 700 }}>
+                {saving ? 'Đang lưu…' : 'Xác nhận lưu tài khoản'}
+              </button>
+            </div>
+          </form>
+        )}
       </section>
     </div>
   );
