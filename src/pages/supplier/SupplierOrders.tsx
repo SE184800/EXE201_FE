@@ -320,8 +320,8 @@ function RejectDialog({
   );
 }
 
-const DELIVERY_HOURS = Array.from({ length: 18 }, (_, i) => String(i + 6).padStart(2, '0')); // 06 to 23
-const DELIVERY_MINUTES = ['00', '15', '30', '45'];
+const STANDARD_DELIVERY_HOURS = ['08', '09', '10', '11', '12', '13', '14', '15', '16', '17'];
+const STANDARD_DELIVERY_MINUTES = ['00', '15', '30', '45'];
 
 function DispatchDriverDialog({
   order,
@@ -357,17 +357,88 @@ function DispatchDriverDialog({
   // Thời gian chuẩn bị kho tối thiểu: 2 tiếng (120 phút) + thời gian chạy xe
   const minLeadMinutes = 120 + driveMinutes;
   const now = new Date();
-  const earliestDeliveryDate = new Date(now.getTime() + minLeadMinutes * 60 * 1000);
-  const earliestTimeStr = `${String(earliestDeliveryDate.getHours()).padStart(2, '0')}:${String(earliestDeliveryDate.getMinutes()).padStart(2, '0')}`;
+  const localYear = now.getFullYear();
+  const localMonth = String(now.getMonth() + 1).padStart(2, '0');
+  const localDay = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${localYear}-${localMonth}-${localDay}`;
 
-  const todayStr = new Date().toISOString().split('T')[0];
-  const [deliveryDate, setDeliveryDate] = useState(todayStr);
-  const isToday = deliveryDate === todayStr;
-  const [deliveryTime, setDeliveryTime] = useState(earliestTimeStr);
-  const [currDeliveryHour = '08', currDeliveryMinute = '00'] = deliveryTime ? deliveryTime.split(':') : ['08', '00'];
-  const deliveryMinuteOptions = DELIVERY_MINUTES.includes(currDeliveryMinute)
-    ? DELIVERY_MINUTES
-    : [...DELIVERY_MINUTES, currDeliveryMinute].sort();
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const earliestDeliveryMinutes = nowMinutes + minLeadMinutes;
+  // Giờ làm việc chuẩn: 08:00 (480 phút) đến 17:00 (1020 phút)
+  const canDeliverToday = earliestDeliveryMinutes <= 17 * 60;
+  const minDeliveryDate = canDeliverToday ? todayStr : tomorrowStr;
+
+  // Tính giờ mặc định ban đầu
+  let initialDeliveryHour = '08';
+  let initialDeliveryMinute = '00';
+  if (canDeliverToday) {
+    const clampedEarliest = Math.max(8 * 60, earliestDeliveryMinutes);
+    const rounded = Math.ceil(clampedEarliest / 15) * 15;
+    const h = Math.min(17, Math.floor(rounded / 60));
+    const m = h === 17 ? 0 : rounded % 60;
+    initialDeliveryHour = String(h).padStart(2, '0');
+    initialDeliveryMinute = String(m).padStart(2, '0');
+  } else {
+    initialDeliveryHour = '08';
+    initialDeliveryMinute = '30';
+  }
+
+  const [deliveryDate, setDeliveryDate] = useState(minDeliveryDate);
+  const [deliveryTime, setDeliveryTime] = useState(`${initialDeliveryHour}:${initialDeliveryMinute}`);
+  const [currDeliveryHour = initialDeliveryHour, currDeliveryMinute = initialDeliveryMinute] = deliveryTime ? deliveryTime.split(':') : [initialDeliveryHour, initialDeliveryMinute];
+
+  function getAvailableHours(selectedDate: string) {
+    if (selectedDate !== todayStr) {
+      return STANDARD_DELIVERY_HOURS;
+    }
+    return STANDARD_DELIVERY_HOURS.filter((hStr) => {
+      const h = parseInt(hStr, 10);
+      if (h === 17) return h * 60 >= earliestDeliveryMinutes;
+      return (h + 1) * 60 > earliestDeliveryMinutes;
+    });
+  }
+
+  function getAvailableMinutes(selectedDate: string, selectedHour: string) {
+    const h = parseInt(selectedHour, 10);
+    if (h === 17) return ['00'];
+    if (selectedDate !== todayStr) return STANDARD_DELIVERY_MINUTES;
+    const valid = STANDARD_DELIVERY_MINUTES.filter((mStr) => {
+      return h * 60 + parseInt(mStr, 10) >= earliestDeliveryMinutes;
+    });
+    return valid.length > 0 ? valid : ['00'];
+  }
+
+  const availableHours = getAvailableHours(deliveryDate);
+  const availableMinutes = getAvailableMinutes(deliveryDate, currDeliveryHour);
+
+  function handleDateChange(newDate: string) {
+    setDeliveryDate(newDate);
+    const hours = getAvailableHours(newDate);
+    let nextHour = currDeliveryHour;
+    if (!hours.includes(nextHour)) {
+      nextHour = hours[0] || '08';
+    }
+    const minutes = getAvailableMinutes(newDate, nextHour);
+    let nextMinute = currDeliveryMinute;
+    if (!minutes.includes(nextMinute)) {
+      nextMinute = minutes[0] || '00';
+    }
+    setDeliveryTime(`${nextHour}:${nextMinute}`);
+  }
+
+  function handleHourChange(newHour: string) {
+    const minutes = getAvailableMinutes(deliveryDate, newHour);
+    let nextMinute = currDeliveryMinute;
+    if (!minutes.includes(nextMinute)) {
+      nextMinute = minutes[0] || '00';
+    }
+    setDeliveryTime(`${newHour}:${nextMinute}`);
+  }
+
+  const earliestTimeTodayDisplay = canDeliverToday ? `${initialDeliveryHour}:${initialDeliveryMinute}` : '';
   const [deliveryNotes, setDeliveryNotes] = useState(initialData?.deliveryNotes || '');
   const [error, setError] = useState('');
 
@@ -426,24 +497,33 @@ function DispatchDriverDialog({
       setError('Số điện thoại tài xế không hợp lệ (cần 10 chữ số bắt đầu bằng 0).');
       return;
     }
-    // Kiểm tra không chọn ngày trong quá khứ
-    if (deliveryDate < todayStr) {
-      setError('Ngày giao hàng không thể ở trong quá khứ.');
+    // Kiểm tra không chọn ngày trong quá khứ hoặc ngày đã hết giờ nhận
+    if (deliveryDate < minDeliveryDate) {
+      setError(
+        canDeliverToday
+          ? 'Ngày giao hàng không thể ở trong quá khứ.'
+          : 'Hôm nay đã hết khung giờ nhận giao (kết thúc lúc 17:00). Vui lòng chọn lịch từ ngày mai.'
+      );
+      return;
+    }
+
+    if (!deliveryTime) {
+      setError('Vui lòng chọn giờ giao hàng.');
+      return;
+    }
+
+    const [h, m] = deliveryTime.split(':').map(Number);
+    if (h < 8 || h > 17 || (h === 17 && m > 0)) {
+      setError('Thời gian giao hàng phải nằm trong khung giờ làm việc chuẩn (08:00 - 17:00).');
       return;
     }
 
     // Kiểm tra thời gian cách tối thiểu 2 tiếng chuẩn bị + thời gian di chuyển
-    if (isToday) {
-      if (!deliveryTime) {
-        setError('Vui lòng chọn giờ giao hàng.');
-        return;
-      }
-      const [h, m] = deliveryTime.split(':').map(Number);
-      const chosenDate = new Date();
-      chosenDate.setHours(h, m, 0, 0);
-      if (chosenDate < earliestDeliveryDate) {
+    if (deliveryDate === todayStr) {
+      const chosenMinutes = h * 60 + m;
+      if (chosenMinutes < earliestDeliveryMinutes) {
         setError(
-          `Giờ giao đến phải cách hiện tại ít nhất 2 tiếng chuẩn bị kho và ${driveMinutes} phút di chuyển (sớm nhất hôm nay là ${earliestTimeStr}). Vui lòng chọn từ ${earliestTimeStr} trở đi hoặc dời sang ngày mai.`
+          `Giờ giao đến phải cách hiện tại ít nhất 2 tiếng chuẩn bị kho và ${driveMinutes} phút xe chạy (sớm nhất hôm nay là ${earliestTimeTodayDisplay}). Vui lòng chọn từ ${earliestTimeTodayDisplay} trở đi hoặc chuyển sang ngày mai.`
         );
         return;
       }
@@ -590,45 +670,59 @@ function DispatchDriverDialog({
           />
         </label>
 
-        {/* 2. Lịch và Khung thời gian giao hàng linh hoạt */}
-        <div style={{ marginTop: '12px', padding: '12px', backgroundColor: '#f0fdf4', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
-          <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px' }}>
-            <div style={{ fontSize: '12.5px', color: '#166534', fontWeight: 700 }}>
-              Khoảng cách giao: ~{distanceKm.toFixed(1)} km · Ước tính xe chạy: ~{driveMinutes} phút
+        {/* 2. Lịch và Khung thời gian giao hàng chuẩn 08:00 - 17:00 */}
+        <div style={{ marginTop: '14px', padding: '14px 16px', backgroundColor: '#f8fafc', borderRadius: '10px', border: '1px solid #cbd5e1' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '13.5px', fontWeight: 750, color: '#0f172a' }}>
+                Lịch hẹn giao hàng
+              </span>
+              <span style={{ fontSize: '11.5px', fontWeight: 600, color: '#0369a1', backgroundColor: '#e0f2fe', padding: '2px 8px', borderRadius: '12px' }}>
+                Giờ chuẩn: 08:00 - 17:00
+              </span>
             </div>
-            <div style={{ fontSize: '11.5px', color: '#15803d', marginTop: '3px' }}>
-              Quy chuẩn giao hàng: Tối thiểu 2 tiếng soạn hàng kho + {driveMinutes} phút vận chuyển. Sớm nhất hôm nay: <strong>từ {earliestTimeStr}</strong>.
-            </div>
+            <span style={{ fontSize: '12px', color: '#475569', fontWeight: 500 }}>
+              Khoảng cách: <strong>~{distanceKm.toFixed(1)} km</strong> (~{driveMinutes} phút xe chạy)
+            </span>
           </div>
 
-          <span style={{ fontSize: '13px', fontWeight: 650, color: '#166534', display: 'block', marginBottom: '8px' }}>
-            Lịch giao & Khung giờ giao hàng linh hoạt:
-          </span>
+          {!canDeliverToday ? (
+            <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '6px', padding: '8px 12px', marginBottom: '12px', fontSize: '12px', color: '#92400e', lineHeight: 1.45 }}>
+              <strong>Lưu ý khung giờ:</strong> Hiện tại đã hết giờ nhận giao hàng trong ngày hôm nay (kết thúc lúc 17:00). Lịch giao sớm nhất được xếp từ <strong>08:00 sáng mai</strong>.
+            </div>
+          ) : (
+            <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '8px 12px', marginBottom: '12px', fontSize: '12px', color: '#166534', lineHeight: 1.45 }}>
+              Quy chuẩn giao: Tối thiểu 2 tiếng chuẩn bị kho + {driveMinutes} phút xe chạy. Sớm nhất hôm nay: <strong>từ {earliestTimeTodayDisplay}</strong>.
+            </div>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-            <label className="supplier-dialog-field" style={{ margin: 0 }}>
-              <span style={{ color: '#166534', fontWeight: 600 }}>Chọn ngày giao:</span>
+            <label style={{ display: 'block', margin: 0 }}>
+              <span style={{ fontSize: '12px', fontWeight: 650, color: '#334155', display: 'block', marginBottom: '5px' }}>
+                Chọn ngày giao:
+              </span>
               <input
                 type="date"
-                min={todayStr}
+                min={minDeliveryDate}
                 value={deliveryDate}
-                onChange={(e) => setDeliveryDate(e.target.value)}
+                onChange={(e) => handleDateChange(e.target.value)}
                 disabled={busy}
-                style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #86efac', fontSize: '13px' }}
+                style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #94a3b8', fontSize: '13px', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
               />
             </label>
 
             <div style={{ margin: 0 }}>
-              <span style={{ color: '#166534', fontWeight: 600, fontSize: '13px', display: 'block', marginBottom: '4px' }}>
-                Chọn giờ giao đến:
+              <span style={{ fontSize: '12px', fontWeight: 650, color: '#334155', display: 'block', marginBottom: '5px' }}>
+                Chọn giờ giao đến tiệm:
               </span>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                 <select
                   value={currDeliveryHour}
-                  onChange={(e) => setDeliveryTime(`${e.target.value}:${currDeliveryMinute}`)}
+                  onChange={(e) => handleHourChange(e.target.value)}
                   disabled={busy}
-                  style={{ width: '100%', padding: '8px 8px', borderRadius: '6px', border: '1px solid #86efac', backgroundColor: '#ffffff', fontSize: '13px', cursor: 'pointer' }}
+                  style={{ width: '100%', padding: '8px 6px', borderRadius: '6px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', fontSize: '13px', cursor: 'pointer', boxSizing: 'border-box' }}
                 >
-                  {DELIVERY_HOURS.map((h) => (
+                  {availableHours.map((h) => (
                     <option key={h} value={h}>{h} giờ</option>
                   ))}
                 </select>
@@ -636,9 +730,9 @@ function DispatchDriverDialog({
                   value={currDeliveryMinute}
                   onChange={(e) => setDeliveryTime(`${currDeliveryHour}:${e.target.value}`)}
                   disabled={busy}
-                  style={{ width: '100%', padding: '8px 8px', borderRadius: '6px', border: '1px solid #86efac', backgroundColor: '#ffffff', fontSize: '13px', cursor: 'pointer' }}
+                  style={{ width: '100%', padding: '8px 6px', borderRadius: '6px', border: '1px solid #94a3b8', backgroundColor: '#ffffff', fontSize: '13px', cursor: 'pointer', boxSizing: 'border-box' }}
                 >
-                  {deliveryMinuteOptions.map((m) => (
+                  {availableMinutes.map((m) => (
                     <option key={m} value={m}>{m} phút</option>
                   ))}
                 </select>
@@ -646,8 +740,8 @@ function DispatchDriverDialog({
             </div>
           </div>
 
-          <div style={{ marginTop: '8px', fontSize: '11.5px', color: '#15803d', fontWeight: 500 }}>
-            Hiển thị cho cửa hàng: <strong>{computeEstimatedDeliveryTime()}</strong>
+          <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1', fontSize: '12.5px', color: '#0f172a' }}>
+            Dự kiến giao đến tiệm: <strong style={{ color: '#15803d' }}>{computeEstimatedDeliveryTime()}</strong>
           </div>
         </div>
 

@@ -241,8 +241,50 @@ function computeOrderLossAmount(order: SupplierOrder): number {
   return Math.round(totalLoss);
 }
 
-const RESCHEDULE_HOURS = Array.from({ length: 18 }, (_, i) => String(i + 6).padStart(2, '0')); // 06 to 23
+const RESCHEDULE_HOURS = ['08', '09', '10', '11', '12', '13', '14', '15', '16', '17'];
 const RESCHEDULE_MINUTES = ['00', '15', '30', '45'];
+
+function getInitialRescheduleData() {
+  const now = new Date();
+  const localYear = now.getFullYear();
+  const localMonth = String(now.getMonth() + 1).padStart(2, '0');
+  const localDay = String(now.getDate()).padStart(2, '0');
+  const todayStr = `${localYear}-${localMonth}-${localDay}`;
+
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const tomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const minNoticeMinutes = 60;
+  const earliestMinutesToday = nowMinutes + minNoticeMinutes;
+  const canToday = earliestMinutesToday <= 17 * 60;
+
+  if (canToday) {
+    const clamped = Math.max(8 * 60, earliestMinutesToday);
+    const rounded = Math.ceil(clamped / 15) * 15;
+    const h = Math.min(17, Math.floor(rounded / 60));
+    const m = h === 17 ? 0 : rounded % 60;
+    return {
+      date: todayStr,
+      time: `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`,
+      minDate: todayStr,
+      canToday: true,
+      todayStr,
+      tomorrowStr,
+      earliestMinutesToday,
+    };
+  } else {
+    return {
+      date: tomorrowStr,
+      time: '09:00',
+      minDate: tomorrowStr,
+      canToday: false,
+      todayStr,
+      tomorrowStr,
+      earliestMinutesToday,
+    };
+  }
+}
 
 export default function OrderList({
   kind,
@@ -391,11 +433,8 @@ export default function OrderList({
     null,
   );
   const [rescheduleOrderTarget, setRescheduleOrderTarget] = useState<SupplierOrder | null>(null);
-  const [rescheduleDate, setRescheduleDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [rescheduleTime, setRescheduleTime] = useState(() => {
-    const d = new Date(Date.now() + 60 * 60 * 1000);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  });
+  const [rescheduleDate, setRescheduleDate] = useState(() => getInitialRescheduleData().date);
+  const [rescheduleTime, setRescheduleTime] = useState(() => getInitialRescheduleData().time);
   const [rescheduleReason, setRescheduleReason] = useState('');
   const [rescheduleBusy, setRescheduleBusy] = useState(false);
   const [rescheduleMessage, setRescheduleMessage] = useState('');
@@ -542,19 +581,31 @@ export default function OrderList({
     event.preventDefault();
     if (!rescheduleOrderTarget || rescheduleBusy) return;
 
-    const todayStr = new Date().toISOString().slice(0, 10);
-    if (rescheduleDate < todayStr) {
-      setRescheduleMessage('Ngày hẹn dời lịch giao hàng không được ở trong quá khứ.');
+    const init = getInitialRescheduleData();
+    if (rescheduleDate < init.minDate) {
+      setRescheduleMessage(
+        init.canToday
+          ? 'Ngày hẹn giao không được ở trong quá khứ.'
+          : 'Hôm nay đã hết khung giờ nhận giao (kết thúc lúc 17:00). Vui lòng chọn lịch từ ngày mai.'
+      );
       return;
     }
 
-    if (rescheduleDate === todayStr && rescheduleTime) {
-      const now = new Date();
-      const [h, m] = rescheduleTime.split(':').map(Number);
+    if (!rescheduleTime) {
+      setRescheduleMessage('Vui lòng chọn giờ hẹn nhận hàng.');
+      return;
+    }
+
+    const [h, m] = rescheduleTime.split(':').map(Number);
+    if (h < 8 || h > 17 || (h === 17 && m > 0)) {
+      setRescheduleMessage('Khung giờ nhận giao phải nằm trong khoảng làm việc chuẩn từ 08:00 đến 17:00.');
+      return;
+    }
+
+    if (rescheduleDate === init.todayStr) {
       const chosenMinutes = h * 60 + m;
-      const currentMinutes = now.getHours() * 60 + now.getMinutes();
-      if (chosenMinutes < currentMinutes) {
-        setRescheduleMessage('Giờ hẹn giao không được ở quá khứ so với thời điểm hiện tại.');
+      if (chosenMinutes < init.earliestMinutesToday) {
+        setRescheduleMessage('Giờ hẹn giao phải cách thời điểm hiện tại ít nhất 1 tiếng và không ở trong quá khứ.');
         return;
       }
     }
@@ -1298,10 +1349,10 @@ export default function OrderList({
                           className="table-button primary-small"
                           style={{ fontSize: '11px', padding: '4px 10px' }}
                           onClick={() => {
+                            const init = getInitialRescheduleData();
                             setRescheduleOrderTarget(order);
-                            setRescheduleDate(new Date().toISOString().slice(0, 10));
-                            const d = new Date(Date.now() + 60 * 60 * 1000);
-                            setRescheduleTime(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`);
+                            setRescheduleDate(init.date);
+                            setRescheduleTime(init.time);
                             setRescheduleReason('');
                             setRescheduleMessage('');
                           }}
@@ -2922,41 +2973,110 @@ export default function OrderList({
             </p>
 
             {(() => {
+              const init = getInitialRescheduleData();
               const [rescheduleHour = '08', rescheduleMinute = '00'] = rescheduleTime ? rescheduleTime.split(':') : ['08', '00'];
-              const rescheduleMinuteOptions = RESCHEDULE_MINUTES.includes(rescheduleMinute)
-                ? RESCHEDULE_MINUTES
-                : [...RESCHEDULE_MINUTES, rescheduleMinute].sort();
+
+              const availableHours = (() => {
+                if (rescheduleDate !== init.todayStr) return RESCHEDULE_HOURS;
+                return RESCHEDULE_HOURS.filter((hStr) => {
+                  const h = parseInt(hStr, 10);
+                  if (h === 17) return h * 60 >= init.earliestMinutesToday;
+                  return (h + 1) * 60 > init.earliestMinutesToday;
+                });
+              })();
+
+              const availableMinutes = (() => {
+                const h = parseInt(rescheduleHour, 10);
+                if (h === 17) return ['00'];
+                if (rescheduleDate !== init.todayStr) return RESCHEDULE_MINUTES;
+                const valid = RESCHEDULE_MINUTES.filter((mStr) => {
+                  return h * 60 + parseInt(mStr, 10) >= init.earliestMinutesToday;
+                });
+                return valid.length > 0 ? valid : ['00'];
+              })();
+
+              const dateParts = rescheduleDate.split('-');
+              const dateFormatted = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : rescheduleDate;
 
               return (
-                <div style={{ margin: '14px 0', padding: '14px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #cbd5e1' }}>
-                  <span style={{ fontWeight: 650, display: 'block', marginBottom: '10px', fontSize: '13px', color: '#1e293b' }}>
-                    Chọn thời gian nhận hàng (chọn ngày và giờ cụ thể, không ở quá khứ):
-                  </span>
+                <div style={{ margin: '14px 0', padding: '14px', background: '#f8fafc', borderRadius: '10px', border: '1px solid #cbd5e1' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                    <span style={{ fontWeight: 750, fontSize: '13px', color: '#1e293b' }}>
+                      Thời gian nhận hàng thuận tiện
+                    </span>
+                    <span style={{ fontSize: '11px', fontWeight: 600, color: '#0369a1', backgroundColor: '#e0f2fe', padding: '2px 8px', borderRadius: '12px' }}>
+                      Giờ chuẩn: 08:00 - 17:00
+                    </span>
+                  </div>
+
+                  {!init.canToday ? (
+                    <div style={{ backgroundColor: '#fffbeb', border: '1px solid #fef3c7', borderRadius: '6px', padding: '8px 12px', marginBottom: '12px', fontSize: '12px', color: '#92400e', lineHeight: 1.45 }}>
+                      <strong>Lưu ý:</strong> Hiện tại đã hết khung giờ nhận giao hôm nay (kết thúc lúc 17:00). Lịch hẹn giao sớm nhất bắt đầu từ <strong>08:00 sáng mai</strong>.
+                    </div>
+                  ) : (
+                    <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '8px 12px', marginBottom: '12px', fontSize: '12px', color: '#166534', lineHeight: 1.45 }}>
+                      Giờ nhận hàng trong ngày: từ <strong>{init.time}</strong> đến <strong>17:00</strong>.
+                    </div>
+                  )}
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                     <label style={{ display: 'block' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 650, color: '#334155', display: 'block', marginBottom: '5px' }}>
                         Chọn ngày nhận hàng:
                       </span>
                       <input
                         type="date"
                         required
-                        min={new Date().toISOString().slice(0, 10)}
+                        min={init.minDate}
                         value={rescheduleDate}
-                        onChange={(e) => setRescheduleDate(e.target.value)}
+                        onChange={(e) => {
+                          const newDate = e.target.value;
+                          setRescheduleDate(newDate);
+                          let nextH = rescheduleHour;
+                          const nextAvailH = newDate !== init.todayStr
+                            ? RESCHEDULE_HOURS
+                            : RESCHEDULE_HOURS.filter((hStr) => {
+                                const h = parseInt(hStr, 10);
+                                if (h === 17) return h * 60 >= init.earliestMinutesToday;
+                                return (h + 1) * 60 > init.earliestMinutesToday;
+                              });
+                          if (!nextAvailH.includes(nextH)) nextH = nextAvailH[0] || '08';
+                          const h = parseInt(nextH, 10);
+                          let nextM = rescheduleMinute;
+                          const nextAvailM = h === 17
+                            ? ['00']
+                            : (newDate !== init.todayStr
+                                ? RESCHEDULE_MINUTES
+                                : RESCHEDULE_MINUTES.filter((mStr) => h * 60 + parseInt(mStr, 10) >= init.earliestMinutesToday));
+                          if (!nextAvailM.includes(nextM)) nextM = nextAvailM[0] || '00';
+                          setRescheduleTime(`${nextH}:${nextM}`);
+                        }}
                         style={{ width: '100%', padding: '9px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box', backgroundColor: '#ffffff' }}
                       />
                     </label>
+
                     <div style={{ display: 'block' }}>
-                      <span style={{ fontSize: '12px', fontWeight: 600, color: '#475569', display: 'block', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: 650, color: '#334155', display: 'block', marginBottom: '5px' }}>
                         Chọn giờ nhận hàng:
                       </span>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                         <select
                           value={rescheduleHour}
-                          onChange={(e) => setRescheduleTime(`${e.target.value}:${rescheduleMinute}`)}
+                          onChange={(e) => {
+                            const newH = e.target.value;
+                            const h = parseInt(newH, 10);
+                            let nextM = rescheduleMinute;
+                            const nextAvailM = h === 17
+                              ? ['00']
+                              : (rescheduleDate !== init.todayStr
+                                  ? RESCHEDULE_MINUTES
+                                  : RESCHEDULE_MINUTES.filter((mStr) => h * 60 + parseInt(mStr, 10) >= init.earliestMinutesToday));
+                            if (!nextAvailM.includes(nextM)) nextM = nextAvailM[0] || '00';
+                            setRescheduleTime(`${newH}:${nextM}`);
+                          }}
                           style={{ width: '100%', padding: '9px 6px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff', cursor: 'pointer', boxSizing: 'border-box' }}
                         >
-                          {RESCHEDULE_HOURS.map((h) => (
+                          {availableHours.map((h) => (
                             <option key={h} value={h}>{h} giờ</option>
                           ))}
                         </select>
@@ -2965,12 +3085,16 @@ export default function OrderList({
                           onChange={(e) => setRescheduleTime(`${rescheduleHour}:${e.target.value}`)}
                           style={{ width: '100%', padding: '9px 6px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff', cursor: 'pointer', boxSizing: 'border-box' }}
                         >
-                          {rescheduleMinuteOptions.map((m) => (
+                          {availableMinutes.map((m) => (
                             <option key={m} value={m}>{m} phút</option>
                           ))}
                         </select>
                       </div>
                     </div>
+                  </div>
+
+                  <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1', fontSize: '12.5px', color: '#0f172a' }}>
+                    Dự kiến nhận hàng tại tiệm: <strong style={{ color: '#15803d' }}>Ngày {dateFormatted} lúc {rescheduleTime}</strong>
                   </div>
                 </div>
               );
