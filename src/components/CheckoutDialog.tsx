@@ -294,7 +294,6 @@ export default function CheckoutDialog({
         localStorage.removeItem('supplymind_checkout_form_draft');
       } catch {}
       setCreatedOrders(results);
-      onOrderSuccess?.();
     } catch (err) {
       setError(getApiError(err));
       if (isUnauthenticated(err)) onLogout();
@@ -386,10 +385,10 @@ export default function CheckoutDialog({
           </div>
 
           <div className="inventory-actions">
-            <Link to="/store/orders" className="dash-primary" onClick={onClose}>
+            <Link to="/store/orders" className="dash-primary" onClick={() => { onOrderSuccess?.(); onClose(); }}>
               Xem danh sách Đơn mua hàng
             </Link>
-            <button type="button" className="secondary-button" onClick={onClose}>
+            <button type="button" className="secondary-button" onClick={() => { onOrderSuccess?.(); onClose(); }}>
               Đóng
             </button>
           </div>
@@ -441,10 +440,7 @@ export default function CheckoutDialog({
                             Địa chỉ kho: <strong>{calc.supplier.warehouseAddress || '120 Lý Thường Kiệt, Q. Tân Bình, TP. Hồ Chí Minh'}</strong>
                           </div>
                         </div>
-                        <div style={{ textAlign: 'right' }}>
-                          <span style={{ fontSize: '11px', color: '#64748b', display: 'block' }}>Vận chuyển</span>
-                          <strong style={{ fontSize: '12.5px', color: '#475569' }}>Tự thỏa thuận</strong>
-                        </div>
+                        
                       </div>
 
                       {/* Items in this group */}
@@ -518,7 +514,7 @@ export default function CheckoutDialog({
                       {/* Group Summary Footer */}
                       <div className="checkout-supplier-footer">
                         <span>
-                          Tiền hàng: <strong>{money(calc.goodsSubtotal)}</strong> (Phí vận chuyển: Tự thỏa thuận ngoài)
+                          Tiền hàng: <strong>{money(calc.goodsSubtotal)}</strong>
                         </span>
                         <span style={{ color: '#0f172a' }}>
                           Tổng đơn #{groupIdx + 1}: <strong>{money(calc.orderTotal)}</strong> (Cọc 10%: <strong>{money(calc.depositAmount)}</strong>)

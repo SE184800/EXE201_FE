@@ -1063,11 +1063,21 @@ export default function OrderList({
                         borderRadius: '12px',
                       }}
                     >
-                      {order.driverInfo?.estimatedDeliveryTime
-                        ? `Dự kiến giao: ${order.driverInfo.estimatedDeliveryTime}`
-                        : order.status === 'PREPARING'
+                      {(() => {
+                        const isAcceptedReschedule = order.note?.includes('[VỰA ĐÃ ĐỒNG Ý DỜI LỊCH GIAO]');
+                        if (isAcceptedReschedule) {
+                          const matchTime = order.note?.match(/\[YÊU CẦU DỜI LỊCH GIAO[^\]]*\]: Hẹn lúc ([^\(—|\]]+)/);
+                          if (matchTime && matchTime[1]) {
+                            return `Đã dời hẹn giao: ${matchTime[1].trim()}`;
+                          }
+                        }
+                        if (order.driverInfo?.estimatedDeliveryTime) {
+                          return `Dự kiến giao: ${order.driverInfo.estimatedDeliveryTime}`;
+                        }
+                        return order.status === 'PREPARING'
                           ? 'Dự kiến: Sắp xếp chuyến xe sớm nhất'
-                          : 'Dự kiến giao: trong 30 – 45 phút tới'}
+                          : 'Dự kiến giao: trong 30 – 45 phút tới';
+                      })()}
                     </span>
                   </div>
 
@@ -1973,7 +1983,7 @@ export default function OrderList({
                         disabled={busy || actionLoadingId === order.id}
                         onClick={() => void handleConfirmArrival(order)}
                       >
-                        {actionLoadingId === order.id ? 'Đang xử lý…' : 'Hàng đã đến cửa hàng (Xác nhận nhận xe)'}
+                        {actionLoadingId === order.id ? 'Đang xử lý…' : 'Hàng đã đến cửa hàng'}
                       </button>
                     )}
 
@@ -2815,14 +2825,12 @@ function PaymentDialog({
   const depositPaid = order.depositStatus === 'PAID' ? order.depositAmount : 0;
   const remainingAmount = Math.max(0, order.total - depositPaid);
 
-  const bankName = order.supplier?.bankName || order.depositBankName || 'Vietcombank';
-  const bankAcc = order.supplier?.bankAccountNumber || order.depositBankAccountNumber || '123456789';
-  const bankHolder =
-    order.supplier?.bankAccountHolder ||
-    order.depositBankAccountHolder ||
-    order.supplier?.businessName ||
-    'CHỦ VỰA';
-  const qrUrl = `https://img.vietqr.io/image/${bankName}-${bankAcc}-compact2.png?amount=${remainingAmount}&addInfo=THANH%20TOAN%20DH${order.id}&accountName=${encodeURIComponent(bankHolder)}`;
+  // Thông tin tài khoản trung gian ký quỹ Escrow của nền tảng SupplyMind AI
+  const isEscrowBank = !order.supplier?.bankAccountNumber || order.depositBankAccountNumber === 'ESCROW' || order.depositBankName?.includes('SupplyMind');
+  const bankName = isEscrowBank ? 'Sacombank' : (order.supplier?.bankName || order.depositBankName || 'Sacombank');
+  const bankAcc = isEscrowBank ? '050138052378' : (order.supplier?.bankAccountNumber || order.depositBankAccountNumber || '050138052378');
+  const bankHolder = isEscrowBank ? 'LE TRAN MINH DUC' : (order.supplier?.bankAccountHolder || order.depositBankAccountHolder || 'LE TRAN MINH DUC');
+  const qrUrl = `https://img.vietqr.io/image/${encodeURIComponent(bankName)}-${encodeURIComponent(bankAcc)}-compact2.png?amount=${remainingAmount}&addInfo=THANH%20TOAN%20DH${order.id}&accountName=${encodeURIComponent(bankHolder)}`;
 
   return (
     <div className="supplier-dialog-backdrop" role="presentation">

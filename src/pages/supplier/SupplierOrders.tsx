@@ -325,17 +325,7 @@ function DispatchDriverDialog({
   const [customVehicle, setCustomVehicle] = useState('');
   const [licensePlate, setLicensePlate] = useState(initialData?.licensePlate || '');
 
-  const TIME_SLOT_OPTIONS = [
-    { code: 'EARLY_MORNING', label: 'Sáng sớm (06:00 - 08:00)', endHour: 8, endMinute: 0 },
-    { code: 'MORNING', label: 'Buổi sáng (08:00 - 10:30)', endHour: 10, endMinute: 30 },
-    { code: 'MIDDAY', label: 'Buổi trưa (11:00 - 12:30)', endHour: 12, endMinute: 30 },
-    { code: 'AFTERNOON_EARLY', label: 'Đầu chiều (13:30 - 15:30)', endHour: 15, endMinute: 30 },
-    { code: 'AFTERNOON_LATE', label: 'Cuối chiều (15:30 - 18:00)', endHour: 18, endMinute: 0 },
-    { code: 'EVENING', label: 'Buổi tối (18:00 - 20:30)', endHour: 20, endMinute: 30 },
-    { code: 'NIGHT', label: 'Ca đêm / Tiệm bán khuya (21:00 - 23:30)', endHour: 23, endMinute: 30 },
-    { code: 'CUSTOM', label: 'Thương lượng riêng (Tự nhập khung giờ thỏa thuận)', endHour: 24, endMinute: 0 },
-  ];
-
+  
   // Tính toán khoảng cách và thời gian di chuyển thực tế từ vựa đến tiệm
   const deliveryCalc = calculateDeliveryFee({
     storeAddress: order.deliveryAddress || '',
@@ -354,16 +344,7 @@ function DispatchDriverDialog({
   const [deliveryDate, setDeliveryDate] = useState(todayStr);
   const isToday = deliveryDate === todayStr;
 
-  // Chọn slot mặc định đầu tiên còn khả dụng hôm nay
-  const initialAvailableSlot = TIME_SLOT_OPTIONS.find((s) => {
-    if (s.code === 'CUSTOM') return true;
-    const slotEndTime = new Date();
-    slotEndTime.setHours(s.endHour, s.endMinute, 0, 0);
-    return slotEndTime > earliestDeliveryDate;
-  })?.code || 'CUSTOM';
-
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState(initialAvailableSlot);
-  const [customTimeSlot, setCustomTimeSlot] = useState('');
+  const [deliveryTime, setDeliveryTime] = useState(earliestTimeStr);
   const [deliveryNotes, setDeliveryNotes] = useState(initialData?.deliveryNotes || '');
   const [error, setError] = useState('');
 
@@ -408,14 +389,7 @@ function DispatchDriverDialog({
   function computeEstimatedDeliveryTime(): string {
     const [year, month, day] = deliveryDate.split('-');
     const dateFormatted = `${day}/${month}/${year}`;
-    let timeLabel = '';
-    if (selectedTimeSlot === 'CUSTOM') {
-      timeLabel = customTimeSlot.trim() || 'Thời gian theo thỏa thuận';
-    } else {
-      const found = TIME_SLOT_OPTIONS.find((s) => s.code === selectedTimeSlot);
-      timeLabel = found ? found.label : selectedTimeSlot;
-    }
-    return `Ngày ${dateFormatted} · ${timeLabel}`;
+    return `Ngày ${dateFormatted} lúc ${deliveryTime}`;
   }
 
   function handleSubmit(shouldDispatch: boolean) {
@@ -437,23 +411,18 @@ function DispatchDriverDialog({
 
     // Kiểm tra thời gian cách tối thiểu 2 tiếng chuẩn bị + thời gian di chuyển
     if (isToday) {
-      if (selectedTimeSlot === 'CUSTOM') {
-        if (!customTimeSlot.trim()) {
-          setError('Vui lòng nhập khung giờ thỏa thuận chi tiết giữa vựa và tiệm.');
-          return;
-        }
-      } else {
-        const slot = TIME_SLOT_OPTIONS.find((s) => s.code === selectedTimeSlot);
-        if (slot && slot.code !== 'CUSTOM') {
-          const slotEndTime = new Date();
-          slotEndTime.setHours(slot.endHour, slot.endMinute, 0, 0);
-          if (slotEndTime <= earliestDeliveryDate) {
-            setError(
-              `Thời gian giao hàng phải cách hiện tại ít nhất 2 tiếng chuẩn bị kho và ${driveMinutes} phút di chuyển (~ ${distanceKm.toFixed(1)} km). Khung giờ sớm nhất khả thi hôm nay là từ ${earliestTimeStr} trở đi hoặc dời sang ngày mai.`
-            );
-            return;
-          }
-        }
+      if (!deliveryTime) {
+        setError('Vui lòng chọn giờ giao hàng.');
+        return;
+      }
+      const [h, m] = deliveryTime.split(':').map(Number);
+      const chosenDate = new Date();
+      chosenDate.setHours(h, m, 0, 0);
+      if (chosenDate < earliestDeliveryDate) {
+        setError(
+          `Giờ giao đến phải cách hiện tại ít nhất 2 tiếng chuẩn bị kho và ${driveMinutes} phút di chuyển (sớm nhất hôm nay là ${earliestTimeStr}). Vui lòng chọn từ ${earliestTimeStr} trở đi hoặc dời sang ngày mai.`
+        );
+        return;
       }
     }
 
@@ -612,54 +581,30 @@ function DispatchDriverDialog({
           <span style={{ fontSize: '13px', fontWeight: 650, color: '#166534', display: 'block', marginBottom: '8px' }}>
             Lịch giao & Khung giờ giao hàng linh hoạt:
           </span>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <label className="supplier-dialog-field" style={{ margin: 0 }}>
-              <span style={{ color: '#166534' }}>Chọn ngày giao:</span>
+              <span style={{ color: '#166534', fontWeight: 600 }}>Chọn ngày giao:</span>
               <input
                 type="date"
                 min={todayStr}
                 value={deliveryDate}
                 onChange={(e) => setDeliveryDate(e.target.value)}
                 disabled={busy}
-                style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #86efac' }}
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #86efac', fontSize: '13px' }}
               />
             </label>
 
             <label className="supplier-dialog-field" style={{ margin: 0 }}>
-              <span style={{ color: '#166534' }}>Chọn khung giờ giao:</span>
-              <select
-                value={selectedTimeSlot}
-                onChange={(e) => setSelectedTimeSlot(e.target.value)}
+              <span style={{ color: '#166534', fontWeight: 600 }}>Chọn giờ giao đến:</span>
+              <input
+                type="time"
+                value={deliveryTime}
+                onChange={(e) => setDeliveryTime(e.target.value)}
                 disabled={busy}
-                style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #86efac', backgroundColor: '#ffffff' }}
-              >
-                {TIME_SLOT_OPTIONS.map((slot) => {
-                  let disabled = false;
-                  if (isToday && slot.code !== 'CUSTOM') {
-                    const slotEnd = new Date();
-                    slotEnd.setHours(slot.endHour, slot.endMinute, 0, 0);
-                    if (slotEnd <= earliestDeliveryDate) disabled = true;
-                  }
-                  return (
-                    <option key={slot.code} value={slot.code} disabled={disabled}>
-                      {slot.label} {disabled ? '(Không kịp giờ hôm nay)' : ''}
-                    </option>
-                  );
-                })}
-              </select>
+                style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #86efac', backgroundColor: '#ffffff', fontSize: '13px' }}
+              />
             </label>
           </div>
-
-          {selectedTimeSlot === 'CUSTOM' && (
-            <input
-              type="text"
-              placeholder="VD: Trong khoảng 14h15 - 15h00..."
-              value={customTimeSlot}
-              onChange={(e) => setCustomTimeSlot(e.target.value)}
-              disabled={busy}
-              style={{ marginTop: '8px', width: '100%' }}
-            />
-          )}
 
           <div style={{ marginTop: '8px', fontSize: '11.5px', color: '#15803d', fontWeight: 500 }}>
             Hiển thị cho cửa hàng: <strong>{computeEstimatedDeliveryTime()}</strong>
@@ -737,6 +682,14 @@ function SupplierIncidentDialog({
     action: string;
   }) => void;
 }) {
+  useEffect(() => {
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, []);
+
   const [selectedItems, setSelectedItems] = useState<Record<number, number>>({});
   const [damageType, setDamageType] = useState('DAMAGED_TRANSIT');
   const [notes, setNotes] = useState('');
