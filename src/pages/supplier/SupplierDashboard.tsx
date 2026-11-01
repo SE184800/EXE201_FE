@@ -3,11 +3,16 @@ import { Link } from 'react-router-dom';
 import '../catalog.css';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
+import SupplierLayout from '../../components/SupplierLayout';
 import SupplierVerification from './SupplierVerification';
+import SupplierOnboarding from '../../components/SupplierOnboarding';
+import ContractSigningModal from '../../components/ContractSigningModal';
+import { getContractStatus } from '../../services/contract.api';
 import { getApiError, getApiFieldErrors, isUnauthenticated } from '../../services/api';
 import { logout } from '../../services/auth.api';
 import {
   getSupplierDashboard,
+  quickVerifySupplier,
   saveSupplierProfile,
   type SupplierDashboard as SupplierDashboardData,
   type SupplierProfileInput,
@@ -22,6 +27,8 @@ const EMPTY_PROFILE: SupplierProfileInput = {
   bankName: '',
   bankAccountNumber: '',
   bankAccountHolder: '',
+  taxCode: '',
+  phone: '',
 };
 
 function money(value: number) {
@@ -44,6 +51,8 @@ export default function SupplierDashboard({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [profile, setProfile] = useState(EMPTY_PROFILE);
+  const [showContractModal, setShowContractModal] = useState(false);
+  const [contractSigned, setContractSigned] = useState<boolean | null>(null);
   const [profileErrors, setProfileErrors] = useState<
     Partial<Record<keyof SupplierProfileInput, string>>
   >({});
@@ -65,6 +74,8 @@ export default function SupplierDashboard({
           bankName: next.profile.bankName || '',
           bankAccountNumber: next.profile.bankAccountNumber || '',
           bankAccountHolder: next.profile.bankAccountHolder || '',
+          taxCode: next.profile.taxCode || '',
+          phone: next.profile.phone || user.phone || '',
         });
       setError('');
     } catch (issue) {
@@ -73,12 +84,15 @@ export default function SupplierDashboard({
     } finally {
       setLoading(false);
     }
-  }, [onLogout]);
+  }, [onLogout, user.phone]);
 
   useEffect(() => {
     document.title = 'SupplyMind AI · Chủ vựa';
     const timer = window.setTimeout(() => {
       void load();
+      getContractStatus()
+        .then((res) => setContractSigned(res.isSigned))
+        .catch(() => { });
     }, 0);
     return () => window.clearTimeout(timer);
   }, [load]);
@@ -107,6 +121,21 @@ export default function SupplierDashboard({
           'bankAccountHolder',
         ]),
       );
+      setNotice(getApiError(issue));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleQuickActivate() {
+    setBusy(true);
+    try {
+      const updated = await quickVerifySupplier();
+      setData((current) => (current ? { ...current, profile: updated } : current));
+      setNoticeError(false);
+      setNotice('Gian hàng đã được kích hoạt thành công! Tất cả sản phẩm đang mở bán hiện đã hiển thị trên Tìm nguồn sỉ.');
+    } catch (issue) {
+      setNoticeError(true);
       setNotice(getApiError(issue));
     } finally {
       setBusy(false);
@@ -149,32 +178,146 @@ export default function SupplierDashboard({
       </main>
     );
 
+  if (!data?.profile) {
+    return (
+      <>
+        <SupplierOnboarding
+          user={user}
+          initialPhone={user.phone || ''}
+          onCompleted={(savedProfile) => {
+            setData((current) =>
+              current
+                ? { ...current, profile: savedProfile }
+                : {
+                  profile: savedProfile,
+                  products: [],
+                  orders: [],
+                  summary: {
+                    productCount: 0,
+                    lowStockCount: 0,
+                    pendingOrders: 0,
+                    pendingDepositConfirmations: 0,
+                    deliveredRevenue: 0,
+                  },
+                }
+            );
+            setProfile({
+              businessName: savedProfile.businessName,
+              warehouseAddress: savedProfile.warehouseAddress,
+              deliveryRadiusKm: savedProfile.deliveryRadiusKm,
+              deliveryFee: savedProfile.deliveryFee,
+              bankName: savedProfile.bankName || '',
+              bankAccountNumber: savedProfile.bankAccountNumber || '',
+              bankAccountHolder: savedProfile.bankAccountHolder || '',
+              taxCode: savedProfile.taxCode || '',
+              phone: savedProfile.phone || user.phone || '',
+            });
+            setShowContractModal(true);
+          }}
+          onLogout={handleLogout}
+          loggingOut={busy}
+        />
+        <ContractSigningModal
+          isOpen={showContractModal}
+          onClose={() => {
+            setShowContractModal(false);
+            setNotice('Đã lưu thông tin kho vựa. Bạn có thể hoàn tất ký hợp đồng kết nối sau.');
+          }}
+          onSignedSuccess={() => {
+            setShowContractModal(false);
+            setContractSigned(true);
+            setNotice('Đã ký kết hợp đồng điện tử thành công!');
+          }}
+          user={user}
+        />
+      </>
+    );
+  }
+
   return (
-    <main className="supplier-page">
-      <header className="supplier-header">
-        <Brand />
-        <div className="supplier-header-actions">
-          <span>
-            <strong>{user.name}</strong>
-            <small>Chủ vựa / Đại lý bỏ mối</small>
-          </span>
-          <button className="secondary-button" onClick={handleLogout} disabled={busy}>
-            <Icon name="logout" /> Đăng xuất
-          </button>
-        </div>
-      </header>
-      <section className="supplier-main">
-        <nav className="catalog-nav" aria-label="Chủ vựa">
-          <Link to="/supplier" aria-current="page">
-            Tổng quan
-          </Link>
-          <Link to="/supplier/products">Sản phẩm đăng bán</Link>
-          <Link to="/supplier/quotes">Báo giá tiếp thị</Link>
-          <Link to="/supplier/orders">Đơn hàng</Link>
-          <Link to="/supplier/inventory">Kho hàng</Link>
-          <Link to="/supplier/wallet">Ví tiền</Link>
-          <Link to="/supplier/subscription">Gói sử dụng</Link>
-        </nav>
+    <SupplierLayout
+      user={user}
+      activeNav="dashboard"
+      onLogout={handleLogout}
+      businessName={data?.profile?.businessName}
+    >
+      <div>
+        {contractSigned === false && (
+          <div
+            style={{
+              margin: '0 0 16px 0',
+              padding: '12px 18px',
+              backgroundColor: '#fff7ed',
+              border: '1px solid #fed7aa',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+            }}
+          >
+            <div style={{ fontSize: '13px', color: '#9a3412', lineHeight: 1.45 }}>
+              <strong>Thỏa thuận kết nối nền tảng:</strong> Bạn chưa hoàn tất ký số Hợp đồng điện tử và cam kết cơ chế ký quỹ Escrow 10% với SupplyMind.
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowContractModal(true)}
+              style={{
+                padding: '7px 16px',
+                backgroundColor: '#ea580c',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                boxShadow: '0 1px 2px rgba(234, 88, 12, 0.25)',
+              }}
+            >
+              Ký hợp đồng ngay
+            </button>
+          </div>
+        )}
+        {data?.profile && data.profile.verificationStatus !== 'APPROVED' && (
+          <div
+            style={{
+              margin: '0 0 16px 0',
+              padding: '12px 18px',
+              backgroundColor: '#fffbeb',
+              border: '1px solid #fef3c7',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ fontSize: '13px', color: '#92400e', lineHeight: 1.45 }}>
+              <strong>Gian hàng chưa kích hoạt mở bán:</strong> Các sản phẩm bạn đăng hiện đang ở chế độ chờ xác minh và chưa hiển thị với các chủ tiệm tạp hóa trên trang "Tìm nguồn sỉ".
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleQuickActivate()}
+              disabled={busy}
+              style={{
+                padding: '7px 16px',
+                backgroundColor: '#16a34a',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                fontSize: '12.5px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                boxShadow: '0 1px 2px rgba(22, 163, 74, 0.25)',
+              }}
+            >
+              Kích hoạt mở bán ngay
+            </button>
+          </div>
+        )}
         <div className="supplier-heading">
           <div>
             <p className="form-eyebrow">WHOLESALE SUPPLIER</p>
@@ -258,6 +401,16 @@ export default function SupplierDashboard({
                 <p>
                   {data.profile.warehouseAddress} · Bán kính giao {data.profile.deliveryRadiusKm} km
                 </p>
+                {data.profile.taxCode && (
+                  <p style={{ margin: '2px 0', fontSize: '13px', color: '#4b5563' }}>
+                    Mã số thuế: <strong>{data.profile.taxCode}</strong>
+                  </p>
+                )}
+                {data.profile.phone && (
+                  <p style={{ margin: '2px 0', fontSize: '13px', color: '#4b5563' }}>
+                    Hotline kho: <strong>{data.profile.phone}</strong>
+                  </p>
+                )}
                 <p>
                   {data.profile.bankAccountNumber
                     ? `Nhận cọc: ${data.profile.bankName} · ${data.profile.bankAccountNumber} · ${data.profile.bankAccountHolder}`
@@ -319,8 +472,18 @@ export default function SupplierDashboard({
             </section>
           </>
         )}
-      </section>
-    </main>
+      </div>
+      <ContractSigningModal
+        isOpen={showContractModal}
+        onClose={() => setShowContractModal(false)}
+        onSignedSuccess={() => {
+          setShowContractModal(false);
+          setContractSigned(true);
+          setNotice('Đã ký kết hợp đồng điện tử thành công!');
+        }}
+        user={user}
+      />
+    </SupplierLayout>
   );
 }
 
@@ -330,7 +493,7 @@ function Kpi({
   note,
   tone,
 }: {
-  label: string;
+  label: ReactNode;
   value: string | number;
   note: string;
   tone?: 'warning';
@@ -375,6 +538,44 @@ function ProfileForm({
             disabled={busy}
           />
         </Field>
+        <Field label="Số điện thoại nhận đơn / hotline kho" error={errors.phone}>
+          <input
+            type="tel"
+            value={value.phone || ''}
+            onChange={(event) => onChange({ ...value, phone: event.target.value })}
+            placeholder="Số điện thoại liên hệ"
+            disabled={busy}
+          />
+        </Field>
+        <Field
+          label={
+            <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+              <span>Mã số thuế / Mã ĐKKD</span>
+              <a
+                href="https://masothue.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  fontSize: '11px',
+                  color: '#2563eb',
+                  textDecoration: 'underline',
+                  marginLeft: 'auto',
+                  fontWeight: 500,
+                }}
+              >
+                Tra cứu (masothue.com)
+              </a>
+            </span>
+          }
+          error={errors.taxCode}
+        >
+          <input
+            value={value.taxCode || ''}
+            onChange={(event) => onChange({ ...value, taxCode: event.target.value })}
+            placeholder="Ví dụ: 0312345678"
+            disabled={busy}
+          />
+        </Field>
         <Field label="Bán kính nhận giao hàng (km)" error={errors.deliveryRadiusKm}>
           <input
             type="number"
@@ -399,13 +600,16 @@ function ProfileForm({
             disabled={busy}
           />
         </Field>
-        <Field label="Địa chỉ kho bãi" error={errors.warehouseAddress} full>
+        <Field label="Địa chỉ kho bãi (Đo khoảng cách & Tránh địa chỉ ma)" error={errors.warehouseAddress} full>
           <input
             value={value.warehouseAddress}
             onChange={(event) => onChange({ ...value, warehouseAddress: event.target.value })}
             placeholder="Số nhà, đường, phường/xã, quận/huyện, tỉnh/thành"
             disabled={busy}
           />
+          <small style={{ color: '#64748b', display: 'block', marginTop: '4px', fontSize: '11px' }}>
+            Địa chỉ kho dùng để đo khoảng cách giao hàng đến các tiệm tạp hóa và đối chiếu bán kính giao hàng.
+          </small>
         </Field>
         <div className="supplier-field-full deposit-account-heading">
           <strong>Tài khoản nhận cọc</strong>
@@ -465,7 +669,7 @@ function Field({
   full,
   children,
 }: {
-  label: string;
+  label: ReactNode;
   error?: string;
   full?: boolean;
   children: ReactNode;

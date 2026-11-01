@@ -36,16 +36,89 @@ export type SupplierProduct = {
   priceChangedAt: string | null;
   priceChangeReason: string | null;
   priceWarning: boolean;
+  moderation?: {
+    status: 'AUTO_APPROVED' | 'NEEDS_REVIEW' | 'AUTO_REJECTED' | 'FLAGGED';
+    riskScore: number;
+    reasons: string[];
+    criticalReasons?: string[];
+    isClean: boolean;
+  };
+};
+
+export type SavedDriver = {
+  id: string;
+  driverName: string;
+  driverPhone: string;
+  vehicleType: string;
+  licensePlate?: string | null;
+  deliveryNotes?: string | null;
+  supplierId?: number | null;
+  lastUsedAt?: string;
+};
+
+export type IncidentReport = {
+  orderId: number;
+  damagedItems: Array<{
+    productId: number;
+    productName: string;
+    packaging?: string;
+    quantity: number;
+  }>;
+  damageType: string;
+  damageTypeLabel?: string;
+  evidenceImageUrl?: string | null;
+  notes?: string | null;
+  action: string;
+  lossAmount?: number;
+  supplementaryOrderId?: number | null;
+  reportedBy?: string;
+  reportedAt: string;
+};
+
+export type PaymentInfo = {
+  method: 'COD' | 'QR';
+  amount: number;
+  status: 'PENDING_PAYMENT' | 'PENDING_SUPPLIER_CONFIRM' | 'CONFIRMED';
+  storePaidAt?: string;
+  supplierConfirmedAt?: string;
+  confirmedBy?: number;
+};
+
+export type DriverInfo = {
+  orderId?: number;
+  driverName: string;
+  driverPhone: string;
+  vehicleType: string;
+  licensePlate?: string | null;
+  estimatedDeliveryTime?: string | null;
+  deliveryNotes?: string | null;
+  assignedAt?: string;
+  updatedAt?: string;
+  packingChecklist?: number[];
+  incidentReport?: IncidentReport | null;
+  paymentInfo?: PaymentInfo | null;
 };
 
 export type SupplierOrder = {
+  inventoryImportedAt?: string | null;
+  canImportInventory?: boolean;
+  inventoryImportBlockedReason?: string | null;
   commissionRate: number | null;
   commissionAmount: number | null;
   commissionPaidAt: string | null;
   recipientName: string | null;
   recipientPhone: string | null;
   deliveryAddress: string | null;
-  supplier?: { id: number; businessName: string };
+  supplier?: {
+    id: number;
+    businessName: string;
+    warehouseAddress?: string | null;
+    deliveryRadiusKm?: number;
+    phone?: string | null;
+    bankName?: string | null;
+    bankAccountNumber?: string | null;
+    bankAccountHolder?: string | null;
+  };
   id: number;
   status: string;
   statusLabel: string;
@@ -67,6 +140,7 @@ export type SupplierOrder = {
   depositRefundReference: string | null;
   note: string | null;
   rejectReason: string | null;
+  driverInfo?: DriverInfo | null;
   complaint?: {
     id: number;
     reason: string;
@@ -119,7 +193,10 @@ export type SupplierProfileInput = Pick<
   | 'bankName'
   | 'bankAccountNumber'
   | 'bankAccountHolder'
->;
+> & {
+  taxCode?: string | null;
+  phone?: string | null;
+};
 export type SupplierProductInput = Pick<
   SupplierProduct,
   | 'category'
@@ -144,9 +221,21 @@ export async function saveSupplierProfile(input: SupplierProfileInput): Promise<
   return response.data.profile;
 }
 
+export async function quickVerifySupplier(): Promise<SupplierProfile> {
+  const response = await api.post<{ success: boolean; profile: SupplierProfile }>('/supplier/quick-verify');
+  return response.data.profile;
+}
+
 export async function createSupplierProduct(input: SupplierProductInput): Promise<SupplierProduct> {
   const response = await api.post<{ product: SupplierProduct }>('/supplier/products', input);
   return response.data.product;
+}
+
+export async function createSupplierProductsBatch(products: SupplierProductInput[]): Promise<SupplierProduct[]> {
+  const response = await api.post<{ products?: SupplierProduct[]; product?: SupplierProduct }>('/supplier/products', { products });
+  if (response.data.products) return response.data.products;
+  if (response.data.product) return [response.data.product];
+  return [];
 }
 
 export async function updateSupplierProduct(
@@ -170,11 +259,21 @@ export async function updateSupplierOrderStatus(
   id: number,
   status: string,
   rejectReason?: string,
+  driverInfo?: Partial<DriverInfo>,
 ): Promise<SupplierOrder> {
   const response = await api.patch<{ order: SupplierOrder }>(`/supplier/orders/${id}/status`, {
     status,
     rejectReason,
+    driverInfo,
   });
+  return response.data.order;
+}
+
+export async function updateSupplierOrderDriver(
+  id: number,
+  driverInfo: Partial<DriverInfo>,
+): Promise<SupplierOrder> {
+  const response = await api.put<{ order: SupplierOrder }>(`/supplier/orders/${id}/driver-info`, driverInfo);
   return response.data.order;
 }
 
@@ -201,4 +300,109 @@ export async function uploadSupplierProductImage(file: File): Promise<string> {
     },
   );
   return response.data.imageUrl;
+}
+
+export async function rescheduleOrder(
+  orderId: number,
+  rescheduleTime: string,
+  reason?: string,
+): Promise<{ order: SupplierOrder }> {
+  const response = await api.post<{ order: SupplierOrder }>(`/orders/${orderId}/reschedule`, {
+    rescheduleTime,
+    reason,
+  });
+  return response.data;
+}
+
+export async function respondRescheduleOrder(
+  orderId: number,
+  action: 'ACCEPT' | 'REJECT',
+  note?: string,
+): Promise<{ order: SupplierOrder; message: string }> {
+  const response = await api.post<{ order: SupplierOrder; message: string }>(
+    `/orders/${orderId}/reschedule-response`,
+    { action, note },
+  );
+  return response.data;
+}
+
+export async function getSavedDrivers(): Promise<SavedDriver[]> {
+  try {
+    const { data } = await api.get<{ success: boolean; drivers: SavedDriver[] }>('/supplier/drivers');
+    return data.drivers || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveSavedDriver(driver: Partial<SavedDriver>): Promise<SavedDriver | null> {
+  try {
+    const { data } = await api.post<{ success: boolean; driver: SavedDriver }>('/supplier/drivers', driver);
+    return data.driver;
+  } catch {
+    return null;
+  }
+}
+
+export async function savePackingChecklist(orderId: number, checkedItemIds: number[]): Promise<number[]> {
+  const { data } = await api.post<{ success: boolean; packingChecklist: number[] }>(
+    `/supplier/orders/${orderId}/packing`,
+    { checkedItemIds },
+  );
+  return data.packingChecklist;
+}
+
+export async function reportSupplierIncident(
+  orderId: number,
+  payload: {
+    damagedItems: Array<{ productId: number; productName: string; packaging?: string; quantity: number }>;
+    damageType: string;
+    damageTypeLabel?: string;
+    evidenceImageUrl?: string | null;
+    notes?: string | null;
+    action: string;
+    lossAmount?: number;
+  },
+): Promise<{ success: boolean; incidentReport: IncidentReport; supplementaryOrder: SupplierOrder | null; message: string }> {
+  const { data } = await api.post(`/supplier/orders/${orderId}/incident`, payload);
+  return data;
+}
+
+export async function confirmSupplierPayment(orderId: number): Promise<{ success: boolean; paymentInfo: PaymentInfo; message: string }> {
+  const { data } = await api.post(`/supplier/orders/${orderId}/confirm-payment`);
+  return data;
+}
+
+export async function approveOrder(orderId: number): Promise<{ success: boolean; order: SupplierOrder; message: string }> {
+  const { data } = await api.post(`/orders/${orderId}/approve`);
+  return data;
+}
+
+export async function confirmOrderArrival(orderId: number): Promise<{ success: boolean; order: SupplierOrder; message: string }> {
+  const { data } = await api.post(`/orders/${orderId}/confirm-arrival`);
+  return data;
+}
+
+export async function submitOrderPayment(
+  orderId: number,
+  method: 'COD' | 'QR',
+  amount?: number,
+): Promise<{ success: boolean; paymentInfo: PaymentInfo; message: string }> {
+  const { data } = await api.post(`/orders/${orderId}/pay`, { method, amount });
+  return data;
+}
+
+export async function completeOrder(orderId: number): Promise<{ success: boolean; order: SupplierOrder; message: string }> {
+  const { data } = await api.post(`/orders/${orderId}/complete`);
+  return data;
+}
+
+export async function importOrderToInventory(orderId: number): Promise<{
+  success: boolean;
+  alreadyImported: boolean;
+  count: number;
+  order: SupplierOrder;
+  message: string;
+}> {
+  return (await api.post(`/orders/${orderId}/import-inventory`)).data;
 }

@@ -36,6 +36,14 @@
   animation: complaintPopUp 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.complaint-dialog-card form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
 @keyframes complaintPopUp {
   from {
     opacity: 0;
@@ -103,6 +111,8 @@
 .complaint-dialog-body {
   padding: 22px 24px;
   overflow-y: auto;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -351,6 +361,7 @@
 
 /* Dialog Footer */
 .complaint-dialog-footer {
+  flex-shrink: 0;
   padding: 16px 24px;
   background: #fbfdfa;
   border-top: 1px solid #ebf1e9;

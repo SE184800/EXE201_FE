@@ -1,4 +1,14 @@
-import { api } from './api';
+import { api, withTransientRetry } from './api';
+
+export type WalletInfo = {
+  userId?: number;
+  availableBalance: number;
+  lockedBalance: number;
+  totalBalance: number;
+  balance?: number;
+  heldBalance?: number;
+  updatedAt?: string;
+};
 
 export type WalletSummary = {
   balance: number;
@@ -24,7 +34,7 @@ export type WalletTransaction = {
   reference: string;
   status: string;
   /** REAL money needs an admin review, SANDBOX money settles instantly. */
-  method: 'REAL' | 'SANDBOX';
+  method: 'REAL' | 'SANDBOX' | 'WALLET';
   orderId: number | null;
   note: string | null;
   createdAt: string;
@@ -149,7 +159,7 @@ export async function createDepositRequest(input: DepositInput): Promise<Deposit
 
 /** Credits simulated money instantly. No admin review, no real transfer. */
 export async function createSandboxDepositRequest(
-  input: { amount: number; note?: string },
+  input: { amount: number; note?: string; requestId?: string },
 ): Promise<DepositRequest> {
   return (
     await api.post<{ request: DepositRequest }>('/wallet/deposits/sandbox', input)
@@ -229,6 +239,34 @@ export async function getWithdrawalRequests(
 /** Pays a wholesale order with the wallet. The amount is decided by the backend. */
 export async function payOrderWithWallet(orderId: number): Promise<OrderPayment> {
   return (await api.post<{ payment: OrderPayment }>(`/wallet/payments/${orderId}`)).data.payment;
+}
+
+export async function depositOrderWithWallet(orderId: number): Promise<void> {
+  await api.post(`/orders/${orderId}/deposit/wallet`);
+}
+
+export async function addMockFunds(
+  amount = 5000000,
+): Promise<{ wallet: WalletInfo; message: string }> {
+  const requestId = crypto.randomUUID();
+  await withTransientRetry(() =>
+    createSandboxDepositRequest({ amount, note: 'Nap tien thu nghiem', requestId }),
+  );
+  const overview = await getWallet();
+  return {
+    wallet: {
+      availableBalance: overview.wallet.balance,
+      lockedBalance: overview.wallet.heldBalance,
+      totalBalance: overview.wallet.total,
+      updatedAt: overview.wallet.updatedAt,
+    },
+    message: 'Nap tien thu nghiem thanh cong.',
+  };
+}
+
+export async function resetMockBalance(): Promise<{ wallet: WalletInfo; message: string }> {
+  const res = await api.post<{ success: boolean; wallet: WalletInfo; message: string }>('/wallet/mock-reset');
+  return res.data;
 }
 
 // ===================== ADMIN =====================

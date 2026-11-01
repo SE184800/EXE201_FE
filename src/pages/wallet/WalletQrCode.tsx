@@ -37,7 +37,7 @@ export default function WalletQrCode({
       errorCorrectionLevel: 'M',
       color: { dark: '#193f32', light: '#ffffff' },
     })
-      .then(url => {
+      .then((url: string) => {
         if (active) setDataUrl(url);
       })
       .catch(() => {

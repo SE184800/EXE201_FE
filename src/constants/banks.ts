@@ -1,0 +1,15 @@
+export const POPULAR_BANKS = [
+  'Vietcombank',
+  'MB Bank (Quân Đội)',
+  'Techcombank',
+  'Sacombank',
+  'VietinBank',
+  'BIDV',
+  'ACB',
+  'VPBank',
+  'TPBank',
+  'HDBank',
+  'VIB',
+  'Agribank',
+  'Khác',
+];

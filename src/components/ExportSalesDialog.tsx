@@ -11,40 +11,38 @@ type ExportSalesDialogProps = {
   storeName?: string;
 };
 
-export default function ExportSalesDialog({
+export default function ExportSalesDialog(props: ExportSalesDialogProps) {
+  return props.isOpen ? <ExportSalesContent key={props.defaultDate || 'today'} {...props} /> : null;
+}
+
+function ExportSalesContent({
   isOpen,
   onClose,
   defaultDate,
   storeName = 'Cửa hàng tạp hóa',
 }: ExportSalesDialogProps) {
-  const today = defaultDate || vietnamDay();
+  const [today] = useState(() => defaultDate || vietnamDay());
+  const [openedAt] = useState(() => Date.now());
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(today);
-  const [loading, setLoading] = useState(false);
+  const [loadedRange, setLoadedRange] = useState<string | null>(null);
+  const loading = loadedRange !== `${from}:${to}`;
   const [exporting, setExporting] = useState<'excel' | 'pdf' | 'print' | null>(null);
   const [preview, setPreview] = useState<StoreRevenueReport | null>(null);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
   useEffect(() => {
-    if (isOpen) {
-      const initialDay = defaultDate || vietnamDay();
-      setFrom(initialDay);
-      setTo(initialDay);
-      setError('');
-      setSuccessMsg('');
-    }
-  }, [isOpen, defaultDate]);
-
-  useEffect(() => {
     if (!isOpen || !from || !to) return;
     let active = true;
-    setLoading(true);
-    setError('');
+    const range = `${from}:${to}`;
 
     getStoreRevenue(from, to, 1)
       .then((data) => {
-        if (active) setPreview(data);
+        if (active) {
+          setPreview(data);
+          setError('');
+        }
       })
       .catch((err) => {
         if (active) {
@@ -53,7 +51,7 @@ export default function ExportSalesDialog({
         }
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) setLoadedRange(range);
       });
 
     return () => {
@@ -166,11 +164,11 @@ export default function ExportSalesDialog({
     setTo(dayStr);
   }
 
-  const yesterday = new Date(Date.now() - 86400000).toLocaleDateString('en-CA', {
+  const yesterday = new Date(openedAt - 86400000).toLocaleDateString('en-CA', {
     timeZone: 'Asia/Ho_Chi_Minh',
   });
 
-  const sevenDaysAgo = new Date(Date.now() - 6 * 86400000).toLocaleDateString('en-CA', {
+  const sevenDaysAgo = new Date(openedAt - 6 * 86400000).toLocaleDateString('en-CA', {
     timeZone: 'Asia/Ho_Chi_Minh',
   });
 
