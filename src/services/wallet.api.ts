@@ -1,4 +1,4 @@
-import { api } from './api';
+import { api, withTransientRetry } from './api';
 
 export type WalletInfo = {
   userId?: number;
@@ -34,7 +34,7 @@ export type WalletTransaction = {
   reference: string;
   status: string;
   /** REAL money needs an admin review, SANDBOX money settles instantly. */
-  method: 'REAL' | 'SANDBOX';
+  method: 'REAL' | 'SANDBOX' | 'WALLET';
   orderId: number | null;
   note: string | null;
   createdAt: string;
@@ -159,7 +159,7 @@ export async function createDepositRequest(input: DepositInput): Promise<Deposit
 
 /** Credits simulated money instantly. No admin review, no real transfer. */
 export async function createSandboxDepositRequest(
-  input: { amount: number; note?: string },
+  input: { amount: number; note?: string; requestId?: string },
 ): Promise<DepositRequest> {
   return (
     await api.post<{ request: DepositRequest }>('/wallet/deposits/sandbox', input)
@@ -242,26 +242,16 @@ export async function payOrderWithWallet(orderId: number): Promise<OrderPayment>
 }
 
 export async function depositOrderWithWallet(orderId: number): Promise<void> {
-  try {
-    await payOrderWithWallet(orderId);
-  } catch {
-    await api.post(`/orders/${orderId}/deposit/wallet`);
-  }
+  await api.post(`/orders/${orderId}/deposit/wallet`);
 }
 
 export async function addMockFunds(
   amount = 5000000,
 ): Promise<{ wallet: WalletInfo; message: string }> {
-  try {
-    await createSandboxDepositRequest({ amount, note: 'Nap tien thu nghiem' });
-  } catch {
-    try {
-      const res = await api.post<{ success: boolean; wallet: WalletInfo; message: string }>('/wallet/mock-add', { amount });
-      return res.data;
-    } catch {
-      // fallback
-    }
-  }
+  const requestId = crypto.randomUUID();
+  await withTransientRetry(() =>
+    createSandboxDepositRequest({ amount, note: 'Nap tien thu nghiem', requestId }),
+  );
   const overview = await getWallet();
   return {
     wallet: {
@@ -275,21 +265,8 @@ export async function addMockFunds(
 }
 
 export async function resetMockBalance(): Promise<{ wallet: WalletInfo; message: string }> {
-  try {
-    const res = await api.post<{ success: boolean; wallet: WalletInfo; message: string }>('/wallet/mock-reset');
-    return res.data;
-  } catch {
-    const overview = await getWallet();
-    return {
-      wallet: {
-        availableBalance: overview.wallet.balance,
-        lockedBalance: overview.wallet.heldBalance,
-        totalBalance: overview.wallet.total,
-        updatedAt: overview.wallet.updatedAt,
-      },
-      message: 'Da dat lai so du vi.',
-    };
-  }
+  const res = await api.post<{ success: boolean; wallet: WalletInfo; message: string }>('/wallet/mock-reset');
+  return res.data;
 }
 
 // ===================== ADMIN =====================

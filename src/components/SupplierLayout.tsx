@@ -50,13 +50,11 @@ export default function SupplierLayout({
   const accountMenu = useRef<HTMLDivElement>(null);
   const accountTrigger = useRef<HTMLButtonElement>(null);
 
-  const [shopName, setShopName] = useState(businessName || 'Gian hàng sỉ của bạn');
+  const [loadedShopName, setShopName] = useState('Gian hàng sỉ của bạn');
+  const shopName = businessName || loadedShopName;
 
   useEffect(() => {
-    if (businessName) {
-      setShopName(businessName);
-      return;
-    }
+    if (businessName) return;
     let active = true;
     api
       .get<{ profile: { supplierProfile?: { businessName?: string } } }>('/profile')

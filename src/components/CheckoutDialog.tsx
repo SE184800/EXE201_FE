@@ -5,6 +5,7 @@ import type { CatalogProduct } from '../services/catalog.api';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import { getWallet, addMockFunds, type WalletInfo } from '../services/wallet.api';
 import { calculateDeliveryFee, type DeliveryFeeResult } from '../utils/geo';
+import type { Profile } from '../pages/ProfilePage';
 
 const roundToThousand = (val: number) => Math.round(val / 1000) * 1000;
 const money = (n: number) => Math.round(n).toLocaleString('vi-VN') + ' ₫';
@@ -64,7 +65,7 @@ export default function CheckoutDialog({
     try {
       const saved = localStorage.getItem('supplymind_checkout_quantities');
       if (saved) return JSON.parse(saved);
-    } catch {}
+    } catch { /* Optional cached state is unavailable; preserve the current values. */ }
     const q: Record<number, number> = {};
     for (const item of initialList) {
       q[item.id] = item.moq;
@@ -76,7 +77,7 @@ export default function CheckoutDialog({
     try {
       const saved = localStorage.getItem('supplymind_checkout_form_draft');
       if (saved) return JSON.parse(saved);
-    } catch {}
+    } catch { /* Optional cached state is unavailable; preserve the current values. */ }
     return {
       recipientName: '',
       recipientPhone: '',
@@ -89,13 +90,13 @@ export default function CheckoutDialog({
   useEffect(() => {
     try {
       localStorage.setItem('supplymind_checkout_quantities', JSON.stringify(quantities));
-    } catch {}
+    } catch { /* Optional cached state is unavailable; preserve the current values. */ }
   }, [quantities]);
 
   useEffect(() => {
     try {
       localStorage.setItem('supplymind_checkout_form_draft', JSON.stringify(form));
-    } catch {}
+    } catch { /* Optional cached state is unavailable; preserve the current values. */ }
   }, [form]);
 
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
@@ -114,10 +115,10 @@ export default function CheckoutDialog({
   useEffect(() => {
     dialog.current?.showModal();
     getWallet()
-      .then((data: any) => {
-        const available = data?.wallet?.balance ?? data?.availableBalance ?? data?.balance ?? 0;
-        const held = data?.wallet?.heldBalance ?? data?.lockedBalance ?? 0;
-        const total = data?.wallet?.total ?? data?.totalBalance ?? (available + held);
+      .then((data) => {
+        const available = data.wallet.balance;
+        const held = data.wallet.heldBalance;
+        const total = data.wallet.total;
         setWallet({
           availableBalance: available,
           lockedBalance: held,
@@ -127,7 +128,7 @@ export default function CheckoutDialog({
       .catch(() => {});
 
     api
-      .get<{ profile: any }>('/profile')
+      .get<{ profile: Profile }>('/profile')
       .then(({ data }) => {
         const p = data.profile;
         const sp = p?.storeProfile;
@@ -293,7 +294,7 @@ export default function CheckoutDialog({
       try {
         localStorage.removeItem('supplymind_checkout_quantities');
         localStorage.removeItem('supplymind_checkout_form_draft');
-      } catch {}
+      } catch { /* Optional cached state is unavailable; preserve the current values. */ }
       setCreatedOrders(results);
     } catch (err) {
       setError(getApiError(err));

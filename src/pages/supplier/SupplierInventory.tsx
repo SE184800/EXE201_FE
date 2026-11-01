@@ -108,7 +108,7 @@ export default function SupplierInventory({ user, onLogout }: { user?: AuthUser;
     } finally {
       setLoading(false);
     }
-  }, [onLogout]);
+  }, [onLogout, navigate]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {

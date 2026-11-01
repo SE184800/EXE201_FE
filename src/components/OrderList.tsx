@@ -12,6 +12,7 @@ import {
   confirmOrderArrival,
   submitOrderPayment,
   completeOrder,
+  importOrderToInventory,
   confirmSupplierPayment,
   savePackingChecklist,
   type SupplierOrder,
@@ -135,7 +136,7 @@ function resolveComplaintImages(url: string | null | undefined): string[] {
         return parsed.map((u) => resolveComplaintImage(u)).filter(Boolean) as string[];
       }
     }
-  } catch { }
+  } catch { /* Optional cached state is unavailable; preserve the current values. */ }
   if (url.includes('|||')) {
     return url
       .split('|||')
@@ -363,6 +364,23 @@ export default function OrderList({
     }
   }
 
+  async function handleImportInventory(order: SupplierOrder) {
+    if (actionLoadingId !== null || order.inventoryImportedAt || !order.canImportInventory) return;
+    setActionLoadingId(order.id);
+    setError('');
+    try {
+      const result = await importOrderToInventory(order.id);
+      setData(current => ({ ...current, orders: current.orders.map(row => row.id === order.id ? result.order : row) }));
+      setDepositNotice(result.message);
+      setReload(value => value + 1);
+    } catch (issue) {
+      setError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      setActionLoadingId(null);
+    }
+  }
+
   async function handleSupplierConfirmPayment(order: SupplierOrder) {
     if (actionLoadingId !== null) return;
     setActionLoadingId(order.id);
@@ -387,7 +405,7 @@ export default function OrderList({
     setPackingMap((prev) => ({ ...prev, [orderId]: next }));
     try {
       await savePackingChecklist(orderId, next);
-    } catch { }
+    } catch { /* Optional cached state is unavailable; preserve the current values. */ }
   }
 
   async function handleToggleAllPacking(order: SupplierOrder) {
@@ -396,7 +414,7 @@ export default function OrderList({
     setPackingMap((prev) => ({ ...prev, [order.id]: next }));
     try {
       await savePackingChecklist(order.id, next);
-    } catch { }
+    } catch { /* Optional cached state is unavailable; preserve the current values. */ }
   }
 
   async function handlePaySubmit(method: 'COD' | 'QR') {
@@ -661,7 +679,7 @@ export default function OrderList({
     event.preventDefault();
     if (!complaintOrder || complaintBusy) return;
 
-    const selectedEntries = Object.entries(complaintSelectedItems).filter(([_, qty]) => qty > 0);
+    const selectedEntries = Object.entries(complaintSelectedItems).filter(([, qty]) => qty > 0);
     if (selectedEntries.length === 0) {
       setComplaintMessage('Vui lòng tích chọn ít nhất 1 mặt hàng gặp sự cố.');
       return;
@@ -677,8 +695,8 @@ export default function OrderList({
         if (!it) return '';
         const intact = getIntactItemArrived(complaintOrder, it);
         const loose = complaintLooseItems[it.id];
-        let lineCost = 0;
-        let summaryLabel = '';
+        let lineCost: number;
+        let summaryLabel: string;
         if (loose?.isLoose && intact.packInfo.multiplier > 1) {
           const eff = typeof loose.looseQty === 'number' && loose.looseQty > 0
             ? Math.min(loose.looseQty, intact.remainingLoose)
@@ -824,7 +842,7 @@ export default function OrderList({
 
       {depositNotice && (
         <div className="deposit-flow-notice" role="status" aria-live="polite">
-          <strong>Cập nhật thanh toán thành công</strong>
+          <strong>Cập nhật đơn hàng</strong>
           <span>{depositNotice}</span>
           <button type="button" aria-label="Đóng thông báo" onClick={() => setDepositNotice('')}>
             ×
@@ -1215,7 +1233,7 @@ export default function OrderList({
                       {(() => {
                         const isAcceptedReschedule = order.note?.includes('[VỰA ĐÃ ĐỒNG Ý DỜI LỊCH GIAO]');
                         if (isAcceptedReschedule) {
-                          const matchTime = order.note?.match(/\[YÊU CẦU DỜI LỊCH GIAO[^\]]*\]: Hẹn lúc ([^\(—|\]]+)/);
+                          const matchTime = order.note?.match(/\[YÊU CẦU DỜI LỊCH GIAO[^\]]*\]: Hẹn lúc ([^(—|\]]+)/);
                           if (matchTime && matchTime[1]) {
                             return `Đã dời hẹn giao: ${matchTime[1].trim()}`;
                           }
@@ -2077,6 +2095,27 @@ export default function OrderList({
                   }}
                 >
                   Đơn hàng đã hoàn tất thành công. Tiền hàng và cọc đã được quyết toán đầy đủ.
+                </div>
+              )}
+
+              {kind === 'store' && order.status === 'COMPLETED' && (
+                <div className="order-inventory-import">
+                  <button
+                    type="button"
+                    className="primary-button"
+                    aria-label={order.inventoryImportedAt ? `Đơn #${order.id} đã thêm vào kho` : `Thêm đơn #${order.id} vào kho`}
+                    disabled={busy || actionLoadingId !== null || Boolean(order.inventoryImportedAt) || !order.canImportInventory}
+                    onClick={() => void handleImportInventory(order)}
+                  >
+                    {order.inventoryImportedAt ? 'Đã thêm vào kho' : actionLoadingId === order.id ? 'Đang thêm vào kho…' : 'Thêm vào kho'}
+                  </button>
+                  <p className="catalog-hint">
+                    {order.inventoryImportedAt
+                      ? `Đã nhập ngày ${new Date(order.inventoryImportedAt).toLocaleString('vi-VN')}. Đơn này không được cộng kho lần nữa.`
+                      : order.inventoryImportBlockedReason || (order.canImportInventory
+                        ? 'Mặt hàng chưa có sẽ được tạo mới. Mặt hàng đã có được cộng tồn và tạo lô mới riêng theo đơn này.'
+                        : 'Cần cập nhật backend để sử dụng chức năng thêm đơn vào kho.')}
+                  </p>
                 </div>
               )}
 

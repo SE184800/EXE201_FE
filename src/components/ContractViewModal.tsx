@@ -207,7 +207,6 @@ export default function ContractViewModal({
   isOpen,
   onClose,
   contract,
-  canonicalText: _canonicalText,
 }: ContractViewModalProps) {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 

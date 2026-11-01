@@ -72,7 +72,7 @@ const profileFields: (keyof ProfileFieldErrors)[] = [
   'warehouseAddress',
 ];
 
-export function validateProfileForm(
+function validateProfileForm(
   values: {
     name: string;
     email: string;
@@ -1600,7 +1600,7 @@ export default function ProfilePage({
             isOpen={showSigningModal}
             onClose={() => setShowSigningModal(false)}
             onSignedSuccess={(updated) => {
-              setContract((prev) => (prev ? { ...prev, ...updated, isSigned: true } : (updated as any)));
+              setContract((prev) => (prev ? { ...prev, ...updated, isSigned: true } : null));
               setShowSigningModal(false);
               setNotice('Đã ký kết hợp đồng điện tử thành công!');
               getMyContract().then((res) => {

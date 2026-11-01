@@ -19,11 +19,11 @@ export default function TopbarBalance({ onNavigateWallet, linkTo, className = ''
   useEffect(() => {
     let active = true;
     getWallet()
-      .then((data: any) => {
+      .then((data) => {
         if (active) {
-          const available = data?.wallet?.balance ?? data?.availableBalance ?? data?.balance ?? 0;
-          const held = data?.wallet?.heldBalance ?? data?.lockedBalance ?? 0;
-          const total = data?.wallet?.total ?? data?.totalBalance ?? (available + held);
+          const available = data.wallet.balance;
+          const held = data.wallet.heldBalance;
+          const total = data.wallet.total;
           setWallet({
             availableBalance: available,
             lockedBalance: held,

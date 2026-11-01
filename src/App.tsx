@@ -95,7 +95,7 @@ function LogoutToast() {
 
 export default function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [checkingSession, setCheckingSession] = useState(true);
+  const [checkingSession, setCheckingSession] = useState(() => sessionStorage.getItem('supplymind_active_tab') === 'true');
 
   const handleSetUser = useCallback((u: AuthUser | null) => {
     if (u) {
@@ -116,7 +116,6 @@ export default function App() {
     const isTabActive = sessionStorage.getItem('supplymind_active_tab') === 'true';
     if (!isTabActive) {
       // Khi mở tab mới hoặc tắt mở lại trình duyệt: yêu cầu đăng nhập lại
-      setCheckingSession(false);
       return;
     }
 

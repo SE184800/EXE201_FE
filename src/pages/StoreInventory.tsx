@@ -56,6 +56,7 @@ type Item = {
     receivedAt: string;
     expiryDate: string | null;
     purchasePrice: number | null;
+    sourceOrderId?: number | null;
   }[];
 };
 type Message = { from: 'bot' | 'user'; text: string; time?: string };
@@ -1176,7 +1177,7 @@ export default function StoreInventory({
                                   {item.lots?.length ? (
                                     item.lots.map((lot) => (
                                       <div className="lot-row" key={lot.id}>
-                                        <span>Lô #{lot.id}</span>
+                                        <span>Lô #{lot.id}{lot.sourceOrderId ? ` · Đơn sỉ #${lot.sourceOrderId}` : ' · Lô hiện có / nhập tay'}</span>
                                         <b>
                                           {lot.quantity} {item.unit}
                                         </b>
@@ -1185,7 +1186,7 @@ export default function StoreInventory({
                                           {new Date(lot.receivedAt).toLocaleDateString('vi-VN')}
                                           {lot.expiryDate
                                             ? ` · HSD ${lot.expiryDate.split('-').reverse().join('/')}`
-                                            : ' · Không có HSD'}
+                                            : ' · Chưa nhập HSD'}
                                           {lot.purchasePrice == null
                                             ? ''
                                             : ` · ${lot.purchasePrice.toLocaleString('vi-VN')} ₫`}

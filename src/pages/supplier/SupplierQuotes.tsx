@@ -124,7 +124,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
     return () => {
       active = false;
     };
-  }, [onLogout, revision]);
+  }, [onLogout, revision, navigate]);
 
   const subtotal = useMemo(
     () => lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
@@ -794,8 +794,8 @@ function DispatchConsignmentModal({
         supplierNotes || undefined,
       );
       onClose();
-    } catch (err: any) {
-      setError(err?.message || 'Không thể điều xe.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể điều xe.');
     } finally {
       setBusy(false);
     }

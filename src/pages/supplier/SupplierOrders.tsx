@@ -16,6 +16,7 @@ import {
   type SupplierOrder,
   type DriverInfo,
   type SavedDriver,
+  type SupplierProfile,
 } from '../../services/supplier.api';
 import type { AuthUser } from '../../types/auth';
 
@@ -372,8 +373,8 @@ function DispatchDriverDialog({
   const minDeliveryDate = canDeliverToday ? todayStr : tomorrowStr;
 
   // Tính giờ mặc định ban đầu
-  let initialDeliveryHour = '08';
-  let initialDeliveryMinute = '00';
+  let initialDeliveryHour: string;
+  let initialDeliveryMinute: string;
   if (canDeliverToday) {
     const clampedEarliest = Math.max(8 * 60, earliestDeliveryMinutes);
     const rounded = Math.ceil(clampedEarliest / 15) * 15;
@@ -1325,7 +1326,7 @@ function SupplierBankAccountDialog({
 
   useEffect(() => {
     let ignore = false;
-    api.get<{ profile: any }>('/supplier/profile').then((res) => {
+    api.get<{ profile: SupplierProfile }>('/supplier/profile').then((res) => {
       if (ignore) return;
       const p = res.data?.profile;
       if (p) {

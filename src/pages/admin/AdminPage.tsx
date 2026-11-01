@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode, type SetStateAction } from 'react';
 import { NavLink, Navigate, useParams } from 'react-router-dom';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
@@ -2783,7 +2783,15 @@ function AiSystemConfig({ onLogout }: Props) {
     revision
   );
 
-  const [form, setForm] = useState<SystemConfig | null>(null);
+  const [draft, setDraft] = useState<{ source: SystemConfig; value: SystemConfig } | null>(null);
+  const form = draft && draft.source === data ? draft.value : (data ?? null);
+  function setForm(update: SetStateAction<SystemConfig | null>) {
+    setDraft(previous => {
+      const current = previous && previous.source === data ? previous.value : (data ?? null);
+      const next = typeof update === 'function' ? update(current) : update;
+      return next && data ? { source: data, value: next } : null;
+    });
+  }
   const [newForbiddenWord, setNewForbiddenWord] = useState('');
   const [newRestrictedWord, setNewRestrictedWord] = useState('');
   const [forbiddenSearch, setForbiddenSearch] = useState('');
@@ -2792,12 +2800,6 @@ function AiSystemConfig({ onLogout }: Props) {
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
 
-  // Sync form with fetched data
-  useEffect(() => {
-    if (data) {
-      setForm(JSON.parse(JSON.stringify(data)));
-    }
-  }, [data]);
 
   useEffect(() => {
     if (!saveSuccess) return;

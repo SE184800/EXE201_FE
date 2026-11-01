@@ -1,3 +1,4 @@
+import { Link, useSearchParams } from 'react-router-dom';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import '../catalog.css';
 import './wallet.css';
@@ -38,6 +39,7 @@ const TABS: { id: Tab; label: string }[] = [
 
 const TRANSACTION_LABELS: Record<string, string> = {
   DEPOSIT: 'Nạp tiền',
+  SUBSCRIPTION_PAYMENT: 'Mua gói Basic',
   WITHDRAWAL_HOLD: 'Tạm giữ tiền rút',
   WITHDRAWAL_RELEASE: 'Hoàn lại tiền rút',
   WITHDRAWAL_PAYOUT: 'Chuyển khoản rút tiền',
@@ -65,7 +67,8 @@ export default function WalletPage({
   onLogout: () => void;
   role: 'STORE_OWNER' | 'SUPPLIER';
 }) {
-  const [tab, setTab] = useState<Tab>('overview');
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(searchParams.get('tab') === 'deposit' ? 'deposit' : 'overview');
   const [overview, setOverview] = useState<WalletOverview | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [deposits, setDeposits] = useState<DepositRequest[]>([]);
@@ -344,6 +347,14 @@ export default function WalletPage({
 
   return (
     <section className="supplier-panel wallet-panel" aria-label="Quản lý ví tiền">
+      {searchParams.get('from') === 'subscription' && (
+        <Link
+          className="ghost-button"
+          to={`${role === 'SUPPLIER' ? '/supplier' : '/store'}/subscription`}
+        >
+          ← Quay lại mua gói Basic sau khi nạp tiền
+        </Link>
+      )}
       <div className="supplier-panel-title">
         <div>
           <span className="supplier-panel-label">VÍ TIỀN</span>
@@ -984,7 +995,7 @@ export default function WalletPage({
                             transaction.method === 'SANDBOX' ? 'approved' : 'pending'
                           }`}
                         >
-                          {transaction.method === 'SANDBOX' ? 'Thử nghiệm' : 'Chính thức'}
+                          {transaction.method === 'SANDBOX' ? 'Thử nghiệm' : transaction.method === 'WALLET' ? 'Số dư ví' : 'Chính thức'}
                         </span>
                       </td>
                       <td style={{ fontSize: '12.5px', color: '#475569', whiteSpace: 'nowrap' }}>
