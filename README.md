@@ -51,3 +51,17 @@ Pull cả hai repo và chạy migration/generate BE trước khi thử các tran
 - `npm test`: kiểm tra chuẩn hóa và các trường hợp dữ liệu đăng ký không hợp lệ (Node.js 24).
 
 Production cần SPA fallback về index.html và proxy `/api` sang backend, hoặc cấu hình VITE_API_URL trước khi build. Dùng HTTPS và FE/API cùng site. API phải cấu hình FRONTEND_URL khớp origin frontend.
+
+## Chạy sau khi clone Git
+
+Cài Node.js 24 kèm npm; đóng toàn bộ VS Code rồi mở lại. Trong thư mục chứa `package.json` của frontend:
+
+```powershell
+npm ci
+Copy-Item .env.example .env
+npm run dev
+```
+
+Chỉ sao chép `.env` lần đầu. Backend cần chạy trên cổng 5000 theo hướng dẫn của repo backend. Những lần sau chỉ cần `npm run dev`. Đường dẫn thư mục có thể khác nhau trên từng máy.
+
+Commit source, `package.json`, `package-lock.json` và `.env.example`; giữ `.env`, `.env.local`, `node_modules` và `dist` riêng trên mỗi máy.
