@@ -1139,11 +1139,8 @@ export default function OrderList({
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                        <span>ĐÃ GỬI YÊU CẦU DỜI LỊCH GIAO: Đang chờ chủ vựa xác nhận.</span>
+                        <span>Đã xin đổi giờ giao · Chờ xác nhận</span>
                       </div>
-                      <small style={{ display: 'block', marginTop: '2px', color: '#b45309' }}>
-                        Tiệm đã báo trước để tài xế chủ động tuyến đường, hoàn toàn không tính là bùng đơn.
-                      </small>
                     </div>
                   );
                 }
@@ -1164,7 +1161,7 @@ export default function OrderList({
                         gap: '6px',
                       }}
                     >
-                      <strong>ĐÃ THỐNG NHẤT DỜI LỊCH GIAO: Chủ vựa đã xác nhận đổi tuyến giao theo giờ hẹn của tiệm.</strong>
+                      <strong>Đã xác nhận đổi giờ giao.</strong>
                     </div>
                   );
                 }
@@ -1185,7 +1182,7 @@ export default function OrderList({
                         gap: '6px',
                       }}
                     >
-                      <strong>CHỦ VỰA KHÔNG THỂ DỜI LỊCH: Vui lòng sắp xếp người nhận hàng hoặc gọi trực tiếp cho vựa.</strong>
+                      <strong>Không thể đổi giờ giao. Vui lòng gọi chủ vựa.</strong>
                     </div>
                   );
                 }
@@ -1224,8 +1221,8 @@ export default function OrderList({
                       }}
                     >
                       {order.status === 'PREPARING'
-                        ? 'Đã chuẩn bị hàng xong · Sẵn sàng vận chuyển'
-                        : 'Đang trên đường vận chuyển'}
+                        ? 'Đang soạn hàng'
+                        : 'Đang giao hàng'}
                     </strong>
                     <span
                       style={{
@@ -1241,15 +1238,15 @@ export default function OrderList({
                         if (isAcceptedReschedule) {
                           const matchTime = order.note?.match(/\[YÊU CẦU DỜI LỊCH GIAO[^\]]*\]: Hẹn lúc ([^(—|\]]+)/);
                           if (matchTime && matchTime[1]) {
-                            return `Đã dời hẹn giao: ${matchTime[1].trim()}`;
+                            return `Giờ giao mới: ${matchTime[1].trim()}`;
                           }
                         }
                         if (order.driverInfo?.estimatedDeliveryTime) {
                           return `Dự kiến giao: ${order.driverInfo.estimatedDeliveryTime}`;
                         }
                         return order.status === 'PREPARING'
-                          ? 'Dự kiến: Sắp xếp chuyến xe sớm nhất'
-                          : 'Dự kiến giao: trong 30 – 45 phút tới';
+                          ? 'Chưa có giờ giao'
+                          : 'Chưa có giờ đến dự kiến';
                       })()}
                     </span>
                   </div>
@@ -1264,7 +1261,7 @@ export default function OrderList({
                     }}
                   >
                     <div>
-                      <span><strong>Kho xuất phát:</strong> </span>
+                      <span><strong>Kho:</strong> </span>
                       <span>{order.supplier?.warehouseAddress || 'Kho vựa phân phối'}</span>
                       <div style={{ marginTop: '4px' }}>
                         <span><strong>Phương tiện:</strong> </span>
@@ -1298,28 +1295,30 @@ export default function OrderList({
                       </div>
                     </div>
                     <div>
-                      <span><strong>Tài xế giao hàng:</strong> </span>
+                      <span><strong>Giao hàng:</strong> </span>
                       <strong>
                         {order.driverInfo?.driverName ||
                           (order.supplier?.businessName
-                            ? `Đội giao vận ${order.supplier.businessName}`
-                            : 'Đội giao vận chủ vựa')}
+                            ? order.supplier.businessName
+                            : 'Chưa có tài xế')}
                       </strong>
                       <br />
-                      <span><strong>Số điện thoại tài xế:</strong> </span>
+                      {(order.driverInfo?.driverPhone || order.supplier?.phone) && <>
+                      <span><strong>Liên hệ:</strong> </span>
                       <a
-                        href={`tel:${order.driverInfo?.driverPhone || order.supplier?.phone || '0908123789'}`}
+                        href={`tel:${order.driverInfo?.driverPhone || order.supplier?.phone}`}
                         style={{
                           color: '#1d4ed8',
                           fontWeight: 700,
                           textDecoration: 'underline',
                         }}
                       >
-                        {order.driverInfo?.driverPhone || order.supplier?.phone || '0908 123 789'}
+                        {order.driverInfo?.driverPhone || order.supplier?.phone}
                       </a>
+                      </>}
                       {order.driverInfo?.deliveryNotes && (
                         <div style={{ marginTop: '4px', fontSize: '11px', color: '#475569' }}>
-                          <span><strong>Ghi chú chuyến xe:</strong> <em>{order.driverInfo.deliveryNotes}</em></span>
+                          <span><strong>Ghi chú:</strong> <em>{order.driverInfo.deliveryNotes}</em></span>
                         </div>
                       )}
                     </div>
@@ -1337,14 +1336,10 @@ export default function OrderList({
                       gap: '8px',
                     }}
                   >
-                    <span style={{ color: '#475569', fontSize: '11px' }}>
-                      {order.status === 'PREPARING'
-                        ? 'Hàng đã chuẩn bị xong. Tiệm có thể hẹn dời giờ nhận ngay trước khi xe lăn bánh để vựa chủ động sắp chuyến.'
-                        : 'Nếu bạn có việc bận đi vắng, hãy gọi tài xế hoặc bấm Hẹn dời giờ nhận để tài xế chủ động tuyến đường.'}
-                    </span>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {(order.driverInfo?.driverPhone || order.supplier?.phone) && (
                       <a
-                        href={`tel:${order.driverInfo?.driverPhone || order.supplier?.phone || '0908123789'}`}
+                        href={`tel:${order.driverInfo?.driverPhone || order.supplier?.phone}`}
                         className="ghost-button"
                         style={{
                           fontSize: '11px',
@@ -1355,8 +1350,9 @@ export default function OrderList({
                           gap: '4px',
                         }}
                       >
-                        Gọi tài xế / vựa
+                        {order.driverInfo?.driverPhone ? 'Gọi tài xế' : 'Gọi chủ vựa'}
                       </a>
+                      )}
                       {kind === 'supplier' && onEditDriver && (
                         <button
                           type="button"
@@ -2294,11 +2290,6 @@ export default function OrderList({
                   {order.depositStatus === 'PENDING'
                     ? 'Chuyển cọc rồi bấm báo đã chuyển.'
                     : 'Chờ chủ vựa duyệt đơn.'}
-                </p>
-              )}
-              {kind === 'store' && order.status === 'PREPARING' && (
-                <p className="catalog-hint">
-                  Chủ vựa đang soạn hàng.
                 </p>
               )}
 
