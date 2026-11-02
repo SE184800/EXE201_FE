@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { fillEmptySuggestions } from '../validation/restock';
 import { api, getApiError, isUnauthenticated } from '../services/api';
+import './restock-print.css';
 
 type Holiday = {
   id: string;
@@ -142,6 +143,10 @@ export default function RestockPage({
     [message, setMessage] = useState(''),
     [reload, setReload] = useState(0);
 
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printScope, setPrintScope] = useState<'TOMORROW' | 'ALL'>('TOMORROW');
+  const [printPlanTarget, setPrintPlanTarget] = useState<Plan | null>(null);
+
   useEffect(() => {
     let active = true;
     api
@@ -241,6 +246,56 @@ export default function RestockPage({
   const displayHolidays = upcomingHolidays.length > 0 ? upcomingHolidays : DEMO_HOLIDAYS;
   const displayItems = items.length > 0 ? items : DEMO_ITEMS;
 
+  const printableLines = (() => {
+    if (printPlanTarget) {
+      if (printScope === 'TOMORROW') {
+        return printPlanTarget.lines.slice(0, Math.max(3, Math.ceil(printPlanTarget.lines.length / 2)));
+      }
+      return printPlanTarget.lines;
+    }
+
+    const allSelected = displayItems
+      .map((item) => {
+        const inputVal = quantities[item.itemId];
+        const qty =
+          inputVal !== undefined && inputVal !== ''
+            ? Number(inputVal)
+            : (item.suggestedQuantity ?? 0);
+        return {
+          sourceItemId: item.itemId,
+          productName: item.name,
+          unit: item.unit,
+          currentStock: item.quantity,
+          daysUntilStockout: item.daysUntilStockout,
+          quantity: qty,
+          purchasePrice: item.purchasePrice,
+        };
+      })
+      .filter((x) => x.quantity > 0);
+
+    if (printScope === 'TOMORROW') {
+      const urgent = allSelected.filter(
+        (x) =>
+          (x.daysUntilStockout !== null && x.daysUntilStockout <= 2) ||
+          x.currentStock <= 10,
+      );
+      return urgent.length > 0 ? urgent : allSelected;
+    }
+
+    return allSelected;
+  })();
+
+  const printTotalCost = printableLines.reduce((sum, line) => {
+    return sum + (line.purchasePrice ? BigInt(line.quantity) * BigInt(line.purchasePrice) : BigInt(0));
+  }, BigInt(0));
+
+  function handleTriggerPrint() {
+    setShowPrintModal(false);
+    setTimeout(() => {
+      window.print();
+    }, 150);
+  }
+
   return (
     <section className="dashboard-card restock-card">
       <div className="card-heading">
@@ -248,9 +303,28 @@ export default function RestockPage({
           <span className="section-kicker">CHỦ ĐỘNG NGUỒN HÀNG</span>
           <h2>Dự báo & kế hoạch nhập</h2>
         </div>
-        <button className="inventory-refresh" onClick={refresh} disabled={loading || saving}>
-          ↻ Tải lại
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="inventory-refresh"
+            style={{
+              backgroundColor: '#059669',
+              color: '#ffffff',
+              borderColor: '#059669',
+              fontWeight: 600,
+            }}
+            onClick={() => {
+              setPrintPlanTarget(null);
+              setShowPrintModal(true);
+            }}
+            disabled={loading || saving}
+          >
+            In phiếu / Xuất PDF
+          </button>
+          <button className="inventory-refresh" onClick={refresh} disabled={loading || saving}>
+            ↻ Tải lại
+          </button>
+        </div>
       </div>
 
       <div className="restock-tabs">
@@ -527,9 +601,22 @@ export default function RestockPage({
                         + {plan.safetyDays} ngày dự phòng
                       </small>
                     </div>
-                    <button className="inventory-refresh" onClick={() => edit(plan)}>
-                      Mở chỉnh sửa
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        type="button"
+                        className="inventory-refresh"
+                        style={{ color: '#059669', borderColor: '#059669', fontWeight: 600 }}
+                        onClick={() => {
+                          setPrintPlanTarget(plan);
+                          setShowPrintModal(true);
+                        }}
+                      >
+                        In phiếu / Xuất PDF
+                      </button>
+                      <button className="inventory-refresh" onClick={() => edit(plan)}>
+                        Mở chỉnh sửa
+                      </button>
+                    </div>
                   </div>
                   {plan.note && <p>{plan.note}</p>}
                   <ul>
@@ -578,6 +665,276 @@ export default function RestockPage({
           </div>
         )
       )}
+
+      {/* Modal Lựa chọn In Phiếu / Xuất File PDF */}
+      {showPrintModal && (
+        <div className="restock-print-modal-backdrop" onClick={() => setShowPrintModal(false)}>
+          <div className="restock-print-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                backgroundColor: '#f8fafc',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a' }}>
+                In Kế Hoạch & Xuất File PDF
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowPrintModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '18px',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '20px' }}>
+              <p style={{ margin: '0 0 16px', fontSize: '14px', color: '#334155', lineHeight: 1.5 }}>
+                Hệ thống sẽ định dạng khổ giấy A4 tiêu chuẩn kèm đầy đủ Quốc hiệu, Tiêu đề phiếu, bảng
+                mặt hàng, đơn giá dự kiến, cột kiểm nhận thực tế và ô ký nhận giữa Tạp hóa và Nhà cung
+                cấp.
+              </p>
+
+              <div style={{ marginBottom: '16px' }}>
+                <strong
+                  style={{
+                    display: 'block',
+                    fontSize: '14px',
+                    marginBottom: '8px',
+                    color: '#1e293b',
+                  }}
+                >
+                  Phạm vi danh sách in / xuất:
+                </strong>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: `1.5px solid ${printScope === 'TOMORROW' ? '#059669' : '#cbd5e1'}`,
+                      backgroundColor: printScope === 'TOMORROW' ? '#f0fdf4' : '#ffffff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="printScope"
+                      checked={printScope === 'TOMORROW'}
+                      onChange={() => setPrintScope('TOMORROW')}
+                      style={{ marginTop: '3px' }}
+                    />
+                    <div>
+                      <strong style={{ display: 'block', color: '#0f172a', fontSize: '14px' }}>
+                        Chỉ in các mặt hàng cấp bách cần nhập ngày mai
+                      </strong>
+                      <span style={{ fontSize: '13px', color: '#475569' }}>
+                        Lọc các mặt hàng có tồn kho còn dưới 2 ngày bán hoặc chạm ngưỡng tồn an toàn để
+                        kịp thời nhập hàng ngay sáng mai.
+                      </span>
+                    </div>
+                  </label>
+
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                      padding: '12px',
+                      borderRadius: '8px',
+                      border: `1.5px solid ${printScope === 'ALL' ? '#059669' : '#cbd5e1'}`,
+                      backgroundColor: printScope === 'ALL' ? '#f0fdf4' : '#ffffff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="printScope"
+                      checked={printScope === 'ALL'}
+                      onChange={() => setPrintScope('ALL')}
+                      style={{ marginTop: '3px' }}
+                    />
+                    <div>
+                      <strong style={{ display: 'block', color: '#0f172a', fontSize: '14px' }}>
+                        In toàn bộ kế hoạch nhập hàng ({printPlanTarget ? printPlanTarget.name : name})
+                      </strong>
+                      <span style={{ fontSize: '13px', color: '#475569' }}>
+                        Bao gồm tất cả các mặt hàng đã được phân bổ số lượng cần nhập trong kế hoạch.
+                      </span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  backgroundColor: '#f1f5f9',
+                  padding: '12px 14px',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  color: '#334155',
+                }}
+              >
+                Số lượng mặt hàng in dự kiến: <strong>{printableLines.length} mặt hàng</strong> · Tổng
+                tiền dự kiến: <strong>{money(printTotalCost)}</strong>
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '14px 20px',
+                borderTop: '1px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '10px',
+                backgroundColor: '#f8fafc',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowPrintModal(false)}
+                style={{
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  background: '#ffffff',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                }}
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleTriggerPrint}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: '#059669',
+                  color: '#ffffff',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Bắt đầu In / Lưu file PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* KHỐI TÀI LIỆU CHUẨN IN KHỔ A4 / XUẤT FILE PDF */}
+      <div className="restock-print-document">
+        <div className="restock-print-header">
+          <div className="restock-print-motto">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
+          <div className="restock-print-submotto">Độc lập - Tự do - Hạnh phúc</div>
+          <div className="restock-print-title">BẢNG KẾ HOẠCH NHẬP HÀNG & PHIẾU KIỂM NHẬN KHO</div>
+          <div className="restock-print-subtitle">
+            Hệ thống Quản lý Chuỗi Cung ứng SupplyMind AI · Phục vụ kiểm đếm thực tế & đối chiếu nhà cung cấp
+          </div>
+        </div>
+
+        <div className="restock-print-meta">
+          <div>
+            <strong>Kế hoạch:</strong> {printPlanTarget ? printPlanTarget.name : name}
+          </div>
+          <div>
+            <strong>Ngày lập phiếu:</strong> {new Date().toLocaleDateString('vi-VN')}{' '}
+            {new Date().toLocaleTimeString('vi-VN')}
+          </div>
+          <div>
+            <strong>Phạm vi kiểm tra:</strong>{' '}
+            {printScope === 'TOMORROW'
+              ? 'DANH MỤC CẤP BÁCH CẦN NHẬP NGÀY MAI (Dưới 2 ngày bán / Cạn kho)'
+              : 'TOÀN BỘ KẾ HOẠCH NHẬP HÀNG'}
+          </div>
+          <div>
+            <strong>Ghi chú / Đơn vị giao:</strong>{' '}
+            {printPlanTarget?.note || note || 'Theo thỏa thuận phân phối hàng hóa tiêu dùng'}
+          </div>
+        </div>
+
+        <table className="restock-print-table">
+          <thead>
+            <tr>
+              <th style={{ width: '35px' }}>STT</th>
+              <th>Tên hàng hóa / Quy cách</th>
+              <th style={{ width: '60px' }}>ĐVT</th>
+              <th style={{ width: '80px' }}>Tồn kho</th>
+              <th style={{ width: '80px' }}>SL cần nhập</th>
+              <th style={{ width: '100px' }}>Đơn giá dự kiến</th>
+              <th style={{ width: '110px' }}>Thành tiền dự kiến</th>
+              <th style={{ width: '65px' }}>Kiểm nhận</th>
+            </tr>
+          </thead>
+          <tbody>
+            {printableLines.map((line, idx) => {
+              const lineCost = line.purchasePrice
+                ? BigInt(line.quantity) * BigInt(line.purchasePrice)
+                : BigInt(0);
+              const currentStockText =
+                'currentStock' in line && typeof line.currentStock === 'number'
+                  ? line.currentStock
+                  : '-';
+              return (
+                <tr key={idx}>
+                  <td className="center">{idx + 1}</td>
+                  <td>
+                    <strong>{line.productName}</strong>
+                  </td>
+                  <td className="center">{line.unit}</td>
+                  <td className="center">{currentStockText}</td>
+                  <td className="center">
+                    <strong>{line.quantity}</strong>
+                  </td>
+                  <td className="right">
+                    {line.purchasePrice == null ? 'Chưa có giá' : money(line.purchasePrice)}
+                  </td>
+                  <td className="right">{money(lineCost)}</td>
+                  <td className="checkbox-col">[ &nbsp; ]</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        <div className="restock-print-total">
+          Tổng số mặt hàng: {printableLines.length} mặt hàng &nbsp;|&nbsp; Tổng chi phí dự kiến:{' '}
+          {money(printTotalCost)}
+        </div>
+
+        <div className="restock-print-signatures">
+          <div className="restock-print-sign-col">
+            <strong>ĐẠI DIỆN CỬA HÀNG / TẠP HÓA</strong>
+            <br />
+            <span style={{ fontSize: '9.5pt', fontStyle: 'italic' }}>
+              (Ký, ghi rõ họ tên và kiểm nhận hàng)
+            </span>
+            <div className="restock-print-sign-space" />
+          </div>
+          <div className="restock-print-sign-col">
+            <strong>ĐẠI DIỆN VỰA / NHÀ CUNG CẤP</strong>
+            <br />
+            <span style={{ fontSize: '9.5pt', fontStyle: 'italic' }}>
+              (Ký, ghi rõ họ tên và xác nhận xuất kho)
+            </span>
+            <div className="restock-print-sign-space" />
+          </div>
+        </div>
+      </div>
     </section>
   );
 }

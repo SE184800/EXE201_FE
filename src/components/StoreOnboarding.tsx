@@ -8,6 +8,7 @@ import { normalizePhone } from '../validation/registration';
 import { POPULAR_BANKS } from '../constants/banks';
 import { validateQrCodeImage } from '../utils/qrValidator';
 import { resolveAddressCoordinates } from '../utils/geo';
+import { lookupTaxCode, type TaxBusinessInfo } from '../services/tax.api';
 
 type StoreOnboardingProps = {
   user: AuthUser;
@@ -59,6 +60,42 @@ export default function StoreOnboarding({
   const [uploadingQr, setUploadingQr] = useState(false);
   const [qrUploadError, setQrUploadError] = useState('');
   const [bankingError, setBankingError] = useState('');
+
+  // Tax Verification State
+  const [taxVerifying, setTaxVerifying] = useState(false);
+  const [taxVerifiedInfo, setTaxVerifiedInfo] = useState<TaxBusinessInfo | null>(null);
+  const [taxVerifyError, setTaxVerifyError] = useState('');
+
+  async function handleVerifyTaxCode() {
+    const clean = taxCode.trim().replace(/\s+/g, '');
+    if (!clean) {
+      setTaxVerifyError('Vui lòng nhập mã số thuế trước khi kiểm tra.');
+      return;
+    }
+    setTaxVerifying(true);
+    setTaxVerifyError('');
+    try {
+      const res = await lookupTaxCode(clean);
+      setTaxVerifiedInfo(res.data);
+      setTaxVerifyError('');
+      if (fieldErrors.taxCode) setFieldErrors((prev) => ({ ...prev, taxCode: undefined }));
+    } catch (err: any) {
+      setTaxVerifiedInfo(null);
+      setTaxVerifyError(err.response?.data?.message || 'Không tìm thấy mã số thuế này trên hệ thống thuế quốc gia.');
+    } finally {
+      setTaxVerifying(false);
+    }
+  }
+
+  function applyTaxInfoToForm() {
+    if (!taxVerifiedInfo) return;
+    if (taxVerifiedInfo.businessName) {
+      setStoreName(taxVerifiedInfo.businessName);
+    }
+    if (taxVerifiedInfo.address && !taxVerifiedInfo.address.startsWith('Khu vực')) {
+      setStoreAddress(taxVerifiedInfo.address);
+    }
+  }
 
   async function verifyAddressOnMap() {
     const trimmed = storeAddress.trim();
@@ -583,29 +620,115 @@ export default function StoreOnboarding({
                     Tra cứu mã số thuế (masothue.com)
                   </a>
                 </div>
-                <input
-                  id="onboarding-taxCode"
-                  type="text"
-                  maxLength={14}
-                  disabled={saving}
-                  placeholder="Ví dụ: 0312345678 (10–14 số hoặc gạch ngang)"
-                  value={taxCode}
-                  onChange={(e) => {
-                    setTaxCode(e.target.value);
-                    if (fieldErrors.taxCode) setFieldErrors({ ...fieldErrors, taxCode: undefined });
-                  }}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: `1px solid ${fieldErrors.taxCode ? '#dc2626' : '#cbd5e1'}`,
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                  }}
-                />
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <input
+                    id="onboarding-taxCode"
+                    type="text"
+                    maxLength={14}
+                    disabled={saving}
+                    placeholder="Ví dụ: 0316789123 hoặc 0300588569"
+                    value={taxCode}
+                    onChange={(e) => {
+                      setTaxCode(e.target.value);
+                      if (taxVerifiedInfo) setTaxVerifiedInfo(null);
+                      if (taxVerifyError) setTaxVerifyError('');
+                      if (fieldErrors.taxCode) setFieldErrors({ ...fieldErrors, taxCode: undefined });
+                    }}
+                    style={{
+                      flex: 1,
+                      padding: '10px 14px',
+                      borderRadius: '8px',
+                      border: `1px solid ${fieldErrors.taxCode || taxVerifyError ? '#dc2626' : taxVerifiedInfo ? '#16a34a' : '#cbd5e1'}`,
+                      fontSize: '14px',
+                      boxSizing: 'border-box',
+                      outline: 'none',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleVerifyTaxCode}
+                    disabled={saving || taxVerifying || !taxCode.trim()}
+                    style={{
+                      padding: '10px 16px',
+                      backgroundColor: taxVerifiedInfo ? '#f0fdf4' : '#166534',
+                      color: taxVerifiedInfo ? '#166534' : '#ffffff',
+                      border: `1px solid ${taxVerifiedInfo ? '#86efac' : '#166534'}`,
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 650,
+                      cursor: saving || taxVerifying || !taxCode.trim() ? 'not-allowed' : 'pointer',
+                      opacity: saving || taxVerifying || !taxCode.trim() ? 0.6 : 1,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {taxVerifying ? 'Đang xác thực…' : taxVerifiedInfo ? 'Đã xác thực' : 'Kiểm tra & Xác thực'}
+                  </button>
+                </div>
+
+                {/* Tax verification error */}
+                {taxVerifyError && (
+                  <div
+                    style={{
+                      marginTop: '6px',
+                      padding: '8px 12px',
+                      backgroundColor: '#fef2f2',
+                      border: '1px solid #fecaca',
+                      borderRadius: '6px',
+                      color: '#b91c1c',
+                      fontSize: '12.5px',
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    <strong>Lỗi xác thực:</strong> {taxVerifyError}
+                  </div>
+                )}
+
+                {/* Tax verified result card */}
+                {taxVerifiedInfo && (
+                  <div
+                    style={{
+                      marginTop: '8px',
+                      padding: '12px 14px',
+                      backgroundColor: '#f0fdf4',
+                      border: '1px solid #86efac',
+                      borderRadius: '8px',
+                      fontSize: '12.5px',
+                      color: '#166534',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                      <span style={{ fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', color: '#15803d', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '4px' }}>
+                        ĐÃ XÁC THỰC TRÊN CƠ SỞ DỮ LIỆU THUẾ QUỐC GIA
+                      </span>
+                      <button
+                        type="button"
+                        onClick={applyTaxInfoToForm}
+                        style={{
+                          fontSize: '11.5px',
+                          fontWeight: 600,
+                          color: '#15803d',
+                          backgroundColor: '#ffffff',
+                          border: '1px solid #86efac',
+                          borderRadius: '4px',
+                          padding: '2px 8px',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Áp dụng vào form
+                      </button>
+                    </div>
+                    <div><strong>Tên pháp nhân:</strong> {taxVerifiedInfo.businessName}</div>
+                    <div><strong>Người đại diện:</strong> {taxVerifiedInfo.representative}</div>
+                    <div><strong>Địa chỉ đăng ký:</strong> {taxVerifiedInfo.address}</div>
+                    <div style={{ fontSize: '11.5px', color: '#166534', marginTop: '2px' }}>
+                      <strong>Trạng thái:</strong> {taxVerifiedInfo.status}
+                    </div>
+                  </div>
+                )}
+
                 <small style={{ color: '#64748b', display: 'block', marginTop: '4px', fontSize: '12px' }}>
-                  Có thể tra cứu nhanh theo tên tiệm tạp hóa hoặc tên chủ tiệm trên masothue.com.
+                  Hệ thống kiểm tra trực tiếp tính hợp lệ của mã số thuế (thuật toán Modulo 11) và dữ liệu cơ sở kinh doanh theo quy chuẩn Tổng cục Thuế.
                 </small>
                 {fieldErrors.taxCode && (
                   <span

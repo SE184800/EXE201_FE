@@ -5,6 +5,7 @@ export interface DigitalStamp {
   status: string;
   signedBy: string;
   representative: string;
+  signingMethod?: string;
   authority: string;
   algorithm: string;
   signedAt: string;
@@ -21,6 +22,7 @@ export interface UserContract {
   signedAt: string | null;
   contractHash: string | null;
   signature?: string | null;
+  signingMethod?: string;
   publicKey?: string;
   rawPublicKey?: string;
   rawPrivateKey?: string;
@@ -52,8 +54,16 @@ export interface ContractStatusResponse {
 }
 
 export interface SignContractPayload {
-  privateKey: string;
+  method?: 'VNEID' | 'PRIVATE_KEY';
+  privateKey?: string;
   agreedTerms: boolean;
+  vneidData?: {
+    cccd?: string;
+    citizenName?: string;
+    authMethod?: string;
+    level?: number;
+    verifiedAt?: string;
+  };
 }
 
 export interface SignContractResponse {
