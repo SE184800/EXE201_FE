@@ -63,6 +63,7 @@ export default function StoreOnboarding({
 
   // Tax Verification State
   const [taxVerifying, setTaxVerifying] = useState(false);
+  const [taxNotice, setTaxNotice] = useState('');
   const [taxVerifiedInfo, setTaxVerifiedInfo] = useState<TaxBusinessInfo | null>(null);
   const [taxVerifyError, setTaxVerifyError] = useState('');
 
@@ -72,16 +73,18 @@ export default function StoreOnboarding({
       setTaxVerifyError('Vui lòng nhập mã số thuế trước khi kiểm tra.');
       return;
     }
+    setTaxNotice('');
     setTaxVerifying(true);
     setTaxVerifyError('');
     try {
       const res = await lookupTaxCode(clean);
-      setTaxVerifiedInfo(res.data);
+      setTaxVerifiedInfo(res.verified ? res.data : null);
+      setTaxNotice(res.verified ? '' : (res.message || 'Đúng định dạng. Chưa xác minh thông tin đăng ký.'));
       setTaxVerifyError('');
       if (fieldErrors.taxCode) setFieldErrors((prev) => ({ ...prev, taxCode: undefined }));
-    } catch (err: any) {
+    } catch (err: unknown) {
       setTaxVerifiedInfo(null);
-      setTaxVerifyError(err.response?.data?.message || 'Không tìm thấy mã số thuế này trên hệ thống thuế quốc gia.');
+      setTaxVerifyError(getApiError(err));
     } finally {
       setTaxVerifying(false);
     }
@@ -630,6 +633,7 @@ export default function StoreOnboarding({
                     value={taxCode}
                     onChange={(e) => {
                       setTaxCode(e.target.value);
+                      setTaxNotice('');
                       if (taxVerifiedInfo) setTaxVerifiedInfo(null);
                       if (taxVerifyError) setTaxVerifyError('');
                       if (fieldErrors.taxCode) setFieldErrors({ ...fieldErrors, taxCode: undefined });
@@ -661,11 +665,12 @@ export default function StoreOnboarding({
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    {taxVerifying ? 'Đang xác thực…' : taxVerifiedInfo ? 'Đã xác thực' : 'Kiểm tra & Xác thực'}
+                    {taxVerifying ? 'Đang kiểm tra…' : taxVerifiedInfo ? 'Đã tra cứu' : 'Kiểm tra định dạng'}
                   </button>
                 </div>
 
                 {/* Tax verification error */}
+                {taxNotice && <p role="status">{taxNotice}</p>}
                 {taxVerifyError && (
                   <div
                     style={{
@@ -679,7 +684,7 @@ export default function StoreOnboarding({
                       lineHeight: 1.45,
                     }}
                   >
-                    <strong>Lỗi xác thực:</strong> {taxVerifyError}
+                    <strong>Kiểm tra lại:</strong> {taxVerifyError}
                   </div>
                 )}
 
@@ -699,7 +704,7 @@ export default function StoreOnboarding({
                   >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
                       <span style={{ fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', color: '#15803d', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '4px' }}>
-                        ĐÃ XÁC THỰC TRÊN CƠ SỞ DỮ LIỆU THUẾ QUỐC GIA
+                        THÔNG TIN TRA CỨU
                       </span>
                       <button
                         type="button"

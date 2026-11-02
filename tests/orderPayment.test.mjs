@@ -11,6 +11,7 @@ test('remaining amount subtracts only a paid deposit and caps damaged goods at t
 });
 test('paid wallet or confirmed cash never asks the buyer to pay again', () => {
   assert.equal(orderPaymentSummary({ ...order, walletPayment: { status: 'SETTLED', amount: 110000 } }).remaining, 0);
+  assert.equal(orderPaymentSummary({ ...order, walletPayment: { status: 'PAID', amount: 90000 } }).remaining, 0);
   assert.equal(orderPaymentSummary({ ...order, driverInfo: { paymentInfo: { status: 'CONFIRMED' } } }).remaining, 0);
   assert.equal(orderPaymentSummary({ ...order, walletPayment: { status: 'SETTLED', amount: 110000, refunded: true } }).paid, false);
   assert.equal(orderPaymentSummary({ ...order, walletPayment: { status: 'SETTLED', amount: 1 } }).paid, false);

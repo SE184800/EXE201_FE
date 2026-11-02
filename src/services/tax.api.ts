@@ -13,6 +13,8 @@ export interface TaxBusinessInfo {
 
 export interface TaxLookupResponse {
   verified: boolean;
+  formatValid?: boolean;
+  message?: string;
   source: string;
   data: TaxBusinessInfo;
 }

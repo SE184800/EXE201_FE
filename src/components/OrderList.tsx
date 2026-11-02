@@ -424,12 +424,13 @@ export default function OrderList({
   }
 
   async function handlePaySubmit(method: 'COD' | 'QR' | 'WALLET') {
-    if (!paymentOrder) return;
+    if (!paymentOrder || actionLoadingId !== null) return;
     const order = paymentOrder;
     setActionLoadingId(order.id);
     try {
       const res = await submitOrderPayment(order.id, method);
       setDepositNotice(res.message || `Đã báo trả tiền. Chờ chủ vựa xác nhận.`);
+      window.dispatchEvent(new Event('supplymind:wallet-changed'));
       setPaymentOrder(null);
       setReload((n) => n + 1);
     } catch (issue) {
@@ -3267,8 +3268,7 @@ function PaymentDialog({
     ? computeOrderLossAmount(order)
     : 0;
   const depositPaid = order.depositStatus === 'PAID' ? order.depositAmount : 0;
-  const adjustedTotal = Math.max(0, order.subtotal - lossAmount) + order.deliveryFee;
-  const remainingAmount = Math.max(0, adjustedTotal - depositPaid);
+  const remainingAmount = orderPaymentSummary(order, lossAmount).remaining;
 
   useEffect(() => {
     let active = true;
@@ -3277,7 +3277,7 @@ function PaymentDialog({
         if (active) setWalletBalance(data.wallet.balance);
       })
       .catch(() => {
-        if (active) setWalletBalance(0);
+        if (active) setWalletBalance(null);
       })
       .finally(() => {
         if (active) setLoadingWallet(false);
@@ -3287,10 +3287,11 @@ function PaymentDialog({
     };
   }, []);
 
-  const hasSupplierBank = Boolean(order.supplier?.bankAccountNumber && order.supplier?.bankName);
-  const bankName = hasSupplierBank ? order.supplier!.bankName! : 'Sacombank';
-  const bankAcc = hasSupplierBank ? order.supplier!.bankAccountNumber! : '050138052378';
-  const bankHolder = hasSupplierBank ? order.supplier!.bankAccountHolder! : 'LE TRAN MINH DUC';
+  const bank = supplierPaymentBank(order.supplier);
+  const hasSupplierBank = Boolean(bank);
+  const bankName = bank?.name || '';
+  const bankAcc = bank?.account || '';
+  const bankHolder = bank?.holder || '';
   const qrUrl = `https://img.vietqr.io/image/${encodeURIComponent(bankName)}-${encodeURIComponent(bankAcc)}-compact2.png?amount=${remainingAmount}&addInfo=THANH%20TOAN%20DH${order.id}&accountName=${encodeURIComponent(bankHolder)}`;
 
   const isWalletSufficient = walletBalance !== null && walletBalance >= remainingAmount;
@@ -3414,7 +3415,8 @@ function PaymentDialog({
                 <small style={{ color: '#64748b' }}>
                   {loadingWallet
                     ? 'Đang kiểm tra số dư ví…'
-                    : `Số dư khả dụng: ${money(walletBalance ?? 0)} · Trừ trực tiếp & Hoàn tất tức thì`}
+                    : walletBalance === null ? 'Chưa tải được số dư. Đóng và mở lại để thử.'
+                    : `Số dư khả dụng: ${money(walletBalance)} · Trừ ví, rồi hoàn tất đơn`}
                 </small>
               </div>
               <span
@@ -3461,6 +3463,7 @@ function PaymentDialog({
               <button
                 type="button"
                 onClick={() => setMethod('QR')}
+              disabled={busy || !hasSupplierBank}
                 style={{
                   padding: '12px',
                   borderRadius: '8px',
@@ -3479,7 +3482,7 @@ function PaymentDialog({
                 >
                   Quét mã VietQR
                 </strong>
-                <small style={{ color: '#64748b' }}>Chuyển khoản trực tiếp vựa</small>
+                <small style={{ color: '#64748b' }}>{hasSupplierBank ? 'Vào tài khoản chủ vựa' : 'Chủ vựa chưa có tài khoản nhận tiền'}</small>
               </button>
             </div>
           </div>
@@ -3650,7 +3653,7 @@ function PaymentDialog({
               cursor: method === 'WALLET' && !isWalletSufficient ? 'not-allowed' : 'pointer',
             }}
             onClick={() => onSubmit(method)}
-            disabled={busy || (method === 'WALLET' && !isWalletSufficient)}
+            disabled={busy || (method === 'WALLET' && !isWalletSufficient) || (method === 'QR' && !hasSupplierBank)}
           >
             {busy
               ? 'Đang xử lý…'

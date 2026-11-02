@@ -18,7 +18,7 @@ export default function TopbarBalance({ onNavigateWallet, linkTo, className = ''
 
   useEffect(() => {
     let active = true;
-    getWallet()
+    const refresh = () => getWallet()
       .then((data) => {
         if (active) {
           const available = data.wallet.balance;
@@ -35,7 +35,10 @@ export default function TopbarBalance({ onNavigateWallet, linkTo, className = ''
       .finally(() => {
         if (active) setLoading(false);
       });
+    void refresh();
+    window.addEventListener('supplymind:wallet-changed', refresh);
     return () => {
+      window.removeEventListener('supplymind:wallet-changed', refresh);
       active = false;
     };
   }, []);

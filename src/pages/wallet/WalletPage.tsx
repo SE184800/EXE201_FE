@@ -1,4 +1,3 @@
-import { Link, useSearchParams } from 'react-router-dom';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import '../catalog.css';
 import '../wallet.css';
@@ -51,7 +50,6 @@ type FilterCategory = 'ALL' | 'ESCROW' | 'DEPOSIT' | 'WITHDRAW' | 'MOCK';
 
 export default function WalletPage({
   onLogout,
-  role: _role,
 }: {
   onLogout: () => void;
   role?: 'STORE_OWNER' | 'SUPPLIER';
@@ -93,13 +91,12 @@ export default function WalletPage({
   }, [notice]);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
     try {
       const [walletRes, txRes] = await Promise.all([
         getWallet(),
         getWalletTransactions({ page: 1 }),
       ]);
+      setError('');
       setOverview(walletRes);
       setTransactions(txRes.transactions || []);
     } catch (e) {
@@ -111,7 +108,9 @@ export default function WalletPage({
   }, [onLogout]);
 
   useEffect(() => {
-    void load();
+    let cancelled = false;
+    queueMicrotask(() => { if (!cancelled) void load(); });
+    return () => { cancelled = true; };
   }, [load]);
 
   // Load bank info from profile if available

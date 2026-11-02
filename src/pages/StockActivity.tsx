@@ -73,7 +73,7 @@ function groupMovementsIntoBatches(movements: Movement[]): StockBatch[] {
         batchType: 'WHOLESALE_ORDER',
         orderId,
         title: `Đợt nhập từ Đơn hàng sỉ #${orderId}`,
-        subtitle: supplier ? `Nhà cung cấp: ${supplier}` : 'Nhập tự động sau khi giao hàng thành công',
+        subtitle: supplier ? `Nhà cung cấp: ${supplier}` : 'Nhập kho từ đơn mua',
         occurredAt: batchMovements[0].createdAt,
         supplierName: supplier,
         totalItems: batchMovements.length,
@@ -114,7 +114,7 @@ function groupMovementsIntoBatches(movements: Movement[]): StockBatch[] {
         batchType: 'MANUAL_IMPORT',
         title: isSingle
           ? `Đợt nhập lẻ: ${batchMovements[0].productName}`
-          : `Đợt nhập kho lẻ (${batchMovements.length} mặt hàng)`,
+          : `Nhóm nhập gần nhau (${batchMovements.length} dòng)`,
         subtitle: isSingle
           ? `+${batchMovements[0].quantityChange} ${batchMovements[0].unit}${batchMovements[0].note ? ` · ${batchMovements[0].note}` : ''}`
           : batchMovements.map((m) => m.productName).slice(0, 3).join(', ') + (batchMovements.length > 3 ? '…' : ''),
@@ -512,7 +512,7 @@ export default function StockActivity({
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                       <div style={{ textAlign: 'right' }}>
                         <strong style={{ fontSize: '13px', color: '#0f172a', display: 'block' }}>
-                          {batch.totalItems} mặt hàng · Tổng +{batch.totalQuantity} sản phẩm
+                          {batch.totalItems} dòng trên trang · {Array.from(new Set(batch.movements.map(m => m.unit))).map(unit => `+${batch.movements.filter(m => m.unit === unit).reduce((sum, m) => sum + Math.max(0, m.quantityChange), 0)} ${unit}`).join(' · ')}
                         </strong>
                         <span style={{ fontSize: '12px', color: '#64748b' }}>
                           {new Date(batch.occurredAt).toLocaleString('vi-VN')}

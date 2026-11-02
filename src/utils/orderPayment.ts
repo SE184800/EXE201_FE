@@ -13,7 +13,7 @@ export function orderPaymentSummary(order: PaymentOrder, damageAmount = 0) {
   const total = Math.max(0, order.subtotal - loss) + order.deliveryFee;
   const deposit = order.depositStatus === 'PAID' ? order.depositAmount : 0;
   const walletPaid = Boolean(order.walletPayment && !order.walletPayment.refunded &&
-    ['PAID', 'SETTLED'].includes(order.walletPayment.status) && Number(order.walletPayment.amount) >= order.subtotal + order.deliveryFee);
+    ['PAID', 'SETTLED'].includes(order.walletPayment.status) && Number(order.walletPayment.amount) >= Math.max(0, total - deposit));
   const paid = walletPaid || order.driverInfo?.paymentInfo?.status === 'CONFIRMED';
   return { total, deposit, walletPaid, paid, remaining: paid || order.status === 'REJECTED' ? 0 : Math.max(0, total - deposit) };
 }
