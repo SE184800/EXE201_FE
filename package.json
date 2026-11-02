@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"*.{ts,js,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"*.{ts,js,json}\"",
-    "test": "tsx --test tests/registration.test.mjs",
+    "test": "tsx --test tests/*.test.mjs",
     "preview": "vite preview",
     "mobile:sync": "npm run build && cap sync android",
     "mobile:apk": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-android.ps1"

@@ -34,7 +34,8 @@ const nextWeek = () => {
   date.setDate(date.getDate() + 7);
   return localDate(date);
 };
-type DraftLine = { product: SupplierProduct; quantity: number; unitPrice: number };
+type DraftLine = { product: SupplierProduct; quantity: number; unitPrice: number; discountRate: number };
+const discountedPrice = (price: number, rate: number) => Math.round(price * (100 - rate)) / 100;
 const statusLabel: Record<string, string> = {
   SENT: 'Chờ cửa hàng',
   ACCEPTED: 'Đã chấp nhận',
@@ -71,7 +72,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
     autoExchangeExpiry: true,
   });
   const [lines, setLines] = useState<DraftLine[]>([]);
-  const [lineForm, setLineForm] = useState({ productId: 0, quantity: 1, unitPrice: 0 });
+  const [lineForm, setLineForm] = useState({ productId: 0, quantity: 1, unitPrice: 0, discountRate: 0 });
 
   useEffect(() => {
     document.title = 'SupplyMind AI · Báo giá tiếp thị';
@@ -106,6 +107,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
         }));
         if (available[0])
           setLineForm({
+        discountRate: 0,
             productId: available[0].id,
             quantity: Math.max(1, available[0].moq),
             unitPrice: available[0].wholesalePrice,
@@ -124,10 +126,10 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
     return () => {
       active = false;
     };
-  }, [onLogout, revision]);
+  }, [onLogout, revision, navigate]);
 
   const subtotal = useMemo(
-    () => lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
+    () => lines.reduce((sum, line) => sum + line.quantity * discountedPrice(line.unitPrice, line.discountRate), 0),
     [lines],
   );
   const total = subtotal + form.deliveryFee;
@@ -156,6 +158,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
     const product = products.find((item) => item.id === productId);
     if (product)
       setLineForm({
+        discountRate: 0,
         productId,
         quantity: Math.max(1, product.moq),
         unitPrice: product.wholesalePrice,
@@ -168,14 +171,15 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
       !product ||
       lineForm.quantity < 1 ||
       lineForm.quantity > product.stockQty ||
-      (form.isConsignment ? lineForm.unitPrice < 0 : lineForm.unitPrice <= 0)
+      (form.isConsignment ? lineForm.unitPrice < 0 : discountedPrice(lineForm.unitPrice, lineForm.discountRate) <= 0) ||
+      !Number.isFinite(lineForm.discountRate) || lineForm.discountRate < 0 || lineForm.discountRate > 100
     ) {
       setError('Chọn sản phẩm, số lượng không vượt tồn và giá báo hợp lệ.');
       return;
     }
     setLines((current) => [
       ...current.filter((line) => line.product.id !== product.id),
-      { product, quantity: lineForm.quantity, unitPrice: lineForm.unitPrice },
+      { product, quantity: lineForm.quantity, unitPrice: lineForm.unitPrice, discountRate: lineForm.discountRate },
     ]);
     setError('');
   }
@@ -204,13 +208,14 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
           productId: line.product.id,
           quantity: line.quantity,
           unitPrice: line.unitPrice,
+          discountRate: line.discountRate,
           expectedUpdatedAt: line.product.updatedAt,
         })),
       });
       setLines([]);
       setNotice(
         form.isConsignment
-          ? 'Đã gửi báo giá ký gửi tiếp thị (Vốn 0đ) đến cửa hàng. Tiệm có thể chấp nhận để nạp tự động vào kho!'
+          ? 'Đã gửi báo giá ký gửi. Cửa hàng nhập kho sau khi nhận hàng.'
           : 'Đã gửi báo giá đến cửa hàng. Cửa hàng có thể chấp nhận, từ chối và tạo đơn từ báo giá.',
       );
       setRevision((value) => value + 1);
@@ -383,7 +388,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                 <div className="supplier-field supplier-field-full quote-bank-summary">
                   <strong>Cơ chế ký quỹ bảo hộ</strong>
                   <span style={{ color: '#047857' }}>
-                    Tiền cọc {form.depositRate}% sẽ được khóa an toàn trong Ví hệ thống của tiệm tạp hóa và tự động giải ngân vào Ví của bạn ngay khi giao hàng thành công.
+                    Cọc chuyển khoản cần bạn kiểm tra tiền nhận được. Cọc qua ví được hệ thống ghi nhận.
                   </span>
                 </div>
                 <div className="supplier-field supplier-field-full" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '12px', marginTop: '6px' }}>
@@ -404,7 +409,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                         }
                       }}
                     />
-                    Chào hàng tiếp thị / Bán thử (Ký gửi vốn 0đ - Tiệm bán xong mới thanh toán)
+                    Ký gửi: cửa hàng bán được mới trả tiền hàng
                   </label>
                   {form.isConsignment && (
                     <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.88rem' }}>
@@ -427,7 +432,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                           checked={form.autoExchangeExpiry}
                           onChange={(e) => setForm({ ...form, autoExchangeExpiry: e.target.checked })}
                         />
-                        <span>Cam kết thu hồi & đổi date mới 100% nếu hàng cận hạn sử dụng</span>
+                        <span>Nhận yêu cầu đổi hàng cận hạn</span>
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: '#1f2937' }}>
                         <input
@@ -435,7 +440,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                           checked={form.autoRestock}
                           onChange={(e) => setForm({ ...form, autoRestock: e.target.checked })}
                         />
-                        <span>Tự động điều xe giao bù đợt hàng mới khi tiệm bán gần hết</span>
+                        <span>Cho phép cửa hàng yêu cầu bổ sung khi gần hết hàng</span>
                       </label>
                     </div>
                   )}
@@ -494,6 +499,12 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                     }
                   />
                 </label>
+                <label>
+                  Chiết khấu (%)
+                  <input type="number" min="0" max="100" step="0.01" value={lineForm.discountRate}
+                    onChange={e => setLineForm({ ...lineForm, discountRate: Number(e.target.value) })} />
+                  <small>Giá sau giảm: {money(discountedPrice(lineForm.unitPrice, lineForm.discountRate))}</small>
+                </label>
                 <button type="button" className="ghost-button" onClick={addLine}>
                   + Thêm mặt hàng
                 </button>
@@ -504,10 +515,11 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                     <span>
                       <strong>{line.product.name}</strong>
                       <small>
-                        {line.quantity} × {line.product.packaging} · {money(line.unitPrice)}
+                        {line.quantity} × {line.product.packaging} · {money(discountedPrice(line.unitPrice, line.discountRate))}
+                        {line.discountRate > 0 && ` (giảm ${line.discountRate}% từ ${money(line.unitPrice)})`}
                       </small>
                     </span>
-                    <b>{money(line.quantity * line.unitPrice)}</b>
+                    <b>{money(line.quantity * discountedPrice(line.unitPrice, line.discountRate))}</b>
                     <button
                       type="button"
                       aria-label={`Xóa ${line.product.name}`}
@@ -566,7 +578,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                         <span className="supplier-panel-label">BÁO GIÁ #{quote.id}</span>
                         {quote.isConsignment && (
                           <span style={{ background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '9999px', fontSize: '0.8rem', fontWeight: 600 }}>
-                            Ký gửi tiếp thị · Vốn 0đ
+                            Ký gửi · Trả tiền sau khi bán
                           </span>
                         )}
                       </div>
@@ -581,7 +593,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                   </div>
                   {quote.isConsignment && (
                     <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '8px 10px', margin: '6px 0', fontSize: '0.88rem', color: '#166534' }}>
-                      <strong>Gói chào hàng bán thử 0đ:</strong> Tiệm chỉ trả {money(quote.settlementPrice || 0)}/mặt hàng sau khi bán được.
+                      <strong>Giá thanh toán sau khi bán:</strong> Tiệm chỉ trả {money(quote.settlementPrice || 0)}/mặt hàng sau khi bán được.
                     </div>
                   )}
                   <div className="quote-items">
@@ -589,6 +601,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                       <span key={line.id}>
                         {line.productName} · {line.quantity} × {line.packaging} ·{' '}
                         {money(line.lineTotal)}
+                        {!!line.discountRate && <small>Giảm {line.discountRate}% · Giá gốc {money(line.originalUnitPrice ?? line.unitPrice)} · Giá sau giảm {money(line.unitPrice)}</small>}
                       </span>
                     ))}
                   </div>
@@ -794,8 +807,8 @@ function DispatchConsignmentModal({
         supplierNotes || undefined,
       );
       onClose();
-    } catch (err: any) {
-      setError(err?.message || 'Không thể điều xe.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể điều xe.');
     } finally {
       setBusy(false);
     }
@@ -805,7 +818,7 @@ function DispatchConsignmentModal({
     <div className="supplier-dialog-backdrop">
       <form className="supplier-dialog" onSubmit={handleSend} style={{ maxWidth: '540px' }}>
         <span className="supplier-panel-label">ĐIỀU XE GIAO BÙ & THU HỒI</span>
-        <h2>{request.type === 'RESTOCK' ? 'Giao bù hàng tiếp thị' : 'Đổi date mới 100%'}</h2>
+        <h2>{request.type === 'RESTOCK' ? 'Giao bù hàng tiếp thị' : 'Đổi hàng cận hạn'}</h2>
         <p style={{ margin: '4px 0 12px', fontSize: '0.88rem', color: '#4b5563' }}>
           Đến tiệm: <strong>{request.storeName}</strong> ({request.storePhone}) · Mặt hàng: <strong>{request.productName}</strong> (SL: {request.requestedQty} {request.unit})
         </p>

@@ -1837,13 +1837,40 @@ input {
 }
 .order-items {
   display: grid;
-  gap: 5px;
+  gap: 10px;
   margin: 13px 0;
-  padding: 10px 0;
+  padding: 14px 0;
   border-top: 1px dashed #dce5db;
   border-bottom: 1px dashed #dce5db;
   color: #5d7064;
-  font-size: 11px;
+  font-size: 15px;
+}
+.order-product {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 10px;
+  background: #f5f8f5;
+}
+.order-product-details {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+.order-product-details strong {
+  font-size: 17px;
+  line-height: 1.5;
+  color: #213e30;
+  overflow-wrap: anywhere;
+}
+.order-product-total {
+  font-size: 17px;
+  color: #213e30;
+  white-space: nowrap;
 }
 .order-card-bottom {
   flex-wrap: wrap;

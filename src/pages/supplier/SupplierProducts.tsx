@@ -446,7 +446,7 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
     return () => {
       active = false;
     };
-  }, [onLogout, revision]);
+  }, [onLogout, revision, navigate]);
 
   function remember(saved: SupplierProduct) {
     setProducts((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);

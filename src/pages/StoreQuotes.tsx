@@ -140,7 +140,7 @@ export default function StoreQuotes({ onLogout }: { onLogout: () => void }) {
                     <span className="supplier-panel-label">BÁO GIÁ #{quote.id}</span>
                     {quote.isConsignment && (
                       <span style={{ background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '9999px', fontSize: '0.8rem', fontWeight: 600 }}>
-                        Ký gửi tiếp thị · Vốn 0đ
+                        Ký gửi · Trả tiền sau khi bán
                       </span>
                     )}
                   </div>
@@ -158,9 +158,9 @@ export default function StoreQuotes({ onLogout }: { onLogout: () => void }) {
                 <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 14px', margin: '8px 0', fontSize: '0.9rem', color: '#166534' }}>
                   <strong>Chính sách chào hàng tiếp thị từ chủ vựa:</strong>
                   <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
-                    <li><strong>Vốn ban đầu: 0 ₫</strong> (Chỉ thanh toán sau khi bán lẻ được cho khách, giá sỉ thỏa thuận: <strong>{money(quote.settlementPrice || 0)}</strong>/sản phẩm).</li>
-                    {quote.autoExchangeExpiry && <li><strong>Cam kết 100%:</strong> Tự động thu hồi và đổi date mới nếu hàng cận hạn sử dụng.</li>}
-                    {quote.autoRestock && <li><strong>Tự động cấp bù:</strong> Khi tiệm bán gần hết hàng, chủ vựa sẽ điều xe mang hàng mới đến bù.</li>}
+                    <li><strong>Tiền hàng trả sau khi bán:</strong> <strong>{money(quote.settlementPrice || 0)}</strong>/sản phẩm. Phí giao, nếu có, ghi bên dưới.</li>
+                    {quote.autoExchangeExpiry && <li><strong>Đổi hàng cận hạn:</strong> Cửa hàng gửi yêu cầu, chủ vựa xác nhận việc đổi hàng.</li>}
+                    {quote.autoRestock && <li><strong>Bổ sung hàng:</strong> Gửi yêu cầu khi gần hết hàng, chờ chủ vựa xác nhận.</li>}
                   </ul>
                 </div>
               )}
@@ -169,6 +169,7 @@ export default function StoreQuotes({ onLogout }: { onLogout: () => void }) {
                   <span key={line.id}>
                     <strong>{line.productName}</strong> · {line.quantity} × {line.packaging} ·{' '}
                     {money(line.unitPrice)} = {money(line.lineTotal)}
+                    {!!line.discountRate && <small>Giảm {line.discountRate}% từ {money(line.originalUnitPrice ?? line.unitPrice)}/đơn vị</small>}
                   </span>
                 ))}
               </div>
@@ -310,14 +311,14 @@ function AcceptQuoteDialog({
           <span className="supplier-panel-label">BÁO GIÁ #{quote.id}</span>
           {quote.isConsignment && (
             <span style={{ background: '#ecfdf5', color: '#065f46', border: '1px solid #a7f3d0', padding: '2px 8px', borderRadius: '9999px', fontSize: '0.8rem', fontWeight: 600 }}>
-              Ký gửi tiếp thị · Vốn 0đ
+              Ký gửi · Trả tiền sau khi bán
             </span>
           )}
         </div>
-        <h2>{quote.isConsignment ? 'Chấp nhận nhận hàng ký gửi tiếp thị' : 'Chấp nhận và tạo đơn mua'}</h2>
+        <h2>{quote.isConsignment ? 'Chấp nhận báo giá ký gửi' : 'Chấp nhận và tạo đơn mua'}</h2>
         <p>
           {quote.isConsignment
-            ? 'Bạn nhận hàng tiếp thị với VỐN 0 ĐỒNG. Sản phẩm sẽ tự động thêm vào kho hàng với nhãn Ký gửi tiếp thị và kích hoạt cơ chế tự động bù hàng/đổi date.'
+            ? 'Chấp nhận để tạo đơn ký gửi. Khi nhận đủ hàng, mở đơn và bấm Nhập kho. Chỉ thanh toán theo thỏa thuận sau khi bán hàng.'
             : 'Giá và số lượng được giữ theo báo giá. Chủ vựa vẫn kiểm tra tồn trước khi duyệt đơn.'}
         </p>
         <label className="supplier-dialog-field">

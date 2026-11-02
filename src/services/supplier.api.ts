@@ -97,9 +97,18 @@ export type DriverInfo = {
   packingChecklist?: number[];
   incidentReport?: IncidentReport | null;
   paymentInfo?: PaymentInfo | null;
+  rescheduleRequest?: {
+    requestedTime: string;
+    reason?: string;
+    status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+    responseNote?: string;
+  } | null;
 };
 
 export type SupplierOrder = {
+  inventoryImportedAt?: string | null;
+  canImportInventory?: boolean;
+  inventoryImportBlockedReason?: string | null;
   commissionRate: number | null;
   commissionAmount: number | null;
   commissionPaidAt: string | null;
@@ -392,4 +401,14 @@ export async function submitOrderPayment(
 export async function completeOrder(orderId: number): Promise<{ success: boolean; order: SupplierOrder; message: string }> {
   const { data } = await api.post(`/orders/${orderId}/complete`);
   return data;
+}
+
+export async function importOrderToInventory(orderId: number): Promise<{
+  success: boolean;
+  alreadyImported: boolean;
+  count: number;
+  order: SupplierOrder;
+  message: string;
+}> {
+  return (await api.post(`/orders/${orderId}/import-inventory`)).data;
 }

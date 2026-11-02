@@ -56,6 +56,7 @@ type Item = {
     receivedAt: string;
     expiryDate: string | null;
     purchasePrice: number | null;
+    sourceOrderId?: number | null;
   }[];
 };
 type Message = { from: 'bot' | 'user'; text: string; time?: string };
@@ -723,7 +724,7 @@ export default function StoreInventory({
           ) : activeTab === 'quotes' ? (
             <StoreQuotes onLogout={onLogout} />
           ) : activeTab === 'orders' ? (
-            <OrderList kind="store" onLogout={onLogout} />
+            <OrderList kind="store" onLogout={onLogout} onInventoryChanged={refresh} onViewHistory={() => setActiveTab('history')} />
           ) : activeTab === 'wallet' ? (
             <WalletPage onLogout={onLogout} role="STORE_OWNER" />
           ) : activeTab === 'revenue' ? (
@@ -888,7 +889,7 @@ export default function StoreInventory({
                       <span className="metric-icon">
                         <Icon name={metric.icon as 'box' | 'store' | 'leaf' | 'shield'} />
                       </span>
-                      <span className="metric-corner">↗</span>
+
                     </div>
                     <p>{metric.label}</p>
                     <strong>{loading ? '—' : metric.value.toString().padStart(2, '0')}</strong>
@@ -1001,7 +1002,7 @@ export default function StoreInventory({
                       <h2>Hàng cần chú ý</h2>
                     </div>
                     <button className="dash-link" onClick={() => openFilter('soon')}>
-                      Xem kho ↗
+                      Xem kho
                     </button>
                   </div>
                   {loading ? (
@@ -1176,7 +1177,7 @@ export default function StoreInventory({
                                   {item.lots?.length ? (
                                     item.lots.map((lot) => (
                                       <div className="lot-row" key={lot.id}>
-                                        <span>Lô #{lot.id}</span>
+                                        <span>Lô #{lot.id}{lot.sourceOrderId ? ` · Đơn sỉ #${lot.sourceOrderId}` : ' · Lô hiện có / nhập tay'}</span>
                                         <b>
                                           {lot.quantity} {item.unit}
                                         </b>
@@ -1185,7 +1186,7 @@ export default function StoreInventory({
                                           {new Date(lot.receivedAt).toLocaleDateString('vi-VN')}
                                           {lot.expiryDate
                                             ? ` · HSD ${lot.expiryDate.split('-').reverse().join('/')}`
-                                            : ' · Không có HSD'}
+                                            : ' · Chưa nhập HSD'}
                                           {lot.purchasePrice == null
                                             ? ''
                                             : ` · ${lot.purchasePrice.toLocaleString('vi-VN')} ₫`}
@@ -1274,7 +1275,7 @@ export default function StoreInventory({
                               aria-label={`Sửa ${item.name}`}
                               onClick={() => edit(item)}
                             >
-                              Sửa ↗
+                              Sửa
                             </button>
                             {item.isConsignment && item.quantity <= item.lowThreshold && (
                               <button
@@ -1330,13 +1331,13 @@ export default function StoreInventory({
             </section>
           )}
           <div hidden={activeTab !== 'history'} className="dashboard-card activity-card">
-            <StockActivity
+            {activeTab === 'history' && <StockActivity
               items={items}
               revision={revision}
               onChanged={refresh}
               onLogout={onLogout}
               mode="history"
-            />
+            />}
           </div>
           <div hidden={activeTab !== 'calendar'}>
             <SalesCalendar

@@ -48,7 +48,7 @@ export default function RegisterPage() {
   const navigate = useNavigate();
   const [values, setValues] = useState<RegistrationInput>(loadDraftValues);
   const valuesRef = useRef<RegistrationInput>(values);
-  valuesRef.current = values;
+  useEffect(() => { valuesRef.current = values; }, [values]);
   const [errors, setErrors] = useState<FieldErrors>({});
   const [serverError, setServerError] = useState('');
   const [submitting, setSubmitting] = useState(false);

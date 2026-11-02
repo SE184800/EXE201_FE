@@ -84,7 +84,7 @@ export default function SupplierDashboard({
     } finally {
       setLoading(false);
     }
-  }, [onLogout]);
+  }, [onLogout, user.phone]);
 
   useEffect(() => {
     document.title = 'SupplyMind AI · Chủ vựa';

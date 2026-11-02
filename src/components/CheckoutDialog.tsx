@@ -5,6 +5,8 @@ import type { CatalogProduct } from '../services/catalog.api';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import { getWallet, addMockFunds, type WalletInfo } from '../services/wallet.api';
 import { calculateDeliveryFee, type DeliveryFeeResult } from '../utils/geo';
+import type { Profile } from '../pages/ProfilePage';
+import { checkoutRequestId } from '../utils/checkoutRequests';
 
 const roundToThousand = (val: number) => Math.round(val / 1000) * 1000;
 const money = (n: number) => Math.round(n).toLocaleString('vi-VN') + ' ₫';
@@ -41,6 +43,7 @@ export default function CheckoutDialog({
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const lock = useRef(false);
+  const requestIds = useRef(new Map<string, string>());
   const navigate = useNavigate();
 
   // Lock background scroll when dialog is mounted
@@ -64,7 +67,7 @@ export default function CheckoutDialog({
     try {
       const saved = localStorage.getItem('supplymind_checkout_quantities');
       if (saved) return JSON.parse(saved);
-    } catch {}
+    } catch { /* Optional cached state is unavailable; preserve the current values. */ }
     const q: Record<number, number> = {};
     for (const item of initialList) {
       q[item.id] = item.moq;
@@ -76,7 +79,7 @@ export default function CheckoutDialog({
     try {
       const saved = localStorage.getItem('supplymind_checkout_form_draft');
       if (saved) return JSON.parse(saved);
-    } catch {}
+    } catch { /* Optional cached state is unavailable; preserve the current values. */ }
     return {
       recipientName: '',
       recipientPhone: '',
@@ -89,13 +92,13 @@ export default function CheckoutDialog({
   useEffect(() => {
     try {
       localStorage.setItem('supplymind_checkout_quantities', JSON.stringify(quantities));
-    } catch {}
+    } catch { /* Optional cached state is unavailable; preserve the current values. */ }
   }, [quantities]);
 
   useEffect(() => {
     try {
       localStorage.setItem('supplymind_checkout_form_draft', JSON.stringify(form));
-    } catch {}
+    } catch { /* Optional cached state is unavailable; preserve the current values. */ }
   }, [form]);
 
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
@@ -114,10 +117,10 @@ export default function CheckoutDialog({
   useEffect(() => {
     dialog.current?.showModal();
     getWallet()
-      .then((data: any) => {
-        const available = data?.wallet?.balance ?? data?.availableBalance ?? data?.balance ?? 0;
-        const held = data?.wallet?.heldBalance ?? data?.lockedBalance ?? 0;
-        const total = data?.wallet?.total ?? data?.totalBalance ?? (available + held);
+      .then((data) => {
+        const available = data.wallet.balance;
+        const held = data.wallet.heldBalance;
+        const total = data.wallet.total;
         setWallet({
           availableBalance: available,
           lockedBalance: held,
@@ -127,7 +130,7 @@ export default function CheckoutDialog({
       .catch(() => {});
 
     api
-      .get<{ profile: any }>('/profile')
+      .get<{ profile: Profile }>('/profile')
       .then(({ data }) => {
         const p = data.profile;
         const sp = p?.storeProfile;
@@ -277,15 +280,14 @@ export default function CheckoutDialog({
           expectedDeliveryFee: calc.deliveryFee,
           depositRate: STANDARD_DEPOSIT_RATE,
           lines,
-          requestId: crypto.randomUUID(),
         };
 
-        const { data } = await api.post('/orders', body);
+        const { data } = await api.post('/orders', { ...body, requestId: checkoutRequestId(requestIds.current, body) });
         results.push({
           id: data.order.id,
           supplierName: calc.supplier.businessName,
-          total: calc.orderTotal,
-          depositAmount: calc.depositAmount,
+          total: data.order.total,
+          depositAmount: data.order.depositAmount,
           itemCount: lines.length,
         });
       }
@@ -293,7 +295,7 @@ export default function CheckoutDialog({
       try {
         localStorage.removeItem('supplymind_checkout_quantities');
         localStorage.removeItem('supplymind_checkout_form_draft');
-      } catch {}
+      } catch { /* Optional cached state is unavailable; preserve the current values. */ }
       setCreatedOrders(results);
     } catch (err) {
       setError(getApiError(err));
@@ -347,8 +349,7 @@ export default function CheckoutDialog({
               Đặt hàng thành công ({createdOrders.length} đơn hàng)!
             </strong>
             <p style={{ margin: 0, fontSize: '13px', color: '#15803d', lineHeight: 1.5 }}>
-              Tổng tiền cọc ký quỹ <strong>{money(totalDepositRequired)}</strong> đã được giữ an toàn trong Ví hệ thống (Escrow).
-              Các chủ vựa sẽ đối soát kho và điều phối xe giao đến tiệm của bạn.
+              Đã tạo đơn. Mở Đơn mua hàng để xem tình trạng cọc và lịch giao.
             </p>
           </div>
 
@@ -667,7 +668,7 @@ export default function CheckoutDialog({
                 </div>
 
                 <p className="checkout-escrow-note">
-                  Toàn bộ tiền cọc 10% được giữ trung gian an toàn trong Ví hệ thống (Escrow), chỉ tự động giải ngân cho chủ vựa khi bạn xác nhận đã nhận đủ hàng đạt chuẩn.
+                  Cọc được giữ trong ví. Chủ vựa nhận cọc khi đơn được hoàn tất.
                 </p>
               </div>
 

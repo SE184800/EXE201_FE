@@ -41,7 +41,8 @@ export async function validateQrCodeImage(file: File): Promise<QrValidationResul
       // Method 1: Check with native BarcodeDetector if available (supported in Chrome/Edge)
       if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
         try {
-          const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
+          const Detector = (window as Window & { BarcodeDetector: new (options: { formats: string[] }) => { detect(image: CanvasImageSource): Promise<unknown[]> } }).BarcodeDetector;
+          const detector = new Detector({ formats: ['qr_code'] });
           const barcodes = await detector.detect(img);
           if (Array.isArray(barcodes) && barcodes.length > 0) {
             return resolve({ isValid: true });

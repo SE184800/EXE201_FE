@@ -37,13 +37,13 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
       } else {
         localStorage.removeItem('supplymind_checkout_is_open');
       }
-    } catch {}
+    } catch { /* Optional cached state is unavailable; preserve the current values. */ }
   }, [checkoutProducts]);
 
   useEffect(() => {
     try {
       localStorage.setItem('supplymind_catalog_selected_products', JSON.stringify(selectedProducts));
-    } catch {}
+    } catch { /* Optional cached state is unavailable; preserve the current values. */ }
   }, [selectedProducts]);
 
   const uniqueSupplierCount = useMemo(() => {
@@ -428,7 +428,7 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
                 setSelectedProducts([]);
                 try {
                   localStorage.removeItem('supplymind_catalog_selected_products');
-                } catch {}
+                } catch { /* Optional cached state is unavailable; preserve the current values. */ }
               }}
             >
               Bỏ chọn tất cả
@@ -450,7 +450,7 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
             setCheckoutProducts(null);
             try {
               localStorage.removeItem('supplymind_checkout_is_open');
-            } catch {}
+            } catch { /* Optional cached state is unavailable; preserve the current values. */ }
           }}
           onOrderSuccess={() => {
             setCheckoutProducts(null);
@@ -458,7 +458,7 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
             try {
               localStorage.removeItem('supplymind_checkout_is_open');
               localStorage.removeItem('supplymind_catalog_selected_products');
-            } catch {}
+            } catch { /* Optional cached state is unavailable; preserve the current values. */ }
           }}
           onLogout={onLogout}
         />

@@ -108,7 +108,7 @@ export default function SupplierInventory({ user, onLogout }: { user?: AuthUser;
     } finally {
       setLoading(false);
     }
-  }, [onLogout]);
+  }, [onLogout, navigate]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -313,7 +313,7 @@ export default function SupplierInventory({ user, onLogout }: { user?: AuthUser;
                           aria-label={`Sửa ${item.name}`}
                           onClick={() => edit(item)}
                         >
-                          Chỉnh sửa ↗
+                          Chỉnh sửa
                         </button>
                       </td>
                     </tr>

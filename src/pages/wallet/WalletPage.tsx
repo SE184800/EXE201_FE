@@ -1,3 +1,4 @@
+import { Link, useSearchParams } from 'react-router-dom';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import '../catalog.css';
 import '../wallet.css';
@@ -152,7 +153,7 @@ export default function WalletPage({
           }));
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Simulator actions
@@ -633,9 +634,8 @@ export default function WalletPage({
                       <td className="tx-balance">{money(tx.balanceAfter)}</td>
                       <td>
                         <span
-                          className={`wallet-status wallet-status-${
-                            tx.method === 'SANDBOX' ? 'approved' : 'settled'
-                          }`}
+                          className={`wallet-status wallet-status-${tx.method === 'SANDBOX' ? 'approved' : 'settled'
+                            }`}
                           style={{ fontSize: '11px', padding: '3px 8px' }}
                         >
                           {tx.method === 'SANDBOX' ? 'Thử nghiệm' : 'Chính thức'}

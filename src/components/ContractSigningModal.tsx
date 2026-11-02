@@ -5,6 +5,7 @@ import {
   type UserContract,
 } from '../services/contract.api';
 import type { AuthUser } from '../types/auth';
+import { getApiError } from '../services/api';
 
 interface ContractSigningModalProps {
   isOpen: boolean;
@@ -13,7 +14,11 @@ interface ContractSigningModalProps {
   user: AuthUser;
 }
 
-export default function ContractSigningModal({
+export default function ContractSigningModal(props: ContractSigningModalProps) {
+  return props.isOpen ? <ContractSigningContent {...props} /> : null;
+}
+
+function ContractSigningContent({
   isOpen,
   onClose,
   onSignedSuccess,
@@ -98,7 +103,7 @@ export default function ContractSigningModal({
       });
       setSigning(false);
       onSignedSuccess(res.contract);
-    } catch (err: any) {
+    } catch (err) {
       setSigning(false);
       const msg = err.response?.data?.message || 'Ký hợp đồng thất bại. Vui lòng kiểm tra lại.';
       setErrorNotice(msg);
