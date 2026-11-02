@@ -22,30 +22,31 @@ import ExportDropdown from './ExportDropdown';
 import { exportSupplierOrdersToExcel, exportSupplierOrdersToPdf } from '../utils/exportSupplier';
 import { depositOrderWithWallet } from '../services/wallet.api';
 import './complaint-dialog.css';
+import { orderPaymentSummary, supplierPaymentBank } from '../utils/orderPayment';
 
 const statuses = {
   PENDING: 'Chờ duyệt',
   APPROVED: 'Đã duyệt',
   PREPARING: 'Đang soạn đơn',
   SHIPPING: 'Đang vận chuyển',
-  ISSUE_HANDLING: 'Tiếp nhận xử lý',
+  ISSUE_HANDLING: 'Đang kiểm hàng',
   DELIVERED: 'Đã giao',
   COMPLETED: 'Hoàn tất',
   REJECTED: 'Đã từ chối',
 };
 
 const COMPLAINT_STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  OPEN: { label: 'Chờ supplier tiếp nhận', color: '#c2410c', bg: '#fff7ed' },
-  IN_REVIEW: { label: 'Supplier đang xử lý', color: '#1d4ed8', bg: '#eff6ff' },
+  OPEN: { label: 'Chờ chủ vựa xem', color: '#c2410c', bg: '#fff7ed' },
+  IN_REVIEW: { label: 'Chủ vựa đang xử lý', color: '#1d4ed8', bg: '#eff6ff' },
   RESOLVED: { label: 'Đã giải quyết', color: '#15803d', bg: '#f0fdf4' },
-  REJECTED: { label: 'Supplier từ chối', color: '#b91c1c', bg: '#fef2f2' },
+  REJECTED: { label: 'Chủ vựa từ chối', color: '#b91c1c', bg: '#fef2f2' },
 };
 
 const COMPLAINT_REASONS: { code: string; label: string }[] = [
   { code: 'DAMAGED', label: 'Hàng hư hỏng / bể vỡ' },
   { code: 'SHORTAGE', label: 'Thiếu hàng / thiếu số lượng' },
   { code: 'WRONG_ITEM', label: 'Giao sai sản phẩm / quy cách' },
-  { code: 'EXPIRED', label: 'Hàng cận date / hết hạn' },
+  { code: 'EXPIRED', label: 'Hàng sắp hết hạn / hết hạn' },
   { code: 'QUALITY', label: 'Lỗi chất lượng sản phẩm' },
   { code: 'LATE', label: 'Giao trễ / sai hẹn' },
   { code: 'OTHER', label: 'Khác' },
@@ -55,7 +56,7 @@ const REASON_LABELS: Record<string, string> = {
   DAMAGED: 'Hàng hư hỏng / bể vỡ',
   SHORTAGE: 'Thiếu hàng / thiếu số lượng',
   WRONG_ITEM: 'Giao sai sản phẩm / quy cách',
-  EXPIRED: 'Hàng cận date / hết hạn',
+  EXPIRED: 'Hàng sắp hết hạn / hết hạn',
   QUALITY: 'Lỗi chất lượng sản phẩm',
   LATE: 'Giao trễ / sai hẹn',
   OTHER: 'Khác',
@@ -423,12 +424,12 @@ export default function OrderList({
   }
 
   async function handlePaySubmit(method: 'COD' | 'QR') {
-    if (!paymentOrder) return;
+    if (!paymentOrder || actionLoadingId !== null) return;
     const order = paymentOrder;
     setActionLoadingId(order.id);
     try {
       const res = await submitOrderPayment(order.id, method);
-      setDepositNotice(res.message || `Đã gửi xác nhận trả tiền qua ${method}. Đang chờ Chủ vựa xác nhận.`);
+      setDepositNotice(res.message || `Đã báo trả tiền. Chờ chủ vựa xác nhận.`);
       setPaymentOrder(null);
       setReload((n) => n + 1);
     } catch (issue) {
@@ -640,7 +641,7 @@ export default function OrderList({
 
     try {
       await rescheduleOrder(rescheduleOrderTarget.id, timeText, rescheduleReason.trim() || undefined);
-      setRescheduleMessage('Đã gửi yêu cầu dời giờ giao hàng cho chủ vựa thành công.');
+      setRescheduleMessage('Đã gửi yêu cầu đổi giờ giao.');
       setTimeout(() => {
         setRescheduleOrderTarget(null);
         setRescheduleReason('');
@@ -736,7 +737,7 @@ export default function OrderList({
         description: finalDescription,
         ...(serializedImages ? { imageUrl: serializedImages } : {}),
       });
-      setComplaintMessage('Đã gửi khiếu nại thành công đến nhà cung cấp.');
+      setComplaintMessage('Đã gửi khiếu nại.');
       setTimeout(() => {
         setComplaintOrder(null);
         setComplaintImages([]);
@@ -823,7 +824,6 @@ export default function OrderList({
         <div>
           <span className="supplier-panel-label">ĐƠN HÀNG</span>
           <h2>{kind === 'store' ? 'Đơn mua của cửa hàng' : 'Đơn hàng từ cửa hàng'}</h2>
-          <p className="catalog-hint">Tự cập nhật mỗi 30 giây khi bạn đang xem.</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
           <ExportDropdown
@@ -953,7 +953,7 @@ export default function OrderList({
                     }}
                   >
                     <strong style={{ fontSize: '13px', color: '#1e293b' }}>
-                      Checklist soạn hàng đóng gói ({(packingMap[order.id] || []).length}/{order.items.length} món)
+                      Kiểm hàng ({(packingMap[order.id] || []).length}/{order.items.length} món)
                     </strong>
                     <button
                       type="button"
@@ -961,7 +961,7 @@ export default function OrderList({
                       style={{ fontSize: '11px', padding: '2px 8px' }}
                       onClick={() => handleToggleAllPacking(order)}
                     >
-                      {(packingMap[order.id] || []).length === order.items.length ? 'Bỏ chọn tất cả' : 'Tích chọn tất cả'}
+                      {(packingMap[order.id] || []).length === order.items.length ? 'Bỏ chọn' : 'Chọn tất cả'}
                     </button>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1031,7 +1031,7 @@ export default function OrderList({
                               color: isChecked ? '#ffffff' : '#64748b',
                             }}
                           >
-                            {isChecked ? 'ĐÃ SOẠN XONG' : 'Chưa lấy'}
+                            {isChecked ? 'Đã lấy đủ' : 'Chưa lấy'}
                           </span>
                         </label>
                       );
@@ -1046,8 +1046,8 @@ export default function OrderList({
                     }}
                   >
                     {(packingMap[order.id] || []).length === order.items.length
-                      ? 'Đã kiểm tra đủ toàn bộ hàng hóa. Nút "Chuẩn bị giao hàng" bên dưới đã sẵn sàng!'
-                      : `Vui lòng tick kiểm tra đủ ${order.items.length} món hàng để kích hoạt nút chuẩn bị giao hàng.`}
+                      ? 'Đã kiểm đủ hàng.'
+                      : `Chọn đủ ${order.items.length} mặt hàng trước khi giao.`}
                   </p>
                 </div>
               )}
@@ -1059,17 +1059,19 @@ export default function OrderList({
                 {order.deliveryAddress || 'Đơn cũ chưa lưu địa chỉ nhận'}
               </p>
 
-              {order.note && <p className="catalog-hint">Ghi chú: {order.note}</p>}
+              {order.note && <details className="order-note"><summary>Ghi chú đơn hàng</summary><p>{order.note}</p></details>}
 
               {/* Reschedule statuses & actions for both Store and Supplier */}
               {(() => {
-                const isPending = Boolean(
+                if (!['PREPARING', 'SHIPPING'].includes(order.status)) return null;
+                const request = order.driverInfo?.rescheduleRequest;
+                const isPending = request ? request.status === 'PENDING' : Boolean(
                   order.note?.includes('[YÊU CẦU DỜI LỊCH GIAO') &&
                   !order.note?.includes('[VỰA ĐÃ ĐỒNG Ý DỜI LỊCH') &&
                   !order.note?.includes('[VỰA TỪ CHỐI DỜI LỊCH')
                 );
-                const isAccepted = Boolean(order.note?.includes('[VỰA ĐÃ ĐỒNG Ý DỜI LỊCH'));
-                const isRejected = Boolean(order.note?.includes('[VỰA TỪ CHỐI DỜI LỊCH'));
+                const isAccepted = request ? request.status === 'ACCEPTED' : Boolean(order.note?.includes('[VỰA ĐÃ ĐỒNG Ý DỜI LỊCH'));
+                const isRejected = request ? request.status === 'REJECTED' : Boolean(order.note?.includes('[VỰA TỪ CHỐI DỜI LỊCH'));
 
                 if (isPending) {
                   return kind === 'supplier' ? (
@@ -1085,16 +1087,16 @@ export default function OrderList({
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                         <strong style={{ color: '#b45309', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          Yêu cầu dời giờ giao từ tiệm tạp hóa
+                          Cửa hàng xin đổi giờ giao
                         </strong>
                         <span style={{ fontSize: '11px', color: '#92400e', fontWeight: 600, backgroundColor: '#fef3c7', padding: '2px 8px', borderRadius: '10px' }}>
                           Cần xác nhận
                         </span>
                       </div>
                       <p style={{ margin: '4px 0 8px', color: '#78350f' }}>
-                        {order.note?.split('[YÊU CẦU DỜI LỊCH GIAO')[1]?.split(']')[0]
+                        {request ? `Giờ muốn nhận: ${request.requestedTime}${request.reason ? ' · ' + request.reason : ''}` : order.note?.split('[YÊU CẦU DỜI LỊCH GIAO')[1]?.split(']')[0]
                           ? `[YÊU CẦU DỜI LỊCH GIAO${order.note?.split('[YÊU CẦU DỜI LỊCH GIAO')[1]?.split(']')[0]}]`
-                          : 'Tiệm có việc bận đi vắng, xin dời giờ giao hàng (cam kết nhận, không bùng đơn).'}
+                          : 'Cửa hàng xin đổi giờ nhận hàng.'}
                       </p>
                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                         <button
@@ -1105,13 +1107,13 @@ export default function OrderList({
                         >
                           {supplierRescheduleBusy === order.id ? 'Đang lưu…' : 'Đồng ý dời lịch'}
                         </button>
-                        <a
-                          href={`tel:${order.recipientPhone || '0908123456'}`}
+                        {order.recipientPhone && <a
+                          href={`tel:${order.recipientPhone}`}
                           className="ghost-button"
                           style={{ fontSize: '11px', padding: '4px 8px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                         >
-                          Gọi cho Tiệm ({order.recipientPhone || '0908 123 456'})
-                        </a>
+                          Gọi cửa hàng
+                        </a>}
                         <button
                           type="button"
                           className="ghost-button"
@@ -1139,7 +1141,7 @@ export default function OrderList({
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
-                        <span>Đã xin đổi giờ giao · Chờ xác nhận</span>
+                        <span>Giờ muốn nhận: {request?.requestedTime || 'Đã gửi trong ghi chú'} · Chờ chủ vựa xác nhận</span>
                       </div>
                     </div>
                   );
@@ -1161,7 +1163,7 @@ export default function OrderList({
                         gap: '6px',
                       }}
                     >
-                      <strong>Đã xác nhận đổi giờ giao.</strong>
+                      <strong>Chủ vựa đã xác nhận giờ giao{request ? `: ${request.requestedTime}` : '.'}</strong>
                     </div>
                   );
                 }
@@ -1182,7 +1184,7 @@ export default function OrderList({
                         gap: '6px',
                       }}
                     >
-                      <strong>Không thể đổi giờ giao. Vui lòng gọi chủ vựa.</strong>
+                      <strong>Giữ giờ giao cũ.{request?.responseNote ? ` ${request.responseNote}` : ' Gọi chủ vựa nếu cần đổi.'}</strong>
                     </div>
                   );
                 }
@@ -1234,7 +1236,7 @@ export default function OrderList({
                       }}
                     >
                       {(() => {
-                        const isAcceptedReschedule = order.note?.includes('[VỰA ĐÃ ĐỒNG Ý DỜI LỊCH GIAO]');
+                        const isAcceptedReschedule = !order.driverInfo?.rescheduleRequest && order.note?.includes('[VỰA ĐÃ ĐỒNG Ý DỜI LỊCH GIAO]');
                         if (isAcceptedReschedule) {
                           const matchTime = order.note?.match(/\[YÊU CẦU DỜI LỊCH GIAO[^\]]*\]: Hẹn lúc ([^(—|\]]+)/);
                           if (matchTime && matchTime[1]) {
@@ -1377,7 +1379,7 @@ export default function OrderList({
                             setRescheduleMessage('');
                           }}
                         >
-                          Hẹn giờ nhận hàng
+                          Đề nghị đổi giờ
                         </button>
                       )}
                     </div>
@@ -1393,7 +1395,7 @@ export default function OrderList({
                     </strong>
                     <span>
                       {isEscrowRef(order.depositReference) && order.depositStatus === 'PAID'
-                        ? 'Đã ký quỹ ví'
+                        ? 'Đã cọc bằng ví'
                         : isEscrowRef(order.depositReference) && order.depositStatus === 'REFUNDED'
                           ? 'Đã hoàn cọc vào ví'
                           : order.depositStatus === 'PENDING'
@@ -1436,7 +1438,7 @@ export default function OrderList({
                           : 'Cọc được chuyển vào ví khi giao hàng thành công.'}
                       </span>
                       <strong style={{ color: '#1f2937', marginTop: '2px' }}>
-                        Còn trả khi nhận: {money(order.total - order.depositAmount)}
+                        Còn phải trả: {money(orderPaymentSummary(order).remaining)}
                       </strong>
                     </div>
                   ) : (
@@ -1542,15 +1544,18 @@ export default function OrderList({
                             >
                               Tôi đã chuyển khoản ngoài
                             </button>
+                            {(import.meta.env.DEV || order.note?.includes('[DEMO')) && <details className="order-test-tools">
+                            <summary>Thử nghiệm · Không chuyển tiền</summary>
                             <button
                               className="ghost-button"
                               disabled={depositBusy !== null}
                               onClick={() => void submitSandboxDeposit(order)}
                             >
                               {depositBusy === order.id
-                                ? 'Đang chạy sandbox…'
-                                : 'Thanh toán thử sandbox'}
+                                ? 'Đang thử…'
+                                : 'Thử báo chuyển cọc'}
                             </button>
+                            </details>}
                           </div>
                         )}
                       </>
@@ -1671,7 +1676,7 @@ export default function OrderList({
                         fontSize: '13.5px',
                       }}
                     >
-                      <Icon name="shield" /> Khiếu nại sự cố:{' '}
+                      <Icon name="shield" /> Báo sự cố:{' '}
                       {REASON_LABELS[order.complaint.reason] || order.complaint.reason}
                     </strong>
                     <span
@@ -1757,7 +1762,7 @@ export default function OrderList({
                         )}
                         {parsed.details && (
                           <p style={{ margin: '6px 0', color: '#431407', lineHeight: 1.5 }}>
-                            <strong>Mô tả chi tiết:</strong> {parsed.details}
+                            <strong>Nội dung:</strong> {parsed.details}
                           </p>
                         )}
                       </div>
@@ -1815,7 +1820,7 @@ export default function OrderList({
                       }}
                     >
                       <strong style={{ display: 'block', marginBottom: '3px' }}>
-                        Phản hồi từ Nhà cung cấp:
+                        Chủ vựa trả lời:
                       </strong>
                       <span>{order.complaint.response}</span>
                     </div>
@@ -1915,7 +1920,7 @@ export default function OrderList({
                       color: '#991b1b',
                     }}
                   >
-                    <strong>Phương án xử lý của chủ vựa: </strong>
+                    <strong>Cách xử lý: </strong>
                     {isDeductCod ? (
                       <span>
                         <strong>Trừ thẳng tiền hàng hỏng vào COD khi nhận hàng</strong>
@@ -2005,14 +2010,12 @@ export default function OrderList({
                   >
                     <div>
                       <strong style={{ color: '#854d0e', display: 'block', fontSize: '13px' }}>
-                        {kind === 'store'
-                          ? `Đã gửi xác nhận trả tiền qua ${order.driverInfo.paymentInfo.method} (${money(order.driverInfo.paymentInfo.amount)})`
-                          : `Tiệm tạp hóa đã báo trả tiền qua ${order.driverInfo.paymentInfo.method} (${money(order.driverInfo.paymentInfo.amount)})`}
+                        Đã báo trả {money(order.driverInfo.paymentInfo.amount)} · {order.driverInfo.paymentInfo.method === 'COD' ? 'Tiền mặt' : 'Chuyển khoản'}
                       </strong>
                       <span style={{ fontSize: '12px', color: '#713f12' }}>
                         {kind === 'store'
-                          ? 'Đang chờ Chủ vựa / Tài xế bấm "Xác nhận đã nhận đủ tiền" để kích hoạt hoàn tất đơn.'
-                          : 'Vui lòng kiểm tra tiền mặt từ tài xế hoặc tài khoản ngân hàng, sau đó bấm xác nhận bên dưới.'}
+                          ? 'Chờ chủ vựa xác nhận đã nhận tiền.'
+                          : 'Kiểm tra tiền trước khi xác nhận.'}
                       </span>
                     </div>
 
@@ -2034,14 +2037,14 @@ export default function OrderList({
                         style={{ opacity: 0.6, cursor: 'not-allowed', backgroundColor: '#94a3b8' }}
                         title="Nút sẽ được kích hoạt ngay khi Chủ vựa bấm xác nhận đã nhận đủ tiền"
                       >
-                        Thanh toán thành công (Chờ vựa xác nhận...)
+                        Chờ xác nhận nhận tiền
                       </button>
                     )}
                   </div>
                 </div>
               )}
 
-              {order.driverInfo?.paymentInfo?.status === 'CONFIRMED' && order.status !== 'COMPLETED' && (
+              {orderPaymentSummary(order).paid && order.status === 'DELIVERED' && (
                 <div
                   style={{
                     margin: '10px 0',
@@ -2063,16 +2066,17 @@ export default function OrderList({
                   >
                     <div>
                       <strong style={{ color: '#166534', display: 'block', fontSize: '13px' }}>
-                        Chủ vựa đã xác nhận nhận đủ tiền thanh toán qua {order.driverInfo.paymentInfo.method}
+                        Đã trả đủ tiền
                       </strong>
                       <span style={{ fontSize: '12px', color: '#14532d' }}>
-                        {kind === 'store'
-                          ? 'Tiền hàng đã được thanh toán an toàn. Bấm nút bên phải để hoàn tất đơn hàng và giải ngân ký quỹ.'
-                          : 'Đã xác nhận thu tiền thành công. Cửa hàng đang thực hiện hoàn tất đơn.'}
+                        {order.complaint && ['OPEN', 'IN_REVIEW'].includes(order.complaint.status)
+                          ? 'Cần xử lý xong sự cố trước khi hoàn tất.' : kind === 'store'
+                          ? 'Bạn có thể hoàn tất đơn.'
+                          : 'Chờ cửa hàng hoàn tất đơn.'}
                       </span>
                     </div>
 
-                    {kind === 'store' && (
+                    {kind === 'store' && !(order.complaint && ['OPEN', 'IN_REVIEW'].includes(order.complaint.status)) && (
                       <button
                         type="button"
                         className="table-button primary-small"
@@ -2080,7 +2084,7 @@ export default function OrderList({
                         disabled={actionLoadingId === order.id}
                         onClick={() => void handleCompleteOrder(order)}
                       >
-                        {actionLoadingId === order.id ? 'Đang hoàn tất…' : 'Thanh toán thành công & Hoàn tất đơn'}
+                        {actionLoadingId === order.id ? 'Đang hoàn tất…' : 'Hoàn tất đơn'}
                       </button>
                     )}
                   </div>
@@ -2104,7 +2108,7 @@ export default function OrderList({
                 </div>
               )}
 
-              {kind === 'store' && order.status === 'COMPLETED' && (
+              {kind === 'store' && ['ISSUE_HANDLING', 'DELIVERED', 'COMPLETED'].includes(order.status) && (
                 <div className="order-inventory-import">
                   <button
                     type="button"
@@ -2113,13 +2117,13 @@ export default function OrderList({
                     disabled={busy || actionLoadingId !== null || Boolean(order.inventoryImportedAt) || !order.canImportInventory}
                     onClick={() => void handleImportInventory(order)}
                   >
-                    {order.inventoryImportedAt ? 'Đã thêm vào kho' : actionLoadingId === order.id ? 'Đang thêm vào kho…' : 'Thêm vào kho'}
+                    {order.inventoryImportedAt ? 'Đã nhập kho' : actionLoadingId === order.id ? 'Đang nhập kho…' : 'Nhập kho'}
                   </button>
                   <p className="catalog-hint">
                     {order.inventoryImportedAt
                       ? `Nhập kho lúc ${new Date(order.inventoryImportedAt).toLocaleString('vi-VN')}`
                       : order.inventoryImportBlockedReason || (order.canImportInventory
-                        ? 'Tạo lô mới cho từng mặt hàng. Mỗi đơn chỉ nhập một lần.'
+                        ? 'Chỉ nhập khi đã kiểm đủ hàng. Mỗi đơn nhập một lần.'
                         : 'Chưa thể nhập kho. Vui lòng tải lại đơn.')}
                   </p>
                   {order.inventoryImportedAt && onViewHistory && (
@@ -2146,7 +2150,7 @@ export default function OrderList({
                     </div>
                     {depositPaid > 0 && (
                       <div style={{ color: '#15803d', marginTop: '2px' }}>
-                        Đã đặt cọc 10%: <strong>- {money(depositPaid)}</strong> (Giữ nguyên ký quỹ an toàn)
+                        Đã cọc {order.depositRate}%: <strong>- {money(depositPaid)}</strong>
                       </div>
                     )}
                   </div>
@@ -2159,18 +2163,13 @@ export default function OrderList({
 
               <div className="order-card-bottom">
                 <strong>
-                  {order.status === 'DELIVERED' || order.status === 'COMPLETED'
-                    ? 'Tổng đã giao'
-                    : order.depositStatus === 'PAID'
-                      ? 'Còn lại khi giao'
-                      : 'Tổng đơn'}
+                  {order.status === 'REJECTED' ? 'Giá trị đơn đã hủy' : orderPaymentSummary(order).paid || order.status === 'COMPLETED'
+                    ? 'Tổng tiền đơn' : 'Còn phải trả'}
                   :{' '}
                   {money(
-                    order.driverInfo?.incidentReport?.action === 'DEDUCT_COD'
-                      ? Math.max(0, Math.max(0, order.subtotal - computeOrderLossAmount(order)) + order.deliveryFee - (order.depositStatus === 'PAID' ? order.depositAmount : 0))
-                      : order.depositStatus === 'PAID'
-                        ? order.total - order.depositAmount
-                        : order.total,
+                    orderPaymentSummary(order).paid || ['COMPLETED', 'REJECTED'].includes(order.status)
+                      ? orderPaymentSummary(order, order.driverInfo?.incidentReport?.action === 'DEDUCT_COD' ? computeOrderLossAmount(order) : 0).total
+                      : orderPaymentSummary(order, order.driverInfo?.incidentReport?.action === 'DEDUCT_COD' ? computeOrderLossAmount(order) : 0).remaining,
                   )}
                 </strong>
                 {kind === 'supplier' && (
@@ -2185,13 +2184,13 @@ export default function OrderList({
                         onClick={() => onStatus?.(order)}
                         title={
                           (packingMap[order.id] || []).length < order.items.length
-                            ? `Cần tích đủ ${order.items.length} món trong checklist soạn hàng`
+                            ? `Cần kiểm đủ ${order.items.length} mặt hàng`
                             : undefined
                         }
                       >
                         {(packingMap[order.id] || []).length < order.items.length
                           ? `Soạn đủ hàng để giao (${(packingMap[order.id] || []).length}/${order.items.length})`
-                          : 'Chuẩn bị giao hàng & Gán tài xế'}
+                          : 'Giao hàng'}
                       </button>
                     )}
 
@@ -2202,7 +2201,7 @@ export default function OrderList({
                         style={{ backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 650 }}
                         onClick={() => onReportIncident?.(order)}
                       >
-                        Lập báo cáo sự cố (Khi giao)
+                        Báo sự cố
                       </button>
                     )}
 
@@ -2218,7 +2217,7 @@ export default function OrderList({
                           }
                           onClick={() => onStatus?.(order)}
                         >
-                          Duyệt đơn & Bắt đầu soạn hàng
+                          Nhận đơn
                         </button>
                         <button
                           className="table-button danger"
@@ -2249,7 +2248,7 @@ export default function OrderList({
                         disabled={busy || actionLoadingId === order.id}
                         onClick={() => void handleConfirmArrival(order)}
                       >
-                        {actionLoadingId === order.id ? 'Đang xử lý…' : 'Hàng đã đến cửa hàng'}
+                        {actionLoadingId === order.id ? 'Đang xử lý…' : 'Đã nhận hàng'}
                       </button>
                     )}
 
@@ -2264,7 +2263,7 @@ export default function OrderList({
                             Báo cáo sự cố
                           </button>
                         )}
-                        {(!order.driverInfo?.paymentInfo ||
+                        {!orderPaymentSummary(order).paid && !(order.complaint && ['OPEN', 'IN_REVIEW'].includes(order.complaint.status)) && (!order.driverInfo?.paymentInfo ||
                           order.driverInfo?.paymentInfo?.status === 'PENDING_PAYMENT') && (
                             <button
                               type="button"
@@ -2272,7 +2271,7 @@ export default function OrderList({
                               style={{ backgroundColor: '#0284c7', fontWeight: 700 }}
                               onClick={() => setPaymentOrder(order)}
                             >
-                              Hàng hóa đầy đủ & Trả tiền
+                              Trả tiền
                             </button>
                           )}
                       </div>
@@ -2943,7 +2942,7 @@ export default function OrderList({
                       disabled={complaintActionBusy}
                       onClick={() => void updateComplaint('IN_REVIEW')}
                     >
-                      Tiếp nhận xử lý
+                      Đang kiểm hàng
                     </button>
                     <button
                       type="button"
@@ -3008,11 +3007,13 @@ export default function OrderList({
             className="supplier-dialog"
             style={{ maxWidth: '520px' }}
             onSubmit={handleReschedule}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="order-reschedule-title"
           >
-            <h2>Hẹn giờ nhận hàng (Đơn #{rescheduleOrderTarget.id})</h2>
+            <h2 id="order-reschedule-title">Đề nghị đổi giờ nhận · Đơn #{rescheduleOrderTarget.id}</h2>
             <p className="catalog-hint" style={{ marginTop: 0 }}>
-              Thông báo trước cho tài xế và chủ vựa (
-              <strong>{rescheduleOrderTarget.supplier?.businessName || 'Chủ vựa'}</strong>) thời gian thuận tiện nhất để nhận hàng tại tiệm.
+              Chọn giờ bạn muốn nhận. Lịch giao chỉ thay đổi khi chủ vựa đồng ý.
             </p>
 
             {(() => {
@@ -3035,7 +3036,7 @@ export default function OrderList({
                 const valid = RESCHEDULE_MINUTES.filter((mStr) => {
                   return h * 60 + parseInt(mStr, 10) >= init.earliestMinutesToday;
                 });
-                return valid.length > 0 ? valid : ['00'];
+                return valid;
               })();
 
               const dateParts = rescheduleDate.split('-');
@@ -3072,6 +3073,8 @@ export default function OrderList({
                         required
                         min={init.minDate}
                         value={rescheduleDate}
+                        lang="vi"
+                        autoFocus
                         onChange={(e) => {
                           const newDate = e.target.value;
                           setRescheduleDate(newDate);
@@ -3119,6 +3122,7 @@ export default function OrderList({
                           }}
                           style={{ width: '100%', padding: '9px 6px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff', cursor: 'pointer', boxSizing: 'border-box' }}
                         >
+                          {!availableHours.includes(rescheduleHour) && <option value={rescheduleHour} disabled>{rescheduleHour} giờ · Chọn lại giờ</option>}
                           {availableHours.map((h) => (
                             <option key={h} value={h}>{h} giờ</option>
                           ))}
@@ -3128,6 +3132,7 @@ export default function OrderList({
                           onChange={(e) => setRescheduleTime(`${rescheduleHour}:${e.target.value}`)}
                           style={{ width: '100%', padding: '9px 6px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff', cursor: 'pointer', boxSizing: 'border-box' }}
                         >
+                          {!availableMinutes.includes(rescheduleMinute) && <option value={rescheduleMinute} disabled>{rescheduleMinute} phút · Chọn lại phút</option>}
                           {availableMinutes.map((m) => (
                             <option key={m} value={m}>{m} phút</option>
                           ))}
@@ -3137,7 +3142,10 @@ export default function OrderList({
                   </div>
 
                   <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed #cbd5e1', fontSize: '12.5px', color: '#0f172a' }}>
-                    Dự kiến nhận hàng tại tiệm: <strong style={{ color: '#15803d' }}>Ngày {dateFormatted} lúc {rescheduleTime}</strong>
+                    Giờ đề nghị: <strong style={{ color: '#15803d' }}>Ngày {dateFormatted} lúc {rescheduleTime}</strong>
+                    {(!availableHours.includes(rescheduleHour) || !availableMinutes.includes(rescheduleMinute) || rescheduleDate < init.minDate) && (
+                      <p role="alert" className="error-notice">Giờ đã chọn không còn phù hợp. Chọn lại ngày hoặc giờ.</p>
+                    )}
                   </div>
                 </div>
               );
@@ -3174,7 +3182,7 @@ export default function OrderList({
                 Đóng
               </button>
               <button className="table-button primary-small" disabled={rescheduleBusy}>
-                {rescheduleBusy ? 'Đang gửi…' : 'Xác nhận hẹn giờ'}
+                {rescheduleBusy ? 'Đang gửi…' : 'Gửi đề nghị'}
               </button>
             </div>
           </form>
@@ -3256,20 +3264,19 @@ function PaymentDialog({
     ? computeOrderLossAmount(order)
     : 0;
   const depositPaid = order.depositStatus === 'PAID' ? order.depositAmount : 0;
-  const adjustedTotal = Math.max(0, order.subtotal - lossAmount) + order.deliveryFee;
-  const remainingAmount = Math.max(0, adjustedTotal - depositPaid);
+  const remainingAmount = orderPaymentSummary(order, lossAmount).remaining;
 
-  // Kiểm tra tài khoản ngân hàng của chủ vựa. Nếu chưa có, chuyển về tài khoản Escrow an toàn.
-  const hasSupplierBank = Boolean(order.supplier?.bankAccountNumber && order.supplier?.bankName);
-  const bankName = hasSupplierBank ? order.supplier!.bankName! : 'Sacombank';
-  const bankAcc = hasSupplierBank ? order.supplier!.bankAccountNumber! : '050138052378';
-  const bankHolder = hasSupplierBank ? order.supplier!.bankAccountHolder! : 'LE TRAN MINH DUC';
+  const bank = supplierPaymentBank(order.supplier);
+  const hasSupplierBank = Boolean(bank);
+  const bankName = bank?.name || '';
+  const bankAcc = bank?.account || '';
+  const bankHolder = bank?.holder || '';
   const qrUrl = `https://img.vietqr.io/image/${encodeURIComponent(bankName)}-${encodeURIComponent(bankAcc)}-compact2.png?amount=${remainingAmount}&addInfo=THANH%20TOAN%20DH${order.id}&accountName=${encodeURIComponent(bankHolder)}`;
 
   return (
     <div className="supplier-dialog-backdrop" role="presentation">
       <section
-        className="supplier-dialog"
+        className="supplier-dialog order-payment-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="payment-dialog-title"
@@ -3278,7 +3285,7 @@ function PaymentDialog({
         <span className="supplier-panel-label">THANH TOÁN ĐƠN #{order.id}</span>
         <h2 id="payment-dialog-title">Thanh toán tiền hàng</h2>
         <p style={{ fontSize: '13px', color: '#64748b', marginTop: '2px', marginBottom: '14px' }}>
-          Chọn phương thức thanh toán tiền hàng còn lại khi nhận xe giao đến tiệm.
+          Chọn cách trả tiền.
         </p>
 
         <div
@@ -3298,7 +3305,7 @@ function PaymentDialog({
               fontSize: '13px',
             }}
           >
-            <span>Tổng giá trị đơn hàng:</span>
+            <span>Tổng tiền:</span>
             <strong>{money(order.total)}</strong>
           </div>
           {depositPaid > 0 && (
@@ -3311,7 +3318,7 @@ function PaymentDialog({
                 color: '#15803d',
               }}
             >
-              <span>Đã thanh toán / cọc trước (10%):</span>
+              <span>Đã cọc ({order.depositRate}%):</span>
               <strong>- {money(depositPaid)}</strong>
             </div>
           )}
@@ -3325,7 +3332,7 @@ function PaymentDialog({
                 color: '#dc2626',
               }}
             >
-              <span>Giảm trừ hàng hỏng theo thỏa thuận sự cố:</span>
+              <span>Trừ hàng hỏng:</span>
               <strong>- {money(lossAmount)}</strong>
             </div>
           )}
@@ -3338,7 +3345,7 @@ function PaymentDialog({
               fontSize: '15px',
             }}
           >
-            <strong style={{ color: '#0f172a' }}>Số tiền còn lại cần trả:</strong>
+            <strong style={{ color: '#0f172a' }}>Cần trả:</strong>
             <strong style={{ color: '#0284c7', fontSize: '16px' }}>{money(remainingAmount)}</strong>
           </div>
         </div>
@@ -3353,7 +3360,7 @@ function PaymentDialog({
               marginBottom: '8px',
             }}
           >
-            Chọn hình thức thanh toán:
+            Trả bằng:
           </span>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
             <button
@@ -3375,7 +3382,7 @@ function PaymentDialog({
                   fontSize: '13px',
                 }}
               >
-                Tiền mặt khi giao (COD)
+                Tiền mặt
               </strong>
               <small style={{ color: '#64748b' }}>Trả tiền trực tiếp cho tài xế</small>
             </button>
@@ -3383,6 +3390,7 @@ function PaymentDialog({
             <button
               type="button"
               onClick={() => setMethod('QR')}
+              disabled={busy || !hasSupplierBank}
               style={{
                 padding: '12px',
                 borderRadius: '8px',
@@ -3399,14 +3407,14 @@ function PaymentDialog({
                   fontSize: '13px',
                 }}
               >
-                Quét mã VietQR
+                Chuyển khoản
               </strong>
-              <small style={{ color: '#64748b' }}>Chuyển khoản trực tiếp vựa</small>
+              <small style={{ color: '#64748b' }}>{hasSupplierBank ? 'Vào tài khoản chủ vựa' : 'Chủ vựa chưa có tài khoản nhận tiền'}</small>
             </button>
           </div>
         </div>
 
-        {method === 'QR' ? (
+        {method === 'QR' && hasSupplierBank ? (
           <div
             style={{
               marginBottom: '14px',
@@ -3426,8 +3434,9 @@ function PaymentDialog({
                 marginBottom: '8px',
               }}
             >
-              Quét mã QR bằng ứng dụng ngân hàng:
+              Quét mã để chuyển khoản
             </span>
+            <p>Chủ vựa sẽ kiểm tra tiền nhận được. Ứng dụng không tự xác nhận giao dịch ngân hàng.</p>
             <img
               src={qrUrl}
               alt="Mã QR thanh toán VietQR"
@@ -3478,9 +3487,9 @@ function PaymentDialog({
               color: '#92400e',
             }}
           >
-            <strong>Hướng dẫn thanh toán tiền mặt (COD):</strong>
+            <strong>Trả tiền mặt</strong>
             <p style={{ margin: '4px 0 0' }}>
-              Chuẩn bị đúng số tiền <strong>{money(remainingAmount)}</strong> để đưa cho tài xế giao hàng khi xe đến cửa hàng.
+              Đưa <strong>{money(remainingAmount)}</strong> cho người giao hàng.
             </p>
           </div>
         )}
@@ -3494,7 +3503,7 @@ function PaymentDialog({
             className="table-button primary-small"
             style={{ backgroundColor: '#0284c7', fontWeight: 700 }}
             onClick={() => onSubmit(method)}
-            disabled={busy}
+            disabled={busy || (method === 'QR' && !hasSupplierBank)}
           >
             {busy ? 'Đang xử lý…' : 'Xác nhận đã trả tiền'}
           </button>

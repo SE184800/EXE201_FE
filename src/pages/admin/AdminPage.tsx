@@ -1140,7 +1140,7 @@ function VerificationDialog({
           <dd>
             {p.verificationDocumentUrl?.startsWith('https://') ? (
               <a href={p.verificationDocumentUrl} target="_blank" rel="noopener noreferrer">
-                Mở giấy tờ đối tác ↗
+                Mở giấy tờ đối tác
               </a>
             ) : (
               'Chưa bổ sung'

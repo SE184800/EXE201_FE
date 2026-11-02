@@ -889,7 +889,7 @@ export default function StoreInventory({
                       <span className="metric-icon">
                         <Icon name={metric.icon as 'box' | 'store' | 'leaf' | 'shield'} />
                       </span>
-                      <span className="metric-corner">↗</span>
+
                     </div>
                     <p>{metric.label}</p>
                     <strong>{loading ? '—' : metric.value.toString().padStart(2, '0')}</strong>
@@ -1002,7 +1002,7 @@ export default function StoreInventory({
                       <h2>Hàng cần chú ý</h2>
                     </div>
                     <button className="dash-link" onClick={() => openFilter('soon')}>
-                      Xem kho ↗
+                      Xem kho
                     </button>
                   </div>
                   {loading ? (
@@ -1275,7 +1275,7 @@ export default function StoreInventory({
                               aria-label={`Sửa ${item.name}`}
                               onClick={() => edit(item)}
                             >
-                              Sửa ↗
+                              Sửa
                             </button>
                             {item.isConsignment && item.quantity <= item.lowThreshold && (
                               <button

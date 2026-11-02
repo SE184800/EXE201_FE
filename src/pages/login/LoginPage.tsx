@@ -751,14 +751,14 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
                     gap: '4px',
                   }}
                 >
-                  Quên mật khẩu? Lấy lại tài khoản <span>↗</span>
+                  Quên mật khẩu? Lấy lại tài khoản
                 </button>
               </div>
 
               <p className="account-help" style={{ marginTop: '0' }}>
                 Chưa có tài khoản?{' '}
                 <Link className="account-link" to="/register">
-                  Tạo tài khoản <span>↗</span>
+                  Tạo tài khoản
                 </Link>
               </p>
             </>

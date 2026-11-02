@@ -15,6 +15,8 @@ export type QuoteLine = {
   packaging: string;
   quantity: number;
   unitPrice: number;
+  originalUnitPrice?: number;
+  discountRate?: number;
   lineTotal: number;
 };
 
@@ -75,6 +77,7 @@ export type QuoteDraft = {
     productId: number;
     quantity: number;
     unitPrice: number;
+    discountRate?: number;
     expectedUpdatedAt: string;
   }>;
 };

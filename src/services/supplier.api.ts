@@ -97,6 +97,12 @@ export type DriverInfo = {
   packingChecklist?: number[];
   incidentReport?: IncidentReport | null;
   paymentInfo?: PaymentInfo | null;
+  rescheduleRequest?: {
+    requestedTime: string;
+    reason?: string;
+    status: 'PENDING' | 'ACCEPTED' | 'REJECTED';
+    responseNote?: string;
+  } | null;
 };
 
 export type SupplierOrder = {

@@ -6,6 +6,7 @@ import { api, getApiError, isUnauthenticated } from '../services/api';
 import { getWallet, addMockFunds, type WalletInfo } from '../services/wallet.api';
 import { calculateDeliveryFee, type DeliveryFeeResult } from '../utils/geo';
 import type { Profile } from '../pages/ProfilePage';
+import { checkoutRequestId } from '../utils/checkoutRequests';
 
 const roundToThousand = (val: number) => Math.round(val / 1000) * 1000;
 const money = (n: number) => Math.round(n).toLocaleString('vi-VN') + ' ₫';
@@ -42,6 +43,7 @@ export default function CheckoutDialog({
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const lock = useRef(false);
+  const requestIds = useRef(new Map<string, string>());
   const navigate = useNavigate();
 
   // Lock background scroll when dialog is mounted
@@ -278,15 +280,14 @@ export default function CheckoutDialog({
           expectedDeliveryFee: calc.deliveryFee,
           depositRate: STANDARD_DEPOSIT_RATE,
           lines,
-          requestId: crypto.randomUUID(),
         };
 
-        const { data } = await api.post('/orders', body);
+        const { data } = await api.post('/orders', { ...body, requestId: checkoutRequestId(requestIds.current, body) });
         results.push({
           id: data.order.id,
           supplierName: calc.supplier.businessName,
-          total: calc.orderTotal,
-          depositAmount: calc.depositAmount,
+          total: data.order.total,
+          depositAmount: data.order.depositAmount,
           itemCount: lines.length,
         });
       }
@@ -348,8 +349,7 @@ export default function CheckoutDialog({
               Đặt hàng thành công ({createdOrders.length} đơn hàng)!
             </strong>
             <p style={{ margin: 0, fontSize: '13px', color: '#15803d', lineHeight: 1.5 }}>
-              Tổng tiền cọc ký quỹ <strong>{money(totalDepositRequired)}</strong> đã được giữ an toàn trong Ví hệ thống (Escrow).
-              Các chủ vựa sẽ đối soát kho và điều phối xe giao đến tiệm của bạn.
+              Đã tạo đơn. Mở Đơn mua hàng để xem tình trạng cọc và lịch giao.
             </p>
           </div>
 
@@ -668,7 +668,7 @@ export default function CheckoutDialog({
                 </div>
 
                 <p className="checkout-escrow-note">
-                  Toàn bộ tiền cọc 10% được giữ trung gian an toàn trong Ví hệ thống (Escrow), chỉ tự động giải ngân cho chủ vựa khi bạn xác nhận đã nhận đủ hàng đạt chuẩn.
+                  Cọc được giữ trong ví. Chủ vựa nhận cọc khi đơn được hoàn tất.
                 </p>
               </div>
 

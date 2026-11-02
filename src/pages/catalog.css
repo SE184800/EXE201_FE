@@ -1583,3 +1583,29 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Readable order controls, including layouts with legacy inline text sizes. */
+.order-panel .order-card { font-size: 16px; line-height: 1.6; }
+.order-panel .order-card p,
+.order-panel .order-card small,
+.order-panel .order-card span:not(.order-status) { font-size: 15px !important; line-height: 1.6; }
+.order-panel .order-card button,
+.order-panel .order-card a.ghost-button,
+.order-payment-dialog button { min-height: 44px; padding: 10px 16px !important; font-size: 16px !important; }
+.order-panel .order-status { font-size: 14px; padding: 6px 12px; }
+.order-panel .order-note { margin: 12px 0; overflow-wrap: anywhere; }
+.order-panel details > summary { min-height: 44px; padding: 10px 0; font-size: 15px; cursor: pointer; }
+.order-payment-dialog small, .order-payment-dialog p { font-size: 15px !important; line-height: 1.6; }
+.order-panel .order-filter select { font-size: 16px; min-height: 44px; }
+.order-panel .order-actions { flex-wrap: wrap; }
+@media(max-width: 600px) {
+  .order-panel .order-actions { width: 100%; margin-left: 0; }
+  .order-panel .order-actions > button { flex: 1 1 150px; }
+}
+
+.order-panel .supplier-dialog label, .order-panel .supplier-dialog input, .order-panel .supplier-dialog select, .order-panel .supplier-dialog textarea { font-size: 16px !important; }
+.order-panel .supplier-dialog input, .order-panel .supplier-dialog select, .order-panel .supplier-dialog button { min-height: 44px; }
+.order-panel .supplier-dialog p { font-size: 15px !important; line-height: 1.6; }
+.order-test-tools { width: 100%; }
+
+.order-panel .supplier-dialog button { font-size: 16px !important; padding: 10px 16px !important; }
