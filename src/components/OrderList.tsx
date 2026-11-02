@@ -170,6 +170,8 @@ function parseComplaintDescription(desc: string) {
 type Props = {
   kind: 'store' | 'supplier';
   onLogout: () => void;
+  onInventoryChanged?: () => Promise<void>;
+  onViewHistory?: () => void;
   revision?: number;
   busy?: boolean;
   onStatus?: (order: SupplierOrder, forcedStatus?: string) => void;
@@ -295,6 +297,8 @@ export default function OrderList({
   onStatus,
   onEditDriver,
   onReportIncident,
+  onInventoryChanged,
+  onViewHistory,
 }: Props) {
   const [query, setQuery] = useState({ page: 1, status: '' });
   const [data, setData] = useState<{ orders: SupplierOrder[]; total: number; hasMore: boolean }>({
@@ -373,6 +377,7 @@ export default function OrderList({
       setData(current => ({ ...current, orders: current.orders.map(row => row.id === order.id ? result.order : row) }));
       setDepositNotice(result.message);
       setReload(value => value + 1);
+      await onInventoryChanged?.();
     } catch (issue) {
       setError(getApiError(issue));
       if (isUnauthenticated(issue)) onLogout();
@@ -909,19 +914,20 @@ export default function OrderList({
               {order.walletPayment && (
                 <p className="catalog-hint" style={{ marginTop: 8 }}>
                   {order.walletPayment.refunded
-                    ? `Đã thanh toán bằng ví ${money(order.walletPayment.amount)} · đã hoàn tiền`
-                    : order.walletPayment.status === 'SETTLED'
-                      ? `Đã thanh toán bằng ví ${money(order.walletPayment.amount)} · chủ vựa đã nhận tiền`
-                      : `Đã thanh toán bằng ví ${money(order.walletPayment.amount)} · chờ giao hàng`}
+                    ? `Đã hoàn tiền ví · ${money(order.walletPayment.amount)}`
+                    : `Đã thanh toán ví · ${money(order.walletPayment.amount)}`}
                 </p>
               )}
 
               <div className="order-items">
                 {order.items.map((item) => (
-                  <span key={item.id}>
-                    {item.productName} · {item.quantity} × {item.packaging} ·{' '}
-                    {money(item.lineTotal)}
-                  </span>
+                  <div className="order-product" key={item.id}>
+                    <div className="order-product-details">
+                      <strong>{item.productName}</strong>
+                      <span>{item.quantity} × {item.packaging}</span>
+                    </div>
+                    <strong className="order-product-total">{money(item.lineTotal)}</strong>
+                  </div>
                 ))}
               </div>
 
@@ -2094,7 +2100,7 @@ export default function OrderList({
                     fontSize: '12.5px',
                   }}
                 >
-                  Đơn hàng đã hoàn tất thành công. Tiền hàng và cọc đã được quyết toán đầy đủ.
+                  Đơn đã hoàn tất · Đã thanh toán đủ
                 </div>
               )}
 
@@ -2111,11 +2117,16 @@ export default function OrderList({
                   </button>
                   <p className="catalog-hint">
                     {order.inventoryImportedAt
-                      ? `Đã nhập ngày ${new Date(order.inventoryImportedAt).toLocaleString('vi-VN')}. Đơn này không được cộng kho lần nữa.`
+                      ? `Nhập kho lúc ${new Date(order.inventoryImportedAt).toLocaleString('vi-VN')}`
                       : order.inventoryImportBlockedReason || (order.canImportInventory
-                        ? 'Mặt hàng chưa có sẽ được tạo mới. Mặt hàng đã có được cộng tồn và tạo lô mới riêng theo đơn này.'
-                        : 'Cần cập nhật backend để sử dụng chức năng thêm đơn vào kho.')}
+                        ? 'Tạo lô mới cho từng mặt hàng. Mỗi đơn chỉ nhập một lần.'
+                        : 'Chưa thể nhập kho. Vui lòng tải lại đơn.')}
                   </p>
+                  {order.inventoryImportedAt && onViewHistory && (
+                    <button type="button" className="secondary-button" onClick={onViewHistory}>
+                      Xem lịch sử nhập kho
+                    </button>
+                  )}
                 </div>
               )}
 

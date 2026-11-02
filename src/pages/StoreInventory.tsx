@@ -724,7 +724,7 @@ export default function StoreInventory({
           ) : activeTab === 'quotes' ? (
             <StoreQuotes onLogout={onLogout} />
           ) : activeTab === 'orders' ? (
-            <OrderList kind="store" onLogout={onLogout} />
+            <OrderList kind="store" onLogout={onLogout} onInventoryChanged={refresh} onViewHistory={() => setActiveTab('history')} />
           ) : activeTab === 'wallet' ? (
             <WalletPage onLogout={onLogout} role="STORE_OWNER" />
           ) : activeTab === 'revenue' ? (
@@ -1331,13 +1331,13 @@ export default function StoreInventory({
             </section>
           )}
           <div hidden={activeTab !== 'history'} className="dashboard-card activity-card">
-            <StockActivity
+            {activeTab === 'history' && <StockActivity
               items={items}
               revision={revision}
               onChanged={refresh}
               onLogout={onLogout}
               mode="history"
-            />
+            />}
           </div>
           <div hidden={activeTab !== 'calendar'}>
             <SalesCalendar
