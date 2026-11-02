@@ -918,9 +918,7 @@ export default function ContractViewModal({
                       {partnerName}
                     </div>
                     <div style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic', marginBottom: '8px' }}>
-                      {contract.signingMethod === 'VNEID' || contract.stamp?.signingMethod?.includes('VNeID')
-                        ? '(Ký số xác thực danh tính điện tử qua VNeID Mức 2)'
-                        : '(Ký điện tử bằng Khóa bí mật đối tác)'}
+                      (Ký số xác thực danh tính điện tử qua VNeID Mức 2)
                     </div>
 
                     {/* Pure Vector SVG Stamp for Bên B */}
@@ -952,10 +950,7 @@ export default function ContractViewModal({
                       <div><strong>Người ký:</strong> {contract.signerInfo?.name || contract.username}</div>
                       <div><strong>Thời gian:</strong> {formatDate(contract.signedAt)}</div>
                       <div>
-                        <strong>Phương thức:</strong>{' '}
-                        {contract.signingMethod === 'VNEID' || contract.stamp?.signingMethod?.includes('VNeID')
-                          ? 'VNeID Mức 2 (Sinh trắc học FaceID)'
-                          : 'Khóa cá nhân (Ed25519)'}
+                        <strong>Phương thức:</strong> VNeID Mức 2 (Sinh trắc học FaceID)
                       </div>
                       <div>
                         <strong>Số chứng chỉ:</strong>{' '}

@@ -24,8 +24,6 @@ export default function ContractSigningModal({
   const [contract, setContract] = useState<UserContract | null>(null);
   const [canonicalText, setCanonicalText] = useState('');
   const [agreed, setAgreed] = useState(false);
-  const [signMethod, setSignMethod] = useState<'VNEID' | 'PRIVATE_KEY'>('VNEID');
-  const [privateKey, setPrivateKey] = useState('');
   const [vneidVerified, setVneidVerified] = useState(false);
   const [vneidSimulating, setVneidSimulating] = useState(false);
   const [errorNotice, setErrorNotice] = useState('');
@@ -36,10 +34,8 @@ export default function ContractSigningModal({
     setLoading(true);
     setErrorNotice('');
     setAgreed(false);
-    setPrivateKey('');
     setVneidVerified(false);
     setVneidSimulating(false);
-    setSignMethod('VNEID');
 
     getMyContract()
       .then((res) => {
@@ -50,7 +46,9 @@ export default function ContractSigningModal({
       })
       .catch((err) => {
         if (!active) return;
-        setErrorNotice(err.response?.data?.message || 'Không thể tải thông tin hợp đồng. Vui lòng thử lại.');
+        setErrorNotice(
+          err.response?.data?.message || 'Không thể tải thông tin hợp đồng. Vui lòng thử lại.',
+        );
         setLoading(false);
       });
 
@@ -78,37 +76,26 @@ export default function ContractSigningModal({
       return;
     }
 
-    if (signMethod === 'PRIVATE_KEY' && !privateKey.trim()) {
-      setErrorNotice('Vui lòng nhập hoặc dán khóa bí mật cá nhân (Private Key) vào ô ký tên.');
-      return;
-    }
-
-    if (signMethod === 'VNEID' && !vneidVerified) {
-      setErrorNotice('Vui lòng hoàn tất quét mã và xác thực sinh trắc học trên ứng dụng VNeID trước khi ký kết.');
+    if (!vneidVerified) {
+      setErrorNotice(
+        'Vui lòng hoàn tất quét mã và xác thực sinh trắc học trên ứng dụng VNeID trước khi ký kết.',
+      );
       return;
     }
 
     try {
       setSigning(true);
-      const res = await signContract(
-        signMethod === 'VNEID'
-          ? {
-              method: 'VNEID',
-              agreedTerms: true,
-              vneidData: {
-                cccd: contract?.signerInfo?.taxCode || '079095012345',
-                citizenName: contract?.signerInfo?.name || user.name || 'Chủ cơ sở kinh doanh',
-                authMethod: 'BIOMETRIC_FACE_ID_LEVEL_2',
-                level: 2,
-                verifiedAt: new Date().toISOString(),
-              },
-            }
-          : {
-              method: 'PRIVATE_KEY',
-              privateKey: privateKey.trim(),
-              agreedTerms: true,
-            }
-      );
+      const res = await signContract({
+        method: 'VNEID',
+        agreedTerms: true,
+        vneidData: {
+          cccd: contract?.signerInfo?.taxCode || '079095012345',
+          citizenName: contract?.signerInfo?.name || user.name || 'Chủ cơ sở kinh doanh',
+          authMethod: 'BIOMETRIC_FACE_ID_LEVEL_2',
+          level: 2,
+          verifiedAt: new Date().toISOString(),
+        },
+      });
       setSigning(false);
       onSignedSuccess(res.contract);
     } catch (err: any) {
@@ -152,118 +139,153 @@ export default function ContractSigningModal({
         {/* Header */}
         <div
           style={{
-            padding: '20px 24px 16px',
-            borderBottom: '1px solid #f1f5f9',
+            padding: '18px 24px',
+            borderBottom: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
             backgroundColor: '#f8fafc',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <span
-                style={{
-                  display: 'inline-block',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  letterSpacing: '0.06em',
-                  color: '#166534',
-                  textTransform: 'uppercase',
-                  marginBottom: '2px',
-                }}
-              >
-                XÁC NHẬN KẾT NỐI VÀ HỢP ĐỒNG ĐIỆN TỬ
-              </span>
-              <h2
-                id="contract-modal-title"
-                style={{
-                  margin: 0,
-                  fontSize: '18px',
-                  fontWeight: 700,
-                  color: '#0f172a',
-                }}
-              >
-                Thỏa thuận dịch vụ & Cấp quyền truy cập thông tin
-              </h2>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Đóng"
+          <div>
+            <span
               style={{
-                background: 'none',
-                border: 'none',
-                fontSize: '22px',
-                lineHeight: 1,
-                cursor: 'pointer',
-                color: '#64748b',
-                padding: '4px 8px',
-                borderRadius: '6px',
+                fontSize: '11px',
+                fontWeight: 700,
+                color: '#dc2626',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                display: 'block',
+                marginBottom: '4px',
               }}
             >
-              ×
-            </button>
+              CHỮ KÝ SỐ ĐỊNH DANH ĐIỆN TỬ VNEID (MỨC ĐỘ 2)
+            </span>
+            <h2
+              id="contract-modal-title"
+              style={{
+                margin: 0,
+                fontSize: '18px',
+                fontWeight: 700,
+                color: '#0f172a',
+              }}
+            >
+              Ký kết Hợp đồng Dịch vụ Nền tảng SupplyMind
+            </h2>
           </div>
-          <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#64748b', lineHeight: 1.5 }}>
-            Vui lòng đọc kỹ hợp đồng liên kết nền tảng SupplyMind. Hợp đồng đảm bảo minh bạch thông tin, quy định rõ quyền lợi, chế tài xử phạt và cơ chế luồng tiền ký quỹ Escrow 10% an toàn.
-          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Đóng"
+            style={{
+              background: 'none',
+              border: 'none',
+              fontSize: '20px',
+              color: '#64748b',
+              cursor: 'pointer',
+              padding: '4px 8px',
+              borderRadius: '6px',
+            }}
+          >
+            ✕
+          </button>
         </div>
 
-        {/* Content Body */}
-        <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1 }}>
+        {/* Body Content */}
+        <div
+          style={{
+            padding: '20px 24px',
+            overflowY: 'auto',
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '16px',
+          }}
+        >
           {loading ? (
-            <p style={{ textAlign: 'center', color: '#64748b', margin: '40px 0' }}>
-              Đang khởi tạo tài liệu hợp đồng điện tử…
-            </p>
+            <div style={{ textAlign: 'center', padding: '40px 0', color: '#64748b' }}>
+              Đang tải nội dung hợp đồng và cấu hình chữ ký số VNeID…
+            </div>
           ) : (
             <>
-              {/* Contract Metadata Badges */}
+              {/* Partner Overview Banner */}
               <div
                 style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  gap: '10px',
-                  marginBottom: '14px',
-                  fontSize: '12px',
-                }}
-              >
-                <div style={{ padding: '6px 12px', backgroundColor: '#f1f5f9', borderRadius: '6px', color: '#334155' }}>
-                  Số hợp đồng: <strong>{contract?.contractNumber}</strong>
-                </div>
-                <div style={{ padding: '6px 12px', backgroundColor: '#ecfdf5', borderRadius: '6px', color: '#166534', fontWeight: 600 }}>
-                  Trạng thái: {contract?.isSigned ? 'ĐÃ KÝ KẾT' : 'CHỜ KÝ SỐ'}
-                </div>
-                <div style={{ padding: '6px 12px', backgroundColor: '#eff6ff', borderRadius: '6px', color: '#1d4ed8' }}>
-                  Tiêu chuẩn: <strong>Luật Giao dịch điện tử 2023</strong>
-                </div>
-              </div>
-
-              {/* Scrollable Terms Content */}
-              <div
-                style={{
-                  height: '240px',
-                  overflowY: 'auto',
-                  padding: '16px',
-                  backgroundColor: '#f8fafc',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '8px',
-                  fontSize: '12.5px',
-                  lineHeight: 1.6,
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: '12px',
+                  backgroundColor: '#f1f5f9',
+                  padding: '14px 18px',
+                  borderRadius: '10px',
+                  fontSize: '13px',
                   color: '#334155',
-                  whiteSpace: 'pre-line',
-                  fontFamily: 'system-ui, -apple-system, sans-serif',
                 }}
               >
-                {canonicalText}
+                <div>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '11.5px' }}>
+                    Số hợp đồng điện tử:
+                  </span>
+                  <strong>{contract?.contractNumber}</strong>
+                </div>
+                <div>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '11.5px' }}>
+                    Đơn vị ký kết (Bên B):
+                  </span>
+                  <strong>{contract?.signerInfo?.businessName || user.name || 'Cơ sở kinh doanh'}</strong>
+                </div>
+                <div>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '11.5px' }}>
+                    Người đại diện pháp luật:
+                  </span>
+                  <strong>{contract?.signerInfo?.name || user.name}</strong>
+                </div>
+                <div>
+                  <span style={{ color: '#64748b', display: 'block', fontSize: '11.5px' }}>
+                    Mã số thuế / GPKD:
+                  </span>
+                  <strong>{contract?.signerInfo?.taxCode || 'Đã khai báo'}</strong>
+                </div>
               </div>
 
-              {/* Checkbox agreement */}
+              {/* Scrollable Canonical Contract Content */}
+              <div>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: '13px',
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    marginBottom: '6px',
+                  }}
+                >
+                  Nội dung điều khoản hợp đồng & Thỏa thuận dịch vụ:
+                </label>
+                <div
+                  style={{
+                    maxHeight: '220px',
+                    overflowY: 'auto',
+                    padding: '14px 16px',
+                    backgroundColor: '#ffffff',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    fontSize: '12px',
+                    lineHeight: '1.6',
+                    color: '#1e293b',
+                    whiteSpace: 'pre-line',
+                    fontFamily: 'system-ui, -apple-system, sans-serif',
+                  }}
+                >
+                  {canonicalText || 'Đang cập nhật nội dung hợp đồng…'}
+                </div>
+              </div>
+
+              {/* Checkbox Acceptance */}
               <div
                 style={{
-                  marginTop: '16px',
                   padding: '12px 14px',
-                  backgroundColor: agreed ? '#f0fdf4' : '#ffffff',
-                  border: `1px solid ${agreed ? '#86efac' : '#cbd5e1'}`,
+                  backgroundColor: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
                   borderRadius: '8px',
-                  transition: 'all 0.2s',
                 }}
               >
                 <label
@@ -272,10 +294,10 @@ export default function ContractSigningModal({
                     alignItems: 'flex-start',
                     gap: '10px',
                     cursor: 'pointer',
-                    fontSize: '13.5px',
+                    fontSize: '13px',
+                    color: '#166534',
                     fontWeight: 600,
-                    color: agreed ? '#166534' : '#0f172a',
-                    lineHeight: 1.45,
+                    lineHeight: 1.5,
                   }}
                 >
                   <input
@@ -294,255 +316,197 @@ export default function ContractSigningModal({
                     }}
                   />
                   <span>
-                    Tôi đã đọc, hiểu rõ và đồng ý với tất cả điều khoản, quyền lợi và nghĩa vụ trong Thỏa thuận kết nối và Hợp đồng dịch vụ nền tảng SupplyMind.
+                    Tôi đã đọc, hiểu rõ và đồng ý với tất cả điều khoản, quyền lợi và nghĩa vụ trong
+                    Thỏa thuận kết nối và Hợp đồng dịch vụ nền tảng SupplyMind.
                   </span>
                 </label>
               </div>
 
-              {/* Signing Method Selection */}
+              {/* VNeID Level 2 Authentication Section */}
               {agreed && (
-                <div style={{ marginTop: '16px' }}>
-                  <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSignMethod('VNEID');
-                        setErrorNotice('');
-                      }}
-                      style={{
-                        flex: 1,
-                        padding: '10px 14px',
-                        borderRadius: '8px',
-                        border: `2px solid ${signMethod === 'VNEID' ? '#dc2626' : '#e2e8f0'}`,
-                        backgroundColor: signMethod === 'VNEID' ? '#fff5f5' : '#ffffff',
-                        color: signMethod === 'VNEID' ? '#991b1b' : '#475569',
-                        fontSize: '13px',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: '6px',
-                        boxShadow: signMethod === 'VNEID' ? '0 2px 4px rgba(220, 38, 38, 0.12)' : 'none',
-                      }}
-                    >
-                      <span>Ký số qua VNeID Mức 2 (Khuyên dùng)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSignMethod('PRIVATE_KEY');
-                        setErrorNotice('');
-                      }}
-                      style={{
-                        padding: '10px 14px',
-                        borderRadius: '8px',
-                        border: `2px solid ${signMethod === 'PRIVATE_KEY' ? '#166534' : '#e2e8f0'}`,
-                        backgroundColor: signMethod === 'PRIVATE_KEY' ? '#f0fdf4' : '#ffffff',
-                        color: signMethod === 'PRIVATE_KEY' ? '#166534' : '#475569',
-                        fontSize: '13px',
-                        fontWeight: 650,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Ký bằng Khóa cá nhân (Private Key)
-                    </button>
+                <div
+                  style={{
+                    marginTop: '4px',
+                    padding: '16px',
+                    backgroundColor: '#fffdf5',
+                    border: '1px solid #fde68a',
+                    borderRadius: '10px',
+                    animation: 'fadeIn 0.2s ease-in-out',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: '12px',
+                      flexWrap: 'wrap',
+                      gap: '8px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span
+                        style={{
+                          backgroundColor: '#dc2626',
+                          color: '#ffffff',
+                          fontWeight: 800,
+                          fontSize: '11px',
+                          letterSpacing: '0.06em',
+                          padding: '3px 8px',
+                          borderRadius: '4px',
+                        }}
+                      >
+                        VNeID MỨC 2
+                      </span>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#991b1b' }}>
+                        Định danh điện tử & Ký số từ xa (Bộ Công An - C06)
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '11.5px', color: '#854d0e', fontWeight: 600 }}>
+                      Luật Giao dịch điện tử 2023
+                    </span>
                   </div>
 
-                  {/* Option 1: VNeID Level 2 Authentication */}
-                  {signMethod === 'VNEID' && (
+                  {!vneidVerified ? (
                     <div
                       style={{
-                        padding: '16px',
-                        backgroundColor: '#fffdf5',
-                        border: '1px solid #fde68a',
-                        borderRadius: '10px',
-                        animation: 'fadeIn 0.2s ease-in-out',
+                        display: 'grid',
+                        gridTemplateColumns: '160px 1fr',
+                        gap: '16px',
+                        alignItems: 'center',
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span
-                            style={{
-                              backgroundColor: '#dc2626',
-                              color: '#ffffff',
-                              fontWeight: 800,
-                              fontSize: '11px',
-                              letterSpacing: '0.06em',
-                              padding: '3px 8px',
-                              borderRadius: '4px',
-                            }}
-                          >
-                            VNeID MỨC 2
-                          </span>
-                          <span style={{ fontSize: '13px', fontWeight: 700, color: '#991b1b' }}>
-                            Định danh điện tử & Ký số từ xa (Bộ Công An - C06)
-                          </span>
-                        </div>
-                        <span style={{ fontSize: '11.5px', color: '#854d0e', fontWeight: 600 }}>
-                          Luật Giao dịch điện tử 2023
+                      <div
+                        style={{
+                          textAlign: 'center',
+                          backgroundColor: '#ffffff',
+                          padding: '12px',
+                          borderRadius: '8px',
+                          border: '1px solid #fed7aa',
+                        }}
+                      >
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(`VNEID://AUTH?contract=${contract?.contractNumber}&user=${user.id}&time=${Date.now()}`)}`}
+                          alt="Mã QR ký số VNeID"
+                          style={{
+                            width: '130px',
+                            height: '130px',
+                            display: 'block',
+                            margin: '0 auto',
+                          }}
+                        />
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            color: '#b45309',
+                            fontWeight: 600,
+                            display: 'block',
+                            marginTop: '6px',
+                          }}
+                        >
+                          Quét bằng app VNeID
                         </span>
                       </div>
 
-                      {!vneidVerified ? (
-                        <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '16px', alignItems: 'center' }}>
-                          <div style={{ textAlign: 'center', backgroundColor: '#ffffff', padding: '12px', borderRadius: '8px', border: '1px solid #fed7aa' }}>
-                            {/* Simulated VNeID QR Code */}
-                            <img
-                              src={`https://api.qrserver.com/v1/create-qr-code/?size=130x130&data=${encodeURIComponent(`VNEID://AUTH?contract=${contract?.contractNumber}&user=${user.id}&time=${Date.now()}`)}`}
-                              alt="Mã QR ký số VNeID"
-                              style={{ width: '130px', height: '130px', display: 'block', margin: '0 auto' }}
-                            />
-                            <span style={{ fontSize: '11px', color: '#b45309', fontWeight: 600, display: 'block', marginTop: '6px' }}>
-                              Quét bằng app VNeID
-                            </span>
-                          </div>
-
-                          <div>
-                            <div style={{ fontSize: '12.5px', color: '#1e293b', lineHeight: 1.6, marginBottom: '12px' }}>
-                              <strong>Hướng dẫn 3 bước ký số qua VNeID:</strong>
-                              <ol style={{ margin: '4px 0 0', paddingLeft: '18px', color: '#475569' }}>
-                                <li>Mở ứng dụng <strong>VNeID</strong> trên điện thoại (đã kích hoạt Mức độ 2).</li>
-                                <li>Chọn tính năng <strong>Quét mã QR</strong> để nhận diện hợp đồng điện tử <strong>{contract?.contractNumber}</strong>.</li>
-                                <li>Xác thực sinh trắc học <strong>FaceID / Vân tay</strong> để phát hành chữ ký số an toàn.</li>
-                              </ol>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={handleSimulateVNeId}
-                              disabled={vneidSimulating}
-                              style={{
-                                padding: '8px 16px',
-                                backgroundColor: '#dc2626',
-                                color: '#ffffff',
-                                border: 'none',
-                                borderRadius: '6px',
-                                fontSize: '12.5px',
-                                fontWeight: 650,
-                                cursor: vneidSimulating ? 'not-allowed' : 'pointer',
-                                opacity: vneidSimulating ? 0.75 : 1,
-                                boxShadow: '0 2px 4px rgba(220, 38, 38, 0.2)',
-                              }}
-                            >
-                              {vneidSimulating ? 'Đang kết nối cổng VNeID…' : 'Mô phỏng quét mã & Xác thực VNeID thành công (Demo)'}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
+                      <div>
                         <div
                           style={{
-                            padding: '12px 16px',
-                            backgroundColor: '#f0fdf4',
-                            border: '1px solid #86efac',
-                            borderRadius: '8px',
-                            fontSize: '13px',
-                            color: '#166534',
-                            lineHeight: 1.5,
+                            fontSize: '12.5px',
+                            color: '#1e293b',
+                            lineHeight: 1.6,
+                            marginBottom: '12px',
                           }}
                         >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                            <strong style={{ color: '#15803d', fontSize: '13.5px' }}>
-                              ĐÃ XÁC THỰC DANH TÍNH CÔNG DÂN THÀNH CÔNG QUA VNEID
-                            </strong>
-                            <span style={{ fontSize: '11px', backgroundColor: '#dcfce7', color: '#15803d', fontWeight: 700, padding: '2px 8px', borderRadius: '4px' }}>
-                              MỨC ĐỘ 2 HỢP LỆ
-                            </span>
-                          </div>
-                          <div>Người đại diện ký kết: <strong>{contract?.signerInfo?.name || user.name || 'Đại diện cơ sở'}</strong></div>
-                          <div>Mã định danh / CCCD: <strong>{contract?.signerInfo?.taxCode || '079095012345'}</strong></div>
-                          <div>Phương thức bảo mật: <strong>Sinh trắc học FaceID / Chữ ký số từ xa (Remote Signing HSM)</strong></div>
-                          <div style={{ marginTop: '8px', fontSize: '12px', color: '#166534' }}>
-                            Hệ thống đã sẵn sàng phát hành chữ ký số và con dấu chứng thực điện tử theo quy định. Bấm nút <strong>“Xác nhận ký kết”</strong> bên dưới để hoàn tất.
-                          </div>
+                          <strong>Hướng dẫn 3 bước ký số qua VNeID:</strong>
+                          <ol style={{ margin: '4px 0 0', paddingLeft: '18px', color: '#475569' }}>
+                            <li>Mở ứng dụng <strong>VNeID</strong> trên điện thoại (đã kích hoạt Mức độ 2).</li>
+                            <li>
+                              Chọn tính năng <strong>Quét mã QR</strong> để nhận diện hợp đồng điện tử{' '}
+                              <strong>{contract?.contractNumber}</strong>.
+                            </li>
+                            <li>
+                              Xác thực sinh trắc học <strong>FaceID / Vân tay</strong> để phát hành chữ ký số an toàn.
+                            </li>
+                          </ol>
                         </div>
-                      )}
-                    </div>
-                  )}
 
-                  {/* Option 2: Legacy Manual Private Key */}
-                  {signMethod === 'PRIVATE_KEY' && (
+                        <button
+                          type="button"
+                          onClick={handleSimulateVNeId}
+                          disabled={vneidSimulating}
+                          style={{
+                            padding: '8px 16px',
+                            backgroundColor: '#dc2626',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '6px',
+                            fontSize: '12.5px',
+                            fontWeight: 650,
+                            cursor: vneidSimulating ? 'not-allowed' : 'pointer',
+                            opacity: vneidSimulating ? 0.75 : 1,
+                            boxShadow: '0 2px 4px rgba(220, 38, 38, 0.2)',
+                          }}
+                        >
+                          {vneidSimulating
+                            ? 'Đang kết nối cổng VNeID…'
+                            : 'Mô phỏng quét mã & Xác thực VNeID thành công (Demo)'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
                     <div
                       style={{
-                        padding: '16px',
-                        backgroundColor: '#fafafa',
-                        border: '1px solid #e2e8f0',
+                        padding: '12px 16px',
+                        backgroundColor: '#f0fdf4',
+                        border: '1px solid #86efac',
                         borderRadius: '8px',
-                        animation: 'fadeIn 0.2s ease-in-out',
+                        fontSize: '13px',
+                        color: '#166534',
+                        lineHeight: 1.5,
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
-                        <label
-                          htmlFor="contract-private-key"
-                          style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a' }}
-                        >
-                          Khóa bí mật cá nhân (Private Key) để ký tên: <span style={{ color: '#dc2626' }}>*</span>
-                        </label>
-                        {contract?.rawPrivateKey && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPrivateKey(contract.rawPrivateKey || '');
-                              if (errorNotice) setErrorNotice('');
-                            }}
-                            style={{
-                              fontSize: '12px',
-                              fontWeight: 650,
-                              color: '#166534',
-                              backgroundColor: '#dcfce7',
-                              border: '1px solid #86efac',
-                              borderRadius: '6px',
-                              padding: '4px 10px',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Điền nhanh Private Key (Thử nghiệm)
-                          </button>
-                        )}
-                      </div>
-
                       <div
                         style={{
-                          marginBottom: '10px',
-                          padding: '10px 12px',
-                          backgroundColor: '#f0fdf4',
-                          border: '1px solid #bbf7d0',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          color: '#166534',
-                          lineHeight: 1.5,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginBottom: '6px',
                         }}
                       >
-                        <strong>Thông báo nhận khóa:</strong> Khóa bí mật cá nhân (Private Key) đã được tạo và tự động gửi tới email đăng ký của bạn ({contract?.signerInfo?.email || user.email || 'đã đăng ký'}). Vui lòng kiểm tra hộp thư email (bao gồm cả thư mục Spam/Quảng cáo), sao chép chuỗi khóa và dán vào ô bên dưới để hoàn tất ký kết.
+                        <strong style={{ color: '#15803d', fontSize: '13.5px' }}>
+                          ĐÃ XÁC THỰC DANH TÍNH CÔNG DÂN THÀNH CÔNG QUA VNEID
+                        </strong>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            backgroundColor: '#dcfce7',
+                            color: '#15803d',
+                            fontWeight: 700,
+                            padding: '2px 8px',
+                            borderRadius: '4px',
+                          }}
+                        >
+                          MỨC ĐỘ 2 HỢP LỆ
+                        </span>
                       </div>
-
-                      <textarea
-                        id="contract-private-key"
-                        rows={3}
-                        value={privateKey}
-                        onChange={(e) => {
-                          setPrivateKey(e.target.value);
-                          if (errorNotice) setErrorNotice('');
-                        }}
-                        placeholder="Dán chuỗi khóa bí mật cá nhân (Private Key) được gửi trong email tại đây..."
-                        style={{
-                          width: '100%',
-                          padding: '10px 12px',
-                          fontSize: '12.5px',
-                          fontFamily: 'Consolas, monospace',
-                          borderRadius: '6px',
-                          border: '1px solid #cbd5e1',
-                          outline: 'none',
-                          resize: 'vertical',
-                          boxSizing: 'border-box',
-                          backgroundColor: '#ffffff',
-                        }}
-                      />
-
-                      <small style={{ color: '#64748b', fontSize: '11.5px', display: 'block', marginTop: '6px' }}>
-                        Lưu ý pháp lý: Khóa bí mật này tương đương với chữ ký số cá nhân của cơ sở theo Luật Giao dịch điện tử. Hệ thống sẽ kiểm tra tính toàn vẹn chữ ký với Khóa công khai (Public Key) của bạn mà không làm lộ nội dung bí mật.
-                      </small>
+                      <div>
+                        Người đại diện ký kết:{' '}
+                        <strong>
+                          {contract?.signerInfo?.name || user.name || 'Đại diện cơ sở'}
+                        </strong>
+                      </div>
+                      <div>
+                        Mã định danh / CCCD:{' '}
+                        <strong>{contract?.signerInfo?.taxCode || '079095012345'}</strong>
+                      </div>
+                      <div>
+                        Phương thức bảo mật:{' '}
+                        <strong>Sinh trắc học FaceID / Chữ ký số từ xa (Remote Signing HSM)</strong>
+                      </div>
+                      <div style={{ marginTop: '8px', fontSize: '12px', color: '#166534' }}>
+                        Hệ thống đã sẵn sàng phát hành chữ ký số và con dấu chứng thực điện tử theo quy định.
+                        Bấm nút <strong>“Xác nhận ký kết”</strong> bên dưới để hoàn tất.
+                      </div>
                     </div>
                   )}
                 </div>
@@ -552,7 +516,7 @@ export default function ContractSigningModal({
               {errorNotice && (
                 <div
                   style={{
-                    marginTop: '14px',
+                    marginTop: '10px',
                     padding: '10px 14px',
                     backgroundColor: '#fef2f2',
                     border: '1px solid #fecaca',
@@ -570,7 +534,7 @@ export default function ContractSigningModal({
           )}
         </div>
 
-        {/* Footer with 2 Always-Visible Buttons */}
+        {/* Footer with 2 Buttons */}
         <div
           style={{
             padding: '16px 24px',
@@ -582,10 +546,9 @@ export default function ContractSigningModal({
           }}
         >
           <div style={{ fontSize: '12px', color: '#64748b' }}>
-            Hợp đồng có hiệu lực ngay khi hoàn tất chữ ký số.
+            Hợp đồng có hiệu lực ngay khi hoàn tất chữ ký số VNeID.
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
-            {/* Button 2: Hủy bỏ / Để sau (Always visible) */}
             <button
               type="button"
               onClick={onClose}
@@ -604,7 +567,6 @@ export default function ContractSigningModal({
               Hủy bỏ / Để sau
             </button>
 
-            {/* Button 1: Xác nhận ký kết (Always visible) */}
             <button
               type="button"
               onClick={handleConfirmSign}
@@ -613,16 +575,16 @@ export default function ContractSigningModal({
                 padding: '9px 22px',
                 borderRadius: '8px',
                 border: 'none',
-                backgroundColor: '#16a34a',
+                backgroundColor: '#dc2626',
                 color: '#ffffff',
                 fontSize: '13.5px',
                 fontWeight: 600,
                 cursor: signing ? 'not-allowed' : 'pointer',
                 opacity: signing ? 0.75 : 1,
-                boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)',
+                boxShadow: '0 2px 4px rgba(220, 38, 38, 0.25)',
               }}
             >
-              {signing ? 'Đang xác thực chữ ký…' : 'Xác nhận ký kết'}
+              {signing ? 'Đang cấp chữ ký số…' : 'Xác nhận ký kết (VNeID)'}
             </button>
           </div>
         </div>
