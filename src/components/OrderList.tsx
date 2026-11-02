@@ -498,7 +498,7 @@ export default function OrderList({
       await api.post(`/orders/${order.id}/deposit`, { reference });
       setDepositDraft(null);
       setDepositNotice(
-        `Đã báo chuyển cọc cho đơn #${order.id}. Chủ vựa sẽ kiểm tra tài khoản và xác nhận; hiện tại đơn chưa được tính là đã thanh toán.`,
+        `Đơn #${order.id}: đã báo chuyển cọc, chờ chủ vựa xác nhận.`,
       );
       setReload((value) => value + 1);
     } catch (issue) {
@@ -1393,26 +1393,29 @@ export default function OrderList({
                 <div className={`order-deposit order-deposit-${order.depositStatus.toLowerCase()}`}>
                   <div className="order-deposit-heading">
                     <strong>
-                      Đặt cọc {order.depositRate}% · {money(order.depositAmount)}
+                      Cọc {order.depositRate}% · {money(order.depositAmount)}
                     </strong>
                     <span>
                       {isEscrowRef(order.depositReference) && order.depositStatus === 'PAID'
-                        ? 'Đã ký quỹ qua Ví hệ thống (An toàn)'
+                        ? 'Đã ký quỹ ví'
                         : isEscrowRef(order.depositReference) && order.depositStatus === 'REFUNDED'
-                          ? 'Đã hoàn cọc vào Ví hệ thống'
+                          ? 'Đã hoàn cọc vào ví'
                           : order.depositStatus === 'PENDING'
-                            ? 'Chờ cửa hàng chuyển cọc'
+                            ? 'Chờ chuyển cọc'
                             : order.depositStatus === 'SUBMITTED'
-                              ? 'Cửa hàng đã báo chuyển · chờ chủ vựa xác nhận'
+                              ? 'Đã báo chuyển · Chờ xác nhận'
                               : order.depositStatus === 'PAID'
-                                ? 'Chủ vựa đã xác nhận nhận cọc'
+                                ? 'Đã nhận cọc'
                                 : order.depositStatus === 'REFUNDED'
                                   ? 'Đã hoàn cọc'
                                   : order.depositStatus === 'REFUND_PENDING'
-                                    ? 'Chủ vựa cần hoàn lại tiền cọc'
+                                    ? 'Chờ hoàn cọc'
                                     : order.depositStatus}
                     </span>
                   </div>
+                  <details className="order-deposit-details" open={order.depositStatus === 'PENDING'}>
+                    <summary>Chi tiết cọc</summary>
+                    <div className="order-deposit-detail-content">
                   {isEscrowRef(order.depositReference) ? (
                     <div
                       style={{
@@ -1429,45 +1432,46 @@ export default function OrderList({
                       }}
                     >
                       <strong style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        Ký quỹ đảm bảo qua Ví hệ thống (Escrow)
+                        Cọc qua ví
                       </strong>
                       <span>
                         {kind === 'store'
-                          ? `Tiền cọc ${money(order.depositAmount)} đang được hệ thống giữ an toàn. Chỉ giải ngân cho chủ vựa sau khi bạn nhận hàng thành công.`
-                          : `Sàn đã khóa cọc ${money(order.depositAmount)} từ Ví của cửa hàng. Tiền cọc sẽ tự động giải ngân vào Ví của bạn khi giao hàng thành công.`}
+                          ? 'Hệ thống giữ cọc đến khi bạn nhận hàng.'
+                          : 'Cọc được chuyển vào ví khi giao hàng thành công.'}
                       </span>
                       <strong style={{ color: '#1f2937', marginTop: '2px' }}>
-                        Thanh toán COD khi giao: {money(order.total - order.depositAmount)}
+                        Còn trả khi nhận: {money(order.total - order.depositAmount)}
                       </strong>
                     </div>
                   ) : (
                     <>
                       {order.depositBankAccountNumber && (
                         <div className="order-deposit-bank">
-                          <span>Chuyển trực tiếp đến</span>
                           <strong>{order.depositBankName}</strong>
                           <b>{order.depositBankAccountNumber}</b>
                           <span>{order.depositBankAccountHolder}</span>
-                          <small>Nội dung gợi ý: COC DH{order.id}</small>
+                          {!order.depositReference && <small>Nội dung: COC DH{order.id}</small>}
                         </div>
                       )}
                       {order.depositReference && (
-                        <small>Mã giao dịch / Nội dung chuyển: {order.depositReference}</small>
+                        <small>Mã/Nội dung chuyển: {order.depositReference}</small>
                       )}
                     </>
                   )}
                   {order.depositSubmittedAt && (
                     <small>
-                      Tạp hóa báo đã chuyển lúc{' '}
+                      Báo chuyển: {' '}
                       {new Date(order.depositSubmittedAt).toLocaleString('vi-VN')}
                     </small>
                   )}
                   {order.depositPaidAt && (
                     <small>
-                      Chủ vựa xác nhận đã nhận lúc{' '}
+                      Xác nhận: {' '}
                       {new Date(order.depositPaidAt).toLocaleString('vi-VN')}
                     </small>
                   )}
+                    </div>
+                  </details>
                   {order.depositRejectionReason && order.depositStatus === 'PENDING' && (
                     <small className="order-deposit-warning">
                       Chủ vựa chưa xác nhận: {order.depositRejectionReason}
@@ -2152,7 +2156,7 @@ export default function OrderList({
                   </div>
                 ) : (
                   <p className="catalog-hint">
-                    Tiền hàng {money(order.subtotal)} + giao hàng {money(order.deliveryFee)}
+                    Hàng {money(order.subtotal)} · Phí giao {money(order.deliveryFee)}
                   </p>
                 );
               })()}
@@ -2285,18 +2289,16 @@ export default function OrderList({
                 <p className="order-rejection">Lý do từ chối: {order.rejectReason}</p>
               )}
 
-              {kind === 'store' && order.status === 'PENDING' && (
+              {kind === 'store' && order.status === 'PENDING' && order.depositStatus !== 'SUBMITTED' && (
                 <p className="catalog-hint">
                   {order.depositStatus === 'PENDING'
-                    ? 'Chuyển đúng số tiền cọc đến tài khoản hiển thị phía trên rồi gửi mã giao dịch.'
-                    : order.depositStatus === 'SUBMITTED'
-                      ? 'Đã gửi xác nhận chuyển cọc. Đang chờ chủ vựa kiểm tra tài khoản.'
-                      : 'Đang chờ chủ vựa duyệt đơn và bắt đầu soạn hàng.'}
+                    ? 'Chuyển cọc rồi bấm báo đã chuyển.'
+                    : 'Chờ chủ vựa duyệt đơn.'}
                 </p>
               )}
               {kind === 'store' && order.status === 'PREPARING' && (
                 <p className="catalog-hint">
-                  Chủ vựa đang chuẩn bị và đóng gói các món hàng trong đơn tại kho.
+                  Chủ vựa đang soạn hàng.
                 </p>
               )}
 
