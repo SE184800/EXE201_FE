@@ -76,7 +76,7 @@ export type IncidentReport = {
 };
 
 export type PaymentInfo = {
-  method: 'COD' | 'QR';
+  method: 'COD' | 'QR' | 'WALLET';
   amount: number;
   status: 'PENDING_PAYMENT' | 'PENDING_SUPPLIER_CONFIRM' | 'CONFIRMED';
   storePaidAt?: string;
@@ -365,7 +365,7 @@ export async function reportSupplierIncident(
   return data;
 }
 
-export async function confirmSupplierPayment(orderId: number): Promise<{ success: boolean; paymentInfo: PaymentInfo; message: string }> {
+export async function confirmSupplierPayment(orderId: number): Promise<{ success: boolean; paymentInfo: PaymentInfo; message: string; order?: SupplierOrder }> {
   const { data } = await api.post(`/supplier/orders/${orderId}/confirm-payment`);
   return data;
 }
@@ -382,9 +382,9 @@ export async function confirmOrderArrival(orderId: number): Promise<{ success: b
 
 export async function submitOrderPayment(
   orderId: number,
-  method: 'COD' | 'QR',
+  method: 'COD' | 'QR' | 'WALLET',
   amount?: number,
-): Promise<{ success: boolean; paymentInfo: PaymentInfo; message: string }> {
+): Promise<{ success: boolean; paymentInfo: PaymentInfo; message: string; order?: SupplierOrder }> {
   const { data } = await api.post(`/orders/${orderId}/pay`, { method, amount });
   return data;
 }

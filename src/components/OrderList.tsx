@@ -19,7 +19,7 @@ import {
 import Icon from './Icon';
 import ExportDropdown from './ExportDropdown';
 import { exportSupplierOrdersToExcel, exportSupplierOrdersToPdf } from '../utils/exportSupplier';
-import { depositOrderWithWallet } from '../services/wallet.api';
+import { depositOrderWithWallet, getWallet } from '../services/wallet.api';
 import './complaint-dialog.css';
 
 const statuses = {
@@ -399,7 +399,7 @@ export default function OrderList({
     } catch { }
   }
 
-  async function handlePaySubmit(method: 'COD' | 'QR') {
+  async function handlePaySubmit(method: 'COD' | 'QR' | 'WALLET') {
     if (!paymentOrder) return;
     const order = paymentOrder;
     setActionLoadingId(order.id);
@@ -3206,9 +3206,12 @@ function PaymentDialog({
   order: SupplierOrder;
   busy: boolean;
   onCancel: () => void;
-  onSubmit: (method: 'COD' | 'QR') => void;
+  onSubmit: (method: 'COD' | 'QR' | 'WALLET') => void;
 }) {
-  const [method, setMethod] = useState<'COD' | 'QR'>('COD');
+  const [method, setMethod] = useState<'COD' | 'QR' | 'WALLET'>('WALLET');
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const [loadingWallet, setLoadingWallet] = useState(true);
+
   const lossAmount = order.driverInfo?.incidentReport?.action === 'DEDUCT_COD'
     ? computeOrderLossAmount(order)
     : 0;
@@ -3216,12 +3219,30 @@ function PaymentDialog({
   const adjustedTotal = Math.max(0, order.subtotal - lossAmount) + order.deliveryFee;
   const remainingAmount = Math.max(0, adjustedTotal - depositPaid);
 
-  // Kiểm tra tài khoản ngân hàng của chủ vựa. Nếu chưa có, chuyển về tài khoản Escrow an toàn.
+  useEffect(() => {
+    let active = true;
+    getWallet()
+      .then((data) => {
+        if (active) setWalletBalance(data.wallet.balance);
+      })
+      .catch(() => {
+        if (active) setWalletBalance(0);
+      })
+      .finally(() => {
+        if (active) setLoadingWallet(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const hasSupplierBank = Boolean(order.supplier?.bankAccountNumber && order.supplier?.bankName);
   const bankName = hasSupplierBank ? order.supplier!.bankName! : 'Sacombank';
   const bankAcc = hasSupplierBank ? order.supplier!.bankAccountNumber! : '050138052378';
   const bankHolder = hasSupplierBank ? order.supplier!.bankAccountHolder! : 'LE TRAN MINH DUC';
   const qrUrl = `https://img.vietqr.io/image/${encodeURIComponent(bankName)}-${encodeURIComponent(bankAcc)}-compact2.png?amount=${remainingAmount}&addInfo=THANH%20TOAN%20DH${order.id}&accountName=${encodeURIComponent(bankHolder)}`;
+
+  const isWalletSufficient = walletBalance !== null && walletBalance >= remainingAmount;
 
   return (
     <div className="supplier-dialog-backdrop" role="presentation">
@@ -3230,7 +3251,7 @@ function PaymentDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="payment-dialog-title"
-        style={{ maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto' }}
+        style={{ maxWidth: '560px', maxHeight: '90vh', overflowY: 'auto' }}
       >
         <span className="supplier-panel-label">THANH TOÁN ĐƠN #{order.id}</span>
         <h2 id="payment-dialog-title">Thanh toán tiền hàng</h2>
@@ -3312,58 +3333,180 @@ function PaymentDialog({
           >
             Chọn hình thức thanh toán:
           </span>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
+            {/* Lựa chọn 1: Ví hệ thống (SupplyMind Wallet) */}
             <button
               type="button"
-              onClick={() => setMethod('COD')}
+              onClick={() => setMethod('WALLET')}
               style={{
-                padding: '12px',
+                padding: '12px 14px',
                 borderRadius: '8px',
-                border: `2px solid ${method === 'COD' ? '#0284c7' : '#e2e8f0'}`,
-                backgroundColor: method === 'COD' ? '#f0f9ff' : '#ffffff',
+                border: `2px solid ${method === 'WALLET' ? '#0284c7' : '#e2e8f0'}`,
+                backgroundColor: method === 'WALLET' ? '#f0f9ff' : '#ffffff',
                 textAlign: 'left',
                 cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
               }}
             >
-              <strong
+              <div>
+                <strong
+                  style={{
+                    display: 'block',
+                    color: method === 'WALLET' ? '#0369a1' : '#1e293b',
+                    fontSize: '13.5px',
+                  }}
+                >
+                  Ví hệ thống (SupplyMind Wallet)
+                </strong>
+                <small style={{ color: '#64748b' }}>
+                  {loadingWallet
+                    ? 'Đang kiểm tra số dư ví…'
+                    : `Số dư khả dụng: ${money(walletBalance ?? 0)} · Trừ trực tiếp & Hoàn tất tức thì`}
+                </small>
+              </div>
+              <span
                 style={{
-                  display: 'block',
-                  color: method === 'COD' ? '#0369a1' : '#1e293b',
-                  fontSize: '13px',
+                  fontSize: '11.5px',
+                  fontWeight: 600,
+                  padding: '3px 8px',
+                  borderRadius: '999px',
+                  backgroundColor: method === 'WALLET' ? '#0284c7' : '#f1f5f9',
+                  color: method === 'WALLET' ? '#ffffff' : '#64748b',
                 }}
               >
-                Tiền mặt khi giao (COD)
-              </strong>
-              <small style={{ color: '#64748b' }}>Trả tiền trực tiếp cho tài xế</small>
+                Khuyên dùng
+              </span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setMethod('QR')}
-              style={{
-                padding: '12px',
-                borderRadius: '8px',
-                border: `2px solid ${method === 'QR' ? '#0284c7' : '#e2e8f0'}`,
-                backgroundColor: method === 'QR' ? '#f0f9ff' : '#ffffff',
-                textAlign: 'left',
-                cursor: 'pointer',
-              }}
-            >
-              <strong
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+              {/* Lựa chọn 2: COD */}
+              <button
+                type="button"
+                onClick={() => setMethod('COD')}
                 style={{
-                  display: 'block',
-                  color: method === 'QR' ? '#0369a1' : '#1e293b',
-                  fontSize: '13px',
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: `2px solid ${method === 'COD' ? '#0284c7' : '#e2e8f0'}`,
+                  backgroundColor: method === 'COD' ? '#f0f9ff' : '#ffffff',
+                  textAlign: 'left',
+                  cursor: 'pointer',
                 }}
               >
-                Quét mã VietQR
-              </strong>
-              <small style={{ color: '#64748b' }}>Chuyển khoản trực tiếp vựa</small>
-            </button>
+                <strong
+                  style={{
+                    display: 'block',
+                    color: method === 'COD' ? '#0369a1' : '#1e293b',
+                    fontSize: '13px',
+                  }}
+                >
+                  Tiền mặt khi giao (COD)
+                </strong>
+                <small style={{ color: '#64748b' }}>Trả tiền trực tiếp cho tài xế</small>
+              </button>
+
+              {/* Lựa chọn 3: Quét mã VietQR */}
+              <button
+                type="button"
+                onClick={() => setMethod('QR')}
+                style={{
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: `2px solid ${method === 'QR' ? '#0284c7' : '#e2e8f0'}`,
+                  backgroundColor: method === 'QR' ? '#f0f9ff' : '#ffffff',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                <strong
+                  style={{
+                    display: 'block',
+                    color: method === 'QR' ? '#0369a1' : '#1e293b',
+                    fontSize: '13px',
+                  }}
+                >
+                  Quét mã VietQR
+                </strong>
+                <small style={{ color: '#64748b' }}>Chuyển khoản trực tiếp vựa</small>
+              </button>
+            </div>
           </div>
         </div>
 
-        {method === 'QR' ? (
+        {/* Nội dung chi tiết từng phương thức */}
+        {method === 'WALLET' ? (
+          <div
+            style={{
+              marginBottom: '14px',
+              padding: '12px 14px',
+              borderRadius: '8px',
+              backgroundColor: isWalletSufficient ? '#f0fdf4' : '#fffbeb',
+              border: `1px solid ${isWalletSufficient ? '#86efac' : '#fde68a'}`,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span style={{ fontSize: '13px', color: '#1e293b' }}>Số dư ví khả dụng hiện tại:</span>
+              <strong style={{ fontSize: '14px', color: isWalletSufficient ? '#15803d' : '#b45309' }}>
+                {loadingWallet ? '…' : money(walletBalance ?? 0)}
+              </strong>
+            </div>
+
+            {isWalletSufficient ? (
+              <div>
+                <p style={{ margin: '4px 0', fontSize: '12.5px', color: '#166534' }}>
+                  Số dư ví đủ để thanh toán. Số dư còn lại sau thanh toán: <strong>{money((walletBalance ?? 0) - remainingAmount)}</strong>.
+                </p>
+                <div style={{ fontSize: '12px', color: '#15803d', marginTop: '6px' }}>
+                  Đơn hàng sẽ được chuyển sang hoàn tất ngay lập tức và tự động nhập kho hàng đầy đủ.
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p style={{ margin: '4px 0', fontSize: '12.5px', color: '#b45309', fontWeight: 600 }}>
+                  Số dư ví khả dụng không đủ (còn thiếu {money(remainingAmount - (walletBalance ?? 0))}).
+                </p>
+                <p style={{ margin: '4px 0 8px', fontSize: '12px', color: '#92400e' }}>
+                  Bạn có thể nạp thêm tiền vào ví tại mục Ví & Giao dịch, hoặc chọn nhanh hình thức thanh toán khác dưới đây:
+                </p>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => setMethod('COD')}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid #d97706',
+                      backgroundColor: '#ffffff',
+                      color: '#b45309',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Chuyển sang Tiền mặt (COD)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMethod('QR')}
+                    style={{
+                      padding: '6px 12px',
+                      fontSize: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid #d97706',
+                      backgroundColor: '#ffffff',
+                      color: '#b45309',
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    Chuyển sang Quét mã VietQR
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : method === 'QR' ? (
           <div
             style={{
               marginBottom: '14px',
@@ -3449,11 +3592,19 @@ function PaymentDialog({
           <button
             type="button"
             className="table-button primary-small"
-            style={{ backgroundColor: '#0284c7', fontWeight: 700 }}
+            style={{
+              backgroundColor: method === 'WALLET' && !isWalletSufficient ? '#94a3b8' : '#0284c7',
+              fontWeight: 700,
+              cursor: method === 'WALLET' && !isWalletSufficient ? 'not-allowed' : 'pointer',
+            }}
             onClick={() => onSubmit(method)}
-            disabled={busy}
+            disabled={busy || (method === 'WALLET' && !isWalletSufficient)}
           >
-            {busy ? 'Đang xử lý…' : 'Xác nhận đã trả tiền'}
+            {busy
+              ? 'Đang xử lý…'
+              : method === 'WALLET'
+              ? `Xác nhận trừ ${money(remainingAmount)} từ Ví`
+              : 'Xác nhận đã trả tiền'}
           </button>
         </div>
       </section>
