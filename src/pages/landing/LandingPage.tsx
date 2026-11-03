@@ -1,3 +1,4 @@
+import { ROLE_DETAILS, type AuthUser } from '../../types/auth';
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from '../../components/Icon';
@@ -66,7 +67,7 @@ const roles = [
   },
 ];
 
-export default function LandingPage() {
+export default function LandingPage({ user, onLogout }: { user?: AuthUser | null; onLogout?: () => void }) {
   useEffect(() => {
     document.title = 'SupplyMind AI · Nhập hàng đúng lúc, kinh doanh nhẹ đầu';
     window.scrollTo(0, 0);
@@ -82,7 +83,7 @@ export default function LandingPage() {
       />
       <div className="landing-scrim" aria-hidden="true" />
 
-      <LandingHeader />
+      <LandingHeader user={user} onLogout={onLogout} />
 
       <div className="landing-content">
         <section className="landing-hero">
@@ -110,12 +111,20 @@ export default function LandingPage() {
             </li>
           </ul>
           <div className="landing-cta">
-            <Link className="landing-button landing-button-solid landing-button-lg" to="/register">
-              Bắt đầu miễn phí <Icon name="arrow" />
-            </Link>
-            <Link className="landing-button landing-button-ghost landing-button-lg" to="/login">
-              Tôi đã có tài khoản
-            </Link>
+            {user ? (
+              <Link className="landing-button landing-button-solid landing-button-lg" to={ROLE_DETAILS[user.role].path}>
+                Vào không gian làm việc ({ROLE_DETAILS[user.role].label}) <Icon name="arrow" />
+              </Link>
+            ) : (
+              <>
+                <Link className="landing-button landing-button-solid landing-button-lg" to="/register">
+                  Bắt đầu miễn phí <Icon name="arrow" />
+                </Link>
+                <Link className="landing-button landing-button-ghost landing-button-lg" to="/login">
+                  Tôi đã có tài khoản
+                </Link>
+              </>
+            )}
           </div>
         </section>
 

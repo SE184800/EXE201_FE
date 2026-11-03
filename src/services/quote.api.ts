@@ -15,6 +15,8 @@ export type QuoteLine = {
   packaging: string;
   quantity: number;
   unitPrice: number;
+  originalUnitPrice?: number;
+  discountRate?: number;
   lineTotal: number;
 };
 
@@ -35,6 +37,11 @@ export type MarketingQuote = {
   version: number;
   createdAt: string;
   updatedAt: string;
+  isConsignment?: boolean;
+  settlementPrice?: number;
+  autoRestock?: boolean;
+  autoExchangeExpiry?: boolean;
+  termsNote?: string | null;
   supplier?: {
     id: number;
     businessName: string;
@@ -61,10 +68,16 @@ export type QuoteDraft = {
   deliveryFee: number;
   depositRate: number;
   note: string;
+  isConsignment?: boolean;
+  settlementPrice?: number;
+  autoRestock?: boolean;
+  autoExchangeExpiry?: boolean;
+  termsNote?: string;
   lines: Array<{
     productId: number;
     quantity: number;
     unitPrice: number;
+    discountRate?: number;
     expectedUpdatedAt: string;
   }>;
 };

@@ -82,7 +82,36 @@ export type RegistrationInput = {
   dateOfBirth: string;
   password: string;
   confirmPassword: string;
+  acceptTerms?: boolean;
 };
+
+
+export type RequestOtpResponse = {
+  success: boolean;
+  message: string;
+  email: string;
+  otpToken: string;
+  expiresIn: number;
+  devOtp?: string;
+};
+
+export async function requestRegistrationOtp(input: RegistrationInput): Promise<RequestOtpResponse> {
+  const response = await api.post<RequestOtpResponse>('/auth/register-request-otp', input);
+  return response.data;
+}
+
+export async function verifyRegistrationOtp(input: {
+  otpToken: string;
+  otp: string;
+}): Promise<AuthUser> {
+  const response = await api.post<{ success: boolean; user: unknown }>('/auth/register-verify-otp', input);
+  return parseUser(response.data.user);
+}
+
+export async function resendRegistrationOtp(input: RegistrationInput): Promise<RequestOtpResponse> {
+  const response = await api.post<RequestOtpResponse>('/auth/register-resend-otp', input);
+  return response.data;
+}
 
 export async function registerAccount(input: RegistrationInput): Promise<AuthUser> {
   const response = await api.post<{ user: unknown }>('/auth/register', input);
@@ -95,5 +124,66 @@ export async function getMe(): Promise<AuthUser> {
 }
 
 export async function logout(): Promise<void> {
-  await api.post('/auth/logout');
+  try {
+    await api.post('/auth/logout');
+  } finally {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+      sessionStorage.setItem('just_logged_out', 'true');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('app:logged_out'));
+      }
+    } catch {
+      // ignore
+    }
+  }
+}
+
+
+export type ForgotPasswordOtpResponse = {
+  success: boolean;
+  message: string;
+  email: string;
+  resetOtpToken: string;
+  expiresIn: number;
+  devOtp?: string;
+};
+
+export type ForgotPasswordVerifyResponse = {
+  success: boolean;
+  message: string;
+  resetPassToken: string;
+  email: string;
+  username: string;
+};
+
+export async function requestForgotPasswordOtp(email: string): Promise<ForgotPasswordOtpResponse> {
+  const response = await api.post<ForgotPasswordOtpResponse>('/auth/forgot-password-request-otp', { email });
+  return response.data;
+}
+
+export async function verifyForgotPasswordOtp(input: {
+  resetOtpToken: string;
+  otp: string;
+}): Promise<ForgotPasswordVerifyResponse> {
+  const response = await api.post<ForgotPasswordVerifyResponse>('/auth/forgot-password-verify-otp', input);
+  return response.data;
+}
+
+export async function resendForgotPasswordOtp(email: string): Promise<ForgotPasswordOtpResponse> {
+  const response = await api.post<ForgotPasswordOtpResponse>('/auth/forgot-password-resend-otp', { email });
+  return response.data;
+}
+
+export async function resetForgotPassword(input: {
+  resetPassToken: string;
+  password: string;
+  confirmPassword: string;
+}): Promise<{ success: boolean; message: string; username?: string }> {
+  const response = await api.post<{ success: boolean; message: string; username?: string }>(
+    '/auth/forgot-password-reset',
+    input
+  );
+  return response.data;
 }

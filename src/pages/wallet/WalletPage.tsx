@@ -1,626 +1,1119 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import '../catalog.css';
+import '../wallet.css';
 import './wallet.css';
 import Icon from '../../components/Icon';
-import { getApiError, isUnauthenticated } from '../../services/api';
+import { api, getApiError, isUnauthenticated } from '../../services/api';
 import {
   confirmQrDeposit,
   createQrDepositRequest,
   createSandboxDepositRequest,
   createSandboxWithdrawalRequest,
-  getDepositRequests,
-  getQrConfig,
+  createWithdrawalRequest,
   getWallet,
-  getWalletPayments,
   getWalletTransactions,
-  getWithdrawalRequests,
-  type DepositRequest,
-  type OrderPayment,
   type QrCode,
-  type QrConfig,
   type WalletOverview,
   type WalletTransaction,
-  type WithdrawalRequest,
 } from '../../services/wallet.api';
 import WalletQrCode from './WalletQrCode';
 import { dateTime, money } from './walletFormat';
+import { POPULAR_BANKS } from '../../constants/banks';
 
-type Tab = 'overview' | 'deposit' | 'withdraw' | 'transactions' | 'payments';
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'overview', label: 'Tổng quan ví' },
-  { id: 'deposit', label: 'Nạp tiền' },
-  { id: 'withdraw', label: 'Rút tiền' },
-  { id: 'transactions', label: 'Lịch sử giao dịch' },
-  { id: 'payments', label: 'Thanh toán đơn hàng' },
-];
-
-const TRANSACTION_LABELS: Record<string, string> = {
-  DEPOSIT: 'Nạp tiền',
-  WITHDRAWAL_HOLD: 'Giữ tiền rút',
-  WITHDRAWAL_RELEASE: 'Hoàn lại tiền rút',
-  WITHDRAWAL_PAYOUT: 'Chuyển khoản rút tiền',
-  ORDER_PAYMENT: 'Thanh toán đơn hàng',
-  ORDER_RECEIVE: 'Nhận tiền đơn hàng',
-  REFUND: 'Hoàn tiền',
-  REFUND_RECEIVED: 'Thu hồi tiền hoàn',
-  SANDBOX_DEPOSIT: 'Nạp tiền ảo',
-  SANDBOX_WITHDRAWAL: 'Rút tiền ảo',
-  QR_DEPOSIT: 'Nạp tiền qua QR',
-  SUBSCRIPTION_PAYMENT: 'Mua gói Basic',
+const TYPE_META: Record<
+  string,
+  { label: string; tagClass: string; category: 'ESCROW' | 'DEPOSIT' | 'WITHDRAW' | 'MOCK' | 'OTHER' }
+> = {
+  SUBSCRIPTION_PAYMENT: { label: 'Mua gói Basic', tagClass: 'tag-info', category: 'OTHER' },
+  INITIAL_MOCK: { label: 'Khởi tạo thử nghiệm', tagClass: 'tag-info', category: 'MOCK' },
+  MOCK_ADD: { label: 'Cộng tiền thử nghiệm', tagClass: 'tag-success', category: 'MOCK' },
+  MOCK_RESET: { label: 'Đặt lại thử nghiệm', tagClass: 'tag-warning', category: 'MOCK' },
+  SANDBOX_DEPOSIT: { label: 'Nạp tiền thử nghiệm', tagClass: 'tag-info', category: 'MOCK' },
+  SANDBOX_WITHDRAWAL: { label: 'Rút tiền thử nghiệm', tagClass: 'tag-warning', category: 'MOCK' },
+  DEPOSIT: { label: 'Nạp tiền', tagClass: 'tag-success', category: 'DEPOSIT' },
+  QR_DEPOSIT: { label: 'Nạp tiền qua QR', tagClass: 'tag-success', category: 'DEPOSIT' },
+  WITHDRAWAL_HOLD: { label: 'Tạm giữ tiền rút', tagClass: 'tag-warning', category: 'WITHDRAW' },
+  WITHDRAWAL_RELEASE: { label: 'Hoàn lại tiền rút', tagClass: 'tag-info', category: 'WITHDRAW' },
+  WITHDRAWAL_PAYOUT: { label: 'Chuyển khoản rút tiền', tagClass: 'tag-danger', category: 'WITHDRAW' },
+  ESCROW_LOCK: { label: 'Tạm khóa cọc đơn hàng', tagClass: 'tag-danger', category: 'ESCROW' },
+  ESCROW_RELEASE: { label: 'Giải phóng cọc đơn hàng', tagClass: 'tag-info', category: 'ESCROW' },
+  ESCROW_RECEIVED: { label: 'Nhận cọc đơn giao xong', tagClass: 'tag-success', category: 'ESCROW' },
+  ESCROW_REFUND: { label: 'Hoàn trả cọc đơn hàng', tagClass: 'tag-success', category: 'ESCROW' },
+  PENALTY_CONFISCATION: { label: 'Khấu trừ cọc vi phạm', tagClass: 'tag-danger', category: 'ESCROW' },
+  COMPENSATION_RECEIVED: { label: 'Nhận bồi thường cọc', tagClass: 'tag-success', category: 'ESCROW' },
+  ORDER_PAYMENT: { label: 'Thanh toán đơn hàng', tagClass: 'tag-danger', category: 'OTHER' },
+  ORDER_RECEIVE: { label: 'Nhận tiền đơn hàng', tagClass: 'tag-success', category: 'OTHER' },
+  REFUND: { label: 'Hoàn tiền', tagClass: 'tag-success', category: 'OTHER' },
+  REFUND_RECEIVED: { label: 'Thu hồi tiền hoàn', tagClass: 'tag-danger', category: 'OTHER' },
 };
+
+type FilterCategory = 'ALL' | 'ESCROW' | 'DEPOSIT' | 'WITHDRAW' | 'MOCK';
 
 export default function WalletPage({
   onLogout,
   role,
 }: {
   onLogout: () => void;
-  role: 'STORE_OWNER' | 'SUPPLIER';
+  role?: 'STORE_OWNER' | 'SUPPLIER';
 }) {
   const [searchParams] = useSearchParams();
-  const [tab, setTab] = useState<Tab>(
-    searchParams.get('tab') === 'deposit' ? 'deposit' : 'overview',
-  );
   const [overview, setOverview] = useState<WalletOverview | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
-  const [deposits, setDeposits] = useState<DepositRequest[]>([]);
-  const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
-  const [payments, setPayments] = useState<OrderPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const [depositForm, setDepositForm] = useState({
-    amount: '',
-    note: '',
-  });
-  const [withdrawForm, setWithdrawForm] = useState({
-    amount: '',
-    note: '',
-  });
-  const [formError, setFormError] = useState('');
-  const [qrConfig, setQrConfig] = useState<QrConfig | null>(null);
+  // Transaction filter
+  const [filter, setFilter] = useState<FilterCategory>('ALL');
+
+  // Deposit modal state
+  const [showDepositModal, setShowDepositModal] = useState(searchParams.get('tab') === 'deposit');
+  const [depositAmount, setDepositAmount] = useState('500000');
+  const [depositNote, setDepositNote] = useState('');
+  const [qrLoading, setQrLoading] = useState(false);
   const [qr, setQr] = useState<QrCode | null>(null);
   const [qrTicketId, setQrTicketId] = useState<number | null>(null);
 
+  // Withdraw modal state
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [withdrawMode, setWithdrawMode] = useState<'OFFICIAL' | 'SANDBOX'>('OFFICIAL');
+  const [withdrawForm, setWithdrawForm] = useState({
+    amount: '',
+    bankName: 'Vietcombank',
+    bankAccountNumber: '',
+    bankAccountHolder: '',
+    note: '',
+  });
+  const [withdrawError, setWithdrawError] = useState('');
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(''), 4000);
+    return () => clearTimeout(timer);
+  }, [notice]);
+
   const load = useCallback(async () => {
-    setLoading(true);
     try {
-      const [wallet, ledger, depositList, withdrawalList, paymentList] = await Promise.all([
+      const [walletRes, txRes] = await Promise.all([
         getWallet(),
         getWalletTransactions({ page: 1 }),
-        getDepositRequests({ page: 1 }),
-        getWithdrawalRequests({ page: 1 }),
-        getWalletPayments({ page: 1, scope: role === 'SUPPLIER' ? 'SUPPLIER' : 'BUYER' }),
       ]);
-      setOverview(wallet);
-      setTransactions(ledger.transactions);
-      setDeposits(depositList.requests);
-      setWithdrawals(withdrawalList.requests);
-      setPayments(paymentList.payments);
       setError('');
-    } catch (issue) {
-      if (isUnauthenticated(issue)) return onLogout();
-      setError(getApiError(issue));
+      setOverview(walletRes);
+      setTransactions(txRes.transactions || []);
+    } catch (e) {
+      setError(getApiError(e));
+      if (isUnauthenticated(e)) onLogout();
     } finally {
       setLoading(false);
     }
-  }, [onLogout, role]);
+  }, [onLogout]);
 
   useEffect(() => {
-    document.title = 'SupplyMind AI · Ví tiền';
-    const timer = window.setTimeout(() => {
-      void load();
-    }, 0);
-    return () => window.clearTimeout(timer);
+    let cancelled = false;
+    queueMicrotask(() => { if (!cancelled) void load(); });
+    return () => { cancelled = true; };
   }, [load]);
 
-  // The QR account lives on the server so it can be rotated without a rebuild.
+  // Load bank info from profile if available
   useEffect(() => {
-    let active = true;
-    getQrConfig()
-      .then((config) => {
-        if (active) setQrConfig(config);
+    api
+      .get<{
+        profile?: {
+          name?: string;
+          supplierProfile?: {
+            bankName?: string;
+            bankAccountNumber?: string;
+            bankAccountHolder?: string;
+            businessName?: string;
+          };
+          storeProfile?: {
+            bankName?: string;
+            bankAccountNumber?: string;
+            bankAccountHolder?: string;
+            storeName?: string;
+          };
+        };
+      }>('/profile')
+      .then(({ data }) => {
+        const supp = data?.profile?.supplierProfile;
+        const store = data?.profile?.storeProfile;
+        const bankInfo = supp?.bankAccountNumber ? supp : store?.bankAccountNumber ? store : null;
+        if (bankInfo) {
+          setWithdrawForm((prev) => ({
+            ...prev,
+            bankName: prev.bankName || bankInfo.bankName || 'Vietcombank',
+            bankAccountNumber: prev.bankAccountNumber || bankInfo.bankAccountNumber || '',
+            bankAccountHolder:
+              prev.bankAccountHolder ||
+              bankInfo.bankAccountHolder ||
+              supp?.businessName ||
+              store?.storeName ||
+              data?.profile?.name ||
+              '',
+          }));
+        }
       })
-      .catch(() => {
-        if (active) setQrConfig(null);
-      });
-    return () => {
-      active = false;
-    };
+      .catch(() => { });
   }, []);
 
-  /** Builds a QR ticket for the entered amount so the user can scan and pay. */
-  async function createQr() {
-    setFormError('');
-    const amount = Number(depositForm.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setFormError('Nhập số tiền lớn hơn 0.');
-      return;
-    }
+  // Simulator actions
+  async function handleAddMockFunds(amount = 5000000) {
+    if (busy) return;
     setBusy(true);
-    try {
-      const result = await createQrDepositRequest({
-        amount,
-        note: depositForm.note.trim() || undefined,
-      });
-      setQr(result.qr);
-      setQrTicketId(result.request.id);
-      setNotice('Đã tạo mã QR. Quét mã bằng ứng dụng ngân hàng rồi bấm "Tôi đã chuyển khoản".');
-    } catch (issue) {
-      if (isUnauthenticated(issue)) onLogout();
-      else setFormError(getApiError(issue));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /** Confirms the transfer and credits the wallet. */
-  async function confirmQrTransfer() {
-    if (qrTicketId === null) return;
-    setBusy(true);
-    setFormError('');
-    try {
-      const request = await confirmQrDeposit(qrTicketId);
-      setQr(null);
-      setQrTicketId(null);
-      setDepositForm({ amount: '', note: '' });
-      setNotice(`Đã nạp ${money(request.amount)} vào ví. Số dư được cập nhật ngay lập tức.`);
-      await load();
-      setTab('deposit');
-    } catch (issue) {
-      if (isUnauthenticated(issue)) onLogout();
-      else setFormError(getApiError(issue));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitDeposit() {
-    setFormError('');
-    const amount = Number(depositForm.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setFormError('Nhập số tiền lớn hơn 0.');
-      return;
-    }
-    setBusy(true);
+    setError('');
     try {
       await createSandboxDepositRequest({
         amount,
-        note: depositForm.note.trim() || undefined,
+        note: `Nạp thử nghiệm ${money(amount)} vào ví hệ thống`,
       });
-      setDepositForm({ amount: '', note: '' });
-      setNotice(`Đã nạp ${money(amount)} vào ví. Số dư được cập nhật ngay lập tức.`);
+      setNotice(`Đã nạp thành công ${money(amount)} thử nghiệm vào ví.`);
       await load();
-      setTab('deposit');
-    } catch (issue) {
-      if (isUnauthenticated(issue)) onLogout();
-      else setFormError(getApiError(issue));
+    } catch (e) {
+      setError(getApiError(e));
+      if (isUnauthenticated(e)) onLogout();
     } finally {
       setBusy(false);
     }
   }
 
-  async function submitWithdrawal(event: FormEvent) {
-    event.preventDefault();
-    setFormError('');
-    const amount = Number(withdrawForm.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setFormError('Nhập số tiền lớn hơn 0.');
+  async function handleResetMockBalance() {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      const current = overview?.wallet?.balance ?? 0;
+      const target = 10000000;
+      if (current < target) {
+        await createSandboxDepositRequest({
+          amount: target - current,
+          note: 'Đặt lại số dư ví thử nghiệm về 10.000.000 ₫',
+        });
+      } else if (current > target) {
+        await createSandboxWithdrawalRequest({
+          amount: current - target,
+          note: 'Đặt lại số dư ví thử nghiệm về 10.000.000 ₫',
+        });
+      }
+      setNotice('Đã đặt lại số dư ví hệ thống về 10.000.000 ₫.');
+      await load();
+    } catch (e) {
+      setError(getApiError(e));
+      if (isUnauthenticated(e)) onLogout();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Create QR for official deposit
+  async function handleGenerateQr(e?: FormEvent) {
+    if (e) e.preventDefault();
+    const parsedAmount = Number(depositAmount);
+    if (!parsedAmount || parsedAmount < 10000) {
+      setError('Số tiền nạp tối thiểu là 10.000 ₫.');
       return;
     }
+    setQrLoading(true);
+    setError('');
+    try {
+      const res = await createQrDepositRequest({
+        amount: parsedAmount,
+        note: depositNote.trim() || undefined,
+      });
+      setQr(res.qr);
+      setQrTicketId(res.request.id);
+    } catch (issue) {
+      setError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      setQrLoading(false);
+    }
+  }
+
+  // Confirm QR transfer
+  async function handleConfirmQr() {
+    if (!qrTicketId || busy) return;
     setBusy(true);
     try {
-      await createSandboxWithdrawalRequest({
-        amount,
-        note: withdrawForm.note.trim() || undefined,
-      });
-      setWithdrawForm({ amount: '', note: '' });
-      setNotice(`Đã rút ${money(amount)} khỏi ví. Số dư được cập nhật ngay lập tức.`);
+      await confirmQrDeposit(qrTicketId);
+      setNotice('Xác nhận nạp tiền thành công! Số dư ví đã được cập nhật.');
+      setShowDepositModal(false);
+      setQr(null);
+      setQrTicketId(null);
       await load();
-      setTab('withdraw');
     } catch (issue) {
+      setError(getApiError(issue));
       if (isUnauthenticated(issue)) onLogout();
-      else setFormError(getApiError(issue));
     } finally {
       setBusy(false);
     }
   }
 
-  const balance = overview?.wallet.balance ?? 0;
-  const held = overview?.wallet.heldBalance ?? 0;
+  // Submit withdrawal request
+  async function handleSubmitWithdraw(e: FormEvent) {
+    e.preventDefault();
+    setWithdrawError('');
+    const parsedAmount = Number(withdrawForm.amount);
+    const available = overview?.wallet?.balance ?? 0;
+    if (!parsedAmount || parsedAmount < 50000) {
+      setWithdrawError('Số tiền rút tối thiểu là 50.000 ₫.');
+      return;
+    }
+    if (parsedAmount > available) {
+      setWithdrawError(`Số tiền rút vượt quá số dư khả dụng (${money(available)}).`);
+      return;
+    }
+    if (!withdrawForm.bankAccountNumber.trim() || !withdrawForm.bankAccountHolder.trim()) {
+      setWithdrawError('Vui lòng điền đầy đủ số tài khoản và tên chủ tài khoản nhận tiền.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      if (withdrawMode === 'SANDBOX') {
+        await createSandboxWithdrawalRequest({
+          amount: parsedAmount,
+          note: withdrawForm.note || 'Rút tiền thử nghiệm',
+        });
+        setNotice(`Đã xử lý rút ngay ${money(parsedAmount)} thử nghiệm về tài khoản.`);
+      } else {
+        await createWithdrawalRequest({
+          amount: parsedAmount,
+          bankName: withdrawForm.bankName,
+          bankAccountNumber: withdrawForm.bankAccountNumber.trim(),
+          bankAccountHolder: withdrawForm.bankAccountHolder.trim(),
+          note: withdrawForm.note || undefined,
+        });
+        setNotice(`Đã gửi yêu cầu rút ${money(parsedAmount)}. Hệ thống sẽ xử lý giải ngân.`);
+      }
+      setShowWithdrawModal(false);
+      setWithdrawForm((prev) => ({ ...prev, amount: '', note: '' }));
+      await load();
+    } catch (issue) {
+      setWithdrawError(getApiError(issue));
+      if (isUnauthenticated(issue)) onLogout();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Filter transactions
+  const filteredTransactions = transactions.filter((t) => {
+    if (filter === 'ALL') return true;
+    const meta = TYPE_META[t.type];
+    if (filter === 'MOCK') return t.method === 'SANDBOX' || meta?.category === 'MOCK';
+    return meta?.category === filter;
+  });
+
+  const availableBalance = overview?.wallet?.balance ?? 0;
+  const lockedBalance = overview?.wallet?.heldBalance ?? 0;
+  const totalBalance = overview?.wallet?.total ?? 0;
 
   return (
-    <section className="supplier-panel wallet-panel" aria-label="Quản lý ví tiền">
+    <section className="wallet-page" aria-label="Ví tiền và Ký quỹ hệ thống">
       {searchParams.get('from') === 'subscription' && (
-        <Link
-          className="ghost-button"
-          to={`${role === 'SUPPLIER' ? '/supplier' : '/store'}/subscription`}
-        >
-          ← Quay lại mua gói Basic sau khi nạp tiền
-        </Link>
+        <Link className="ghost-button" to={`${role === 'SUPPLIER' ? '/supplier' : '/store'}/subscription`}>Quay lại mua gói Basic</Link>
       )}
-      <div className="supplier-panel-title">
+      {/* Catalog Hero Banner */}
+      <div
+        className="catalog-hero wallet-hero"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '16px',
+        }}
+      >
         <div>
-          <span className="supplier-panel-label">VÍ TIỀN</span>
-          <h2>Ví tiền của bạn</h2>
-          <p className="catalog-hint">
-            Nạp tiền, rút tiền và theo dõi mọi giao dịch của bạn trong một nơi.
+          <p className="form-eyebrow">TÀI CHÍNH & KÝ QUỸ AN TOÀN</p>
+          <h1>Ví tiền & Ký quỹ hệ thống SupplyMind</h1>
+          <p>
+            Quản lý số dư khả dụng, tiền cọc đơn hàng đang được bảo hộ qua tài khoản trung gian (Escrow)
+            và kiểm tra chi tiết lịch sử biến động số dư.
           </p>
         </div>
-        <button className="ghost-button" disabled={loading || busy} onClick={() => void load()}>
-          ↻ Làm mới
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="dash-primary"
+            onClick={() => {
+              setShowDepositModal(true);
+              setQr(null);
+              setDepositAmount('500000');
+            }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              backgroundColor: '#059669',
+              borderColor: '#059669',
+              color: '#ffffff',
+              padding: '10px 18px',
+              fontWeight: 650,
+              borderRadius: '8px',
+              cursor: 'pointer',
+            }}
+          >
+            <Icon name="sparkle" /> + Nạp tiền ví (VietQR)
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={() => {
+              setShowWithdrawModal(true);
+              setWithdrawError('');
+            }}
+            style={{
+              backgroundColor: '#ffffff',
+              color: '#1e293b',
+              border: '1px solid #cbd5e1',
+              padding: '10px 18px',
+              fontWeight: 600,
+              borderRadius: '8px',
+              cursor: 'pointer',
+            }}
+          >
+            Rút tiền về tài khoản
+          </button>
+          <button
+            type="button"
+            className="text-button"
+            onClick={load}
+            disabled={loading || busy}
+            style={{
+              fontSize: '13px',
+              fontWeight: 600,
+              color: '#059669',
+              cursor: 'pointer',
+              background: 'none',
+              border: 'none',
+              padding: '8px 12px',
+            }}
+          >
+            ↻ Làm mới
+          </button>
+        </div>
       </div>
 
-      <nav className="catalog-nav wallet-tabs" aria-label="Ví tiền">
-        {TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={tab === item.id ? 'is-active' : ''}
-            aria-current={tab === item.id ? 'page' : undefined}
-            onClick={() => setTab(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
-
-      {error && (
-        <p className="error-notice" role="alert">
-          {error}
-        </p>
-      )}
       {notice && (
-        <p className="supplier-success" role="status">
+        <p className="supplier-success" role="status" style={{ marginBottom: '16px' }}>
           {notice}
         </p>
       )}
 
-      <div className="wallet-kpi-grid">
-        <article className="wallet-kpi wallet-kpi-primary">
-          <span>Số dư khả dụng</span>
-          <strong>{loading ? '—' : money(balance)}</strong>
-          <small>Dùng để thanh toán đơn hàng</small>
-        </article>
-        <article className="wallet-kpi">
-          <span>Số dư đang giữ</span>
-          <strong>{loading ? '—' : money(held)}</strong>
-          <small>Tiền rút đang chờ xử lý</small>
-        </article>
-        <article className="wallet-kpi">
-          <span>Yêu cầu nạp chờ duyệt</span>
-          <strong>{loading ? '—' : (overview?.pendingDeposits ?? 0)}</strong>
-          <small>Quản trị viên đang xác nhận</small>
-        </article>
-        <article className="wallet-kpi">
-          <span>Yêu cầu rút chờ duyệt</span>
-          <strong>{loading ? '—' : (overview?.pendingWithdrawals ?? 0)}</strong>
-          <small>Tiền đã được giữ lại</small>
-        </article>
+      {error && (
+        <p className="error-notice" role="alert" style={{ marginBottom: '16px' }}>
+          {error}
+        </p>
+      )}
+
+      {/* 3 Wallet Balance Cards (Signature Gradient Design) */}
+      <div className="wallet-grid">
+        <div className="wallet-card wallet-card-primary">
+          <span className="wallet-card-title">Số dư khả dụng</span>
+          <strong className="wallet-card-amount">
+            {loading ? 'Đang tải…' : money(availableBalance)}
+          </strong>
+          <span className="wallet-card-desc">
+            Dùng để đặt cọc 10% cam kết đơn hàng sỉ hoặc thanh toán
+          </span>
+        </div>
+
+        <div className="wallet-card wallet-card-locked">
+          <span className="wallet-card-title">Đang ký quỹ (Tạm giữ cọc)</span>
+          <strong className="wallet-card-amount">
+            {loading ? 'Đang tải…' : money(lockedBalance)}
+          </strong>
+          <span className="wallet-card-desc">
+            Bảo đảm an toàn cho các đơn hàng đang giao hoặc xử lý sự cố
+          </span>
+        </div>
+
+        <div className="wallet-card wallet-card-total">
+          <span className="wallet-card-title">Tổng số dư ví</span>
+          <strong className="wallet-card-amount">
+            {loading ? 'Đang tải…' : money(totalBalance)}
+          </strong>
+          <span className="wallet-card-desc">Số dư khả dụng + Tiền cọc đang ký quỹ</span>
+        </div>
       </div>
 
-      {tab === 'overview' && (
-        <div className="wallet-overview">
-          <p className="catalog-hint">
-            Số dư chỉ được thay đổi khi bạn nạp tiền, thanh toán đơn hàng hoặc rút tiền. Mọi thay
-            đổi đều được ghi lại trong lịch sử giao dịch để đối soát.
-          </p>
-          <div className="wallet-quick-links">
-            <button className="ghost-button" onClick={() => setTab('deposit')}>
-              <Icon name="download" /> Nạp tiền
-            </button>
-            <button className="ghost-button" onClick={() => setTab('withdraw')}>
-              <Icon name="arrow" /> Rút tiền
-            </button>
-            <button className="ghost-button" onClick={() => setTab('transactions')}>
-              <Icon name="fileText" /> Lịch sử giao dịch
-            </button>
-            <button className="ghost-button" onClick={() => setTab('payments')}>
-              <Icon name="check" />
-              {role === 'SUPPLIER' ? 'Tiền đã nhận' : 'Thanh toán đơn hàng'}
+      {/* ESCROW Account Card */}
+      <div
+        className="escrow-account-card"
+        style={{
+          background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)',
+          border: '1px solid #bbf7d0',
+          borderRadius: '12px',
+          padding: '16px 20px',
+          marginBottom: '20px',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+          }}
+        >
+          <div>
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 700,
+                color: '#166534',
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+                display: 'block',
+                marginBottom: '3px',
+              }}
+            >
+              TÀI KHOẢN TẠM GIỮ TIỀN CỌC TRUNG GIAN (ESCROW)
+            </span>
+            <div style={{ fontSize: '15px', fontWeight: 700, color: '#065f46' }}>
+              Sacombank · STK: 050138052378 · Chủ TK: LE TRAN MINH DUC
+            </div>
+            <div style={{ fontSize: '12.5px', color: '#15803d', marginTop: '3px', lineHeight: 1.5 }}>
+              Hệ thống lưu giữ cọc 10% an toàn tuyệt đối và chỉ tự động giải ngân cho Chủ vựa khi Cửa
+              hàng xác nhận nhận đủ hàng đạt chuẩn. Trong trường hợp hàng hóa bị sự cố hoặc hủy đơn
+              hợp lệ, tiền cọc sẽ được hoàn trả lại cho cửa hàng.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              type="button"
+              className="table-button primary-small"
+              onClick={() => {
+                setShowDepositModal(true);
+                setQr(null);
+                setDepositAmount('500000');
+              }}
+              style={{
+                fontSize: '12.5px',
+                padding: '8px 16px',
+                backgroundColor: '#166534',
+                color: '#ffffff',
+                border: 'none',
+                borderRadius: '6px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Nạp cọc ngay qua VietQR
             </button>
           </div>
         </div>
-      )}
+      </div>
 
-      {tab === 'deposit' && (
-        <div className="wallet-two-column">
-          <div className="wallet-form">
-            <h3>Nạp tiền vào ví</h3>
-            <p className="wallet-virtual-note">
-              Toàn bộ tiền trong hệ thống là tiền ảo. Số tiền được cộng vào số dư khả dụng ngay lập
-              tức, không cần chờ quản trị viên xác nhận.
+      {/* Simulator Panel (Mock Mode) */}
+      <div className="supplier-panel wallet-mock-panel">
+        <div className="mock-panel-header">
+          <div>
+            <h3 style={{ margin: '0 0 4px', fontSize: '15.5px', color: '#1e3a8a' }}>
+              Chế độ thử nghiệm tiền hệ thống
+            </h3>
+            <p className="form-description" style={{ margin: 0, fontSize: '13px', color: '#334155' }}>
+              Hệ thống cấp sẵn tiền mô phỏng để bạn kiểm tra đầy đủ luồng đặt cọc 10%, duyệt đơn và
+              giải phóng cọc mà không cần nạp tiền thật.
             </p>
-            {qr ? (
-              <WalletQrCode
-                payload={qr.payload}
-                amount={qr.amount}
-                bankName={qr.bankName}
-                accountNumber={qr.accountNumber}
-                accountHolder={qr.accountHolder}
-                billNumber={qr.billNumber}
-                onConfirm={() => void confirmQrTransfer()}
-                busy={busy}
-              />
-            ) : (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  if (qrConfig?.enabled) void createQr();
-                  else void submitDeposit();
+          </div>
+          <div className="mock-panel-actions">
+            <button
+              type="button"
+              className="dash-primary"
+              disabled={busy}
+              onClick={() => handleAddMockFunds(5000000)}
+              style={{ fontSize: '13px', padding: '8px 14px' }}
+            >
+              <Icon name="sparkle" />
+              {busy ? 'Đang nạp…' : '+ Nạp 5.000.000 ₫ thử nghiệm'}
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              disabled={busy}
+              onClick={handleResetMockBalance}
+              style={{ fontSize: '13px', padding: '8px 14px' }}
+            >
+              {busy ? 'Đang xử lý…' : '↺ Đặt lại 10.000.000 ₫'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Transaction History Section */}
+      <div className="supplier-panel wallet-transactions-panel">
+        <div
+          className="transactions-header"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '12px',
+            marginBottom: '14px',
+          }}
+        >
+          <div>
+            <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a' }}>Lịch sử biến động số dư</h3>
+            <span style={{ fontSize: '13px', color: '#64748b' }}>
+              Tổng cộng {filteredTransactions.length} giao dịch
+            </span>
+          </div>
+
+          {/* Quick Filter Buttons */}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {(
+              [
+                { id: 'ALL', label: 'Tất cả' },
+                { id: 'ESCROW', label: 'Ký quỹ cọc' },
+                { id: 'DEPOSIT', label: 'Nạp tiền' },
+                { id: 'WITHDRAW', label: 'Rút tiền' },
+                { id: 'MOCK', label: 'Thử nghiệm' },
+              ] as const
+            ).map((btn) => (
+              <button
+                key={btn.id}
+                type="button"
+                onClick={() => setFilter(btn.id)}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  border: `1px solid ${filter === btn.id ? '#059669' : '#cbd5e1'}`,
+                  backgroundColor: filter === btn.id ? '#ecfdf5' : '#ffffff',
+                  color: filter === btn.id ? '#065f46' : '#475569',
                 }}
-                style={{ display: 'grid', gap: 14 }}
               >
-                <label className="supplier-field">
-                  <span>Số tiền nạp (VNĐ)</span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    required
-                    value={depositForm.amount}
-                    disabled={busy}
-                    onChange={(event) =>
-                      setDepositForm({ ...depositForm, amount: event.target.value })
-                    }
-                    placeholder="Ví dụ: 1000000"
-                  />
-                </label>
-                <label className="supplier-field">
-                  <span>Ghi chú</span>
-                  <input
-                    maxLength={500}
-                    value={depositForm.note}
-                    disabled={busy}
-                    onChange={(event) =>
-                      setDepositForm({ ...depositForm, note: event.target.value })
-                    }
-                    placeholder="Ghi chú cho lịch sử giao dịch (không bắt buộc)"
-                  />
-                </label>
-                {formError && (
-                  <p className="error-notice" role="alert">
-                    {formError}
-                  </p>
-                )}
-                <button className="primary-button" type="submit" disabled={busy}>
-                  {busy ? 'Đang xử lý…' : qrConfig?.enabled ? 'Tạo mã QR nạp tiền' : 'Nạp tiền'}
-                </button>
-                {qrConfig?.enabled && (
-                  <button
-                    className="ghost-button"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void submitDeposit()}
+                {btn.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!filteredTransactions.length ? (
+          <p className="empty-text">Chưa có giao dịch biến động số dư nào trong danh mục này.</p>
+        ) : (
+          <div className="table-wrapper">
+            <table className="transactions-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '135px' }}>Thời gian</th>
+                  <th style={{ width: '115px' }}>Mã GD</th>
+                  <th>Loại giao dịch</th>
+                  <th style={{ width: '130px' }}>Số tiền</th>
+                  <th style={{ width: '130px' }}>Số dư sau GD</th>
+                  <th style={{ width: '100px' }}>Kênh</th>
+                  <th>Nội dung / Diễn giải</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredTransactions.map((tx) => {
+                  const meta = TYPE_META[tx.type] || {
+                    label: tx.typeLabel || tx.type,
+                    tagClass: 'tag-info',
+                  };
+                  const isPositive = tx.direction === 'CREDIT' || tx.amount > 0;
+                  const absAmount = Math.abs(tx.amount);
+                  return (
+                    <tr key={tx.id}>
+                      <td className="tx-time" style={{ fontSize: '12.5px', color: '#475569' }}>
+                        {dateTime(tx.createdAt)}
+                      </td>
+                      <td style={{ fontSize: '13px', fontWeight: 650, color: '#0f172a' }}>
+                        {tx.reference || `TRX-${tx.id}`}
+                      </td>
+                      <td>
+                        <span className={`tx-tag ${meta.tagClass}`}>{meta.label}</span>
+                      </td>
+                      <td className={`tx-amount ${isPositive ? 'positive' : 'negative'}`}>
+                        {isPositive ? `+${money(absAmount)}` : `-${money(absAmount)}`}
+                      </td>
+                      <td className="tx-balance">{money(tx.balanceAfter)}</td>
+                      <td>
+                        <span
+                          className={`wallet-status wallet-status-${tx.method === 'SANDBOX' ? 'approved' : 'settled'
+                            }`}
+                          style={{ fontSize: '11px', padding: '3px 8px' }}
+                        >
+                          {tx.method === 'SANDBOX' ? 'Thử nghiệm' : 'Chính thức'}
+                        </span>
+                      </td>
+                      <td className="tx-desc" style={{ fontSize: '13px', color: '#334155' }}>
+                        {tx.note || 'Giao dịch qua hệ thống SupplyMind Escrow'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Modal Nạp Tiền Qua VietQR */}
+      {showDepositModal && (
+        <div
+          className="wallet-modal-backdrop"
+          onClick={() => setShowDepositModal(false)}
+        >
+          <div
+            className="wallet-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '520px' }}
+          >
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                backgroundColor: '#f8fafc',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a' }}>
+                Nạp Tiền Vào Ví Hệ Thống
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowDepositModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '18px',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ padding: '20px' }}>
+              {!qr ? (
+                <form onSubmit={(e) => void handleGenerateQr(e)}>
+                  <div style={{ marginBottom: '16px' }}>
+                    <label
+                      style={{
+                        display: 'block',
+                        fontSize: '13px',
+                        fontWeight: 650,
+                        color: '#1e293b',
+                        marginBottom: '8px',
+                      }}
+                    >
+                      Chọn nhanh số tiền nạp:
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                      {[200000, 500000, 1000000, 2000000, 5000000, 10000000].map((amt) => (
+                        <button
+                          key={amt}
+                          type="button"
+                          onClick={() => setDepositAmount(String(amt))}
+                          style={{
+                            padding: '8px 6px',
+                            borderRadius: '6px',
+                            border: `1.5px solid ${depositAmount === String(amt) ? '#059669' : '#cbd5e1'}`,
+                            backgroundColor: depositAmount === String(amt) ? '#ecfdf5' : '#ffffff',
+                            color: depositAmount === String(amt) ? '#065f46' : '#334155',
+                            fontWeight: 600,
+                            fontSize: '13px',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {money(amt)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ marginBottom: '16px' }}>
+                    <label
+                      htmlFor="deposit-custom-amount"
+                      style={{
+                        display: 'block',
+                        fontSize: '13px',
+                        fontWeight: 650,
+                        color: '#1e293b',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      Hoặc nhập số tiền tùy chọn (VNĐ):
+                    </label>
+                    <input
+                      id="deposit-custom-amount"
+                      type="number"
+                      min="10000"
+                      step="10000"
+                      value={depositAmount}
+                      onChange={(e) => setDepositAmount(e.target.value)}
+                      placeholder="Ví dụ: 500000"
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: '16px' }}>
+                    <label
+                      htmlFor="deposit-custom-note"
+                      style={{
+                        display: 'block',
+                        fontSize: '13px',
+                        fontWeight: 650,
+                        color: '#1e293b',
+                        marginBottom: '6px',
+                      }}
+                    >
+                      Ghi chú chuyển khoản (Tùy chọn):
+                    </label>
+                    <input
+                      id="deposit-custom-note"
+                      type="text"
+                      maxLength={100}
+                      value={depositNote}
+                      onChange={(e) => setDepositNote(e.target.value)}
+                      placeholder="Nạp tiền cọc đơn hàng sỉ…"
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      padding: '12px',
+                      backgroundColor: '#f0fdf4',
+                      border: '1px solid #bbf7d0',
+                      borderRadius: '8px',
+                      fontSize: '12.5px',
+                      color: '#166534',
+                      lineHeight: 1.5,
+                      marginBottom: '16px',
+                    }}
                   >
-                    Nạp tiền nhanh (không dùng QR)
+                    <strong>Tài khoản nhận tiền ký quỹ:</strong> Sacombank · STK <code>050138052378</code>{' '}
+                    (LE TRAN MINH DUC). Tiền nạp sẽ được ghi nhận vào ví ngay khi quét mã VietQR.
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={qrLoading || !Number(depositAmount)}
+                    style={{
+                      width: '100%',
+                      padding: '12px',
+                      backgroundColor: '#059669',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      fontWeight: 650,
+                      cursor: qrLoading || !Number(depositAmount) ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {qrLoading ? 'Đang tạo mã VietQR…' : `Tạo mã VietQR nạp ${money(Number(depositAmount) || 0)}`}
                   </button>
-                )}
-              </form>
-            )}
-          </div>
-          <div className="wallet-list">
-            <h3>Lịch sử nạp tiền</h3>
-            {!deposits.length ? (
-              <p className="inventory-empty">Chưa có giao dịch nạp tiền nào.</p>
-            ) : (
-              deposits.map((request) => (
-                <article className="wallet-row" key={request.id}>
-                  <div>
-                    <strong>{money(request.amount)}</strong>
-                    <small>{dateTime(request.createdAt)}</small>
-                    {request.reference && <small>Mã giao dịch: {request.reference}</small>}
+                </form>
+              ) : (
+                <div>
+                  <WalletQrCode
+                    payload={qr.payload}
+                    amount={qr.amount}
+                    bankName={qr.bankName}
+                    accountNumber={qr.accountNumber}
+                    accountHolder={qr.accountHolder}
+                    billNumber={qr.billNumber}
+                    onConfirm={handleConfirmQr}
+                    busy={busy}
+                  />
+                  <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setQr(null)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#64748b',
+                        fontSize: '13px',
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      ← Đổi số tiền khác
+                    </button>
                   </div>
-                  <span className={`wallet-status wallet-status-${request.status.toLowerCase()}`}>
-                    {request.status === 'PENDING'
-                      ? 'Chờ xác nhận'
-                      : request.isSandbox
-                        ? 'Đã nạp'
-                        : request.statusLabel}
-                  </span>
-                </article>
-              ))
-            )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {tab === 'withdraw' && (
-        <div className="wallet-two-column">
-          <form className="wallet-form" onSubmit={submitWithdrawal}>
-            <h3>Rút tiền từ ví</h3>
-            <p className="wallet-virtual-note">
-              Toàn bộ tiền trong hệ thống là tiền ảo. Số tiền được trừ khỏi số dư khả dụng ngay lập
-              tức, không cần chờ quản trị viên xử lý.
-            </p>
-            <label className="supplier-field">
-              <span>Số tiền rút (VNĐ)</span>
-              <input
-                type="number"
-                min="1"
-                step="1"
-                max={balance}
-                required
-                value={withdrawForm.amount}
-                disabled={busy}
-                onChange={(event) =>
-                  setWithdrawForm({ ...withdrawForm, amount: event.target.value })
-                }
-                placeholder="Ví dụ: 500000"
-              />
-            </label>
-            <small className="catalog-hint">Số dư khả dụng: {money(balance)}</small>
-            <label className="supplier-field">
-              <span>Ghi chú</span>
-              <input
-                maxLength={500}
-                value={withdrawForm.note}
-                disabled={busy}
-                onChange={(event) => setWithdrawForm({ ...withdrawForm, note: event.target.value })}
-                placeholder="Ghi chú cho lịch sử giao dịch (không bắt buộc)"
-              />
-            </label>
-            {formError && (
-              <p className="error-notice" role="alert">
-                {formError}
-              </p>
-            )}
-            <button className="primary-button" type="submit" disabled={busy}>
-              {busy ? 'Đang rút…' : 'Rút tiền'}
-            </button>
-          </form>
-          <div className="wallet-list">
-            <h3>Lịch sử rút tiền</h3>
-            {!withdrawals.length ? (
-              <p className="inventory-empty">Chưa có giao dịch rút tiền nào.</p>
-            ) : (
-              withdrawals.map((request) => (
-                <article className="wallet-row" key={request.id}>
-                  <div>
-                    <strong>{money(request.amount)}</strong>
-                    <small>{dateTime(request.createdAt)}</small>
-                    {request.adminNote && <small>Ý kiến quản trị: {request.adminNote}</small>}
-                  </div>
-                  <span className={`wallet-status wallet-status-${request.status.toLowerCase()}`}>
-                    {request.isSandbox ? 'Đã rút' : request.statusLabel}
-                  </span>
-                </article>
-              ))
-            )}
+      {/* Modal Yêu Cầu Rút Tiền Về Ngân Hàng */}
+      {showWithdrawModal && (
+        <div
+          className="wallet-modal-backdrop"
+          onClick={() => setShowWithdrawModal(false)}
+        >
+          <div
+            className="wallet-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: '520px' }}
+          >
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                backgroundColor: '#f8fafc',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a' }}>
+                Rút Tiền Về Tài Khoản Ngân Hàng
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowWithdrawModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '18px',
+                  cursor: 'pointer',
+                  color: '#64748b',
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={(e) => void handleSubmitWithdraw(e)} style={{ padding: '20px' }}>
+              <div
+                style={{
+                  padding: '12px 14px',
+                  backgroundColor: '#f1f5f9',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  color: '#334155',
+                  marginBottom: '16px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <span>Số dư khả dụng hiện tại:</span>
+                <strong style={{ color: '#059669' }}>{money(availableBalance)}</strong>
+              </div>
+
+              {withdrawError && (
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    backgroundColor: '#fef2f2',
+                    border: '1px solid #fecaca',
+                    borderRadius: '6px',
+                    color: '#b91c1c',
+                    fontSize: '13px',
+                    marginBottom: '14px',
+                  }}
+                >
+                  {withdrawError}
+                </div>
+              )}
+
+              <div style={{ marginBottom: '14px' }}>
+                <label
+                  htmlFor="withdraw-amount"
+                  style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
+                >
+                  Số tiền muốn rút (VNĐ): <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <input
+                  id="withdraw-amount"
+                  type="number"
+                  min="50000"
+                  max={availableBalance}
+                  step="10000"
+                  required
+                  value={withdrawForm.amount}
+                  onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })}
+                  placeholder="Ví dụ: 1000000"
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label
+                  htmlFor="withdraw-bank"
+                  style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
+                >
+                  Ngân hàng thụ hưởng:
+                </label>
+                <select
+                  id="withdraw-bank"
+                  value={withdrawForm.bankName}
+                  onChange={(e) => setWithdrawForm({ ...withdrawForm, bankName: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                    backgroundColor: '#ffffff',
+                  }}
+                >
+                  {POPULAR_BANKS.map((bank) => (
+                    <option key={bank} value={bank}>
+                      {bank}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label
+                  htmlFor="withdraw-account-number"
+                  style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
+                >
+                  Số tài khoản nhận tiền: <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <input
+                  id="withdraw-account-number"
+                  type="text"
+                  required
+                  value={withdrawForm.bankAccountNumber}
+                  onChange={(e) =>
+                    setWithdrawForm({ ...withdrawForm, bankAccountNumber: e.target.value })
+                  }
+                  placeholder="Nhập số tài khoản ngân hàng…"
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '14px' }}>
+                <label
+                  htmlFor="withdraw-account-holder"
+                  style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
+                >
+                  Tên chủ tài khoản: <span style={{ color: '#dc2626' }}>*</span>
+                </label>
+                <input
+                  id="withdraw-account-holder"
+                  type="text"
+                  required
+                  value={withdrawForm.bankAccountHolder}
+                  onChange={(e) =>
+                    setWithdrawForm({
+                      ...withdrawForm,
+                      bankAccountHolder: e.target.value.toUpperCase(),
+                    })
+                  }
+                  placeholder="NGUYEN VAN A"
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                    textTransform: 'uppercase',
+                  }}
+                />
+              </div>
+
+              <div style={{ marginBottom: '18px' }}>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    fontSize: '13px',
+                    color: '#334155',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={withdrawMode === 'SANDBOX'}
+                    onChange={(e) => setWithdrawMode(e.target.checked ? 'SANDBOX' : 'OFFICIAL')}
+                  />
+                  <span>Chế độ thử nghiệm (Xử lý giải ngân ngay lập tức)</span>
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowWithdrawModal(false)}
+                  style={{
+                    padding: '9px 18px',
+                    borderRadius: '8px',
+                    border: '1px solid #cbd5e1',
+                    backgroundColor: '#ffffff',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                  }}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={busy || !Number(withdrawForm.amount)}
+                  style={{
+                    padding: '9px 20px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: '#059669',
+                    color: '#ffffff',
+                    cursor: busy || !Number(withdrawForm.amount) ? 'not-allowed' : 'pointer',
+                    fontWeight: 650,
+                  }}
+                >
+                  {busy ? 'Đang xử lý…' : 'Xác nhận rút tiền'}
+                </button>
+              </div>
+            </form>
           </div>
-        </div>
-      )}
-
-      {tab === 'transactions' && (
-        <div className="wallet-list">
-          <h3>Lịch sử giao dịch ví</h3>
-          {!transactions.length ? (
-            <p className="inventory-empty">Chưa có giao dịch nào trong ví.</p>
-          ) : (
-            <div className="supplier-table-wrap">
-              <table className="supplier-table">
-                <thead>
-                  <tr>
-                    <th>Loại</th>
-                    <th>Số tiền</th>
-                    <th>Số dư sau</th>
-                    <th>Nguồn</th>
-                    <th>Mã giao dịch</th>
-                    <th>Thời gian</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {transactions.map((transaction) => (
-                    <tr key={transaction.id}>
-                      <td>
-                        <strong>
-                          {TRANSACTION_LABELS[transaction.type] || transaction.typeLabel}
-                        </strong>
-                        {transaction.note && <small>{transaction.note}</small>}
-                      </td>
-                      <td>
-                        <span
-                          className={
-                            transaction.direction === 'CREDIT'
-                              ? 'wallet-amount-in'
-                              : 'wallet-amount-out'
-                          }
-                        >
-                          {transaction.direction === 'CREDIT' ? '+' : '−'}
-                          {money(transaction.amount)}
-                        </span>
-                      </td>
-                      <td>{money(transaction.balanceAfter)}</td>
-                      <td>
-                        <span
-                          className={`wallet-status wallet-status-${
-                            transaction.method === 'SANDBOX' ? 'approved' : 'pending'
-                          }`}
-                        >
-                          {transaction.method === 'SANDBOX'
-                            ? 'Tiền ảo'
-                            : transaction.method === 'WALLET'
-                              ? 'Số dư ví'
-                              : 'Thường'}
-                        </span>
-                      </td>
-                      <td>
-                        <small>{transaction.reference}</small>
-                      </td>
-                      <td>
-                        <small>{dateTime(transaction.createdAt)}</small>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {tab === 'payments' && (
-        <div className="wallet-list">
-          <h3>
-            {role === 'SUPPLIER' ? 'Tiền đã nhận từ đơn hàng' : 'Lịch sử thanh toán đơn hàng'}
-          </h3>
-          {!payments.length ? (
-            <p className="inventory-empty">
-              {role === 'SUPPLIER'
-                ? 'Chưa có đơn hàng nào được thanh toán bằng ví.'
-                : 'Chưa có đơn hàng nào được thanh toán bằng ví.'}
-            </p>
-          ) : (
-            <div className="supplier-table-wrap">
-              <table className="supplier-table">
-                <thead>
-                  <tr>
-                    <th>Đơn hàng</th>
-                    <th>Số tiền</th>
-                    <th>{role === 'SUPPLIER' ? 'Đã nhận' : 'Phí nền tảng'}</th>
-                    <th>Trạng thái</th>
-                    <th>Thời gian</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {payments.map((payment) => (
-                    <tr key={payment.id}>
-                      <td>
-                        <strong>Đơn #{payment.orderId}</strong>
-                        <small>
-                          {role === 'SUPPLIER' ? payment.buyerName : payment.supplierName}
-                        </small>
-                      </td>
-                      <td>{money(payment.amount)}</td>
-                      <td>
-                        {role === 'SUPPLIER'
-                          ? money(payment.supplierAmount ?? payment.amount)
-                          : payment.commissionAmount === null
-                            ? '—'
-                            : money(payment.commissionAmount)}
-                      </td>
-                      <td>
-                        <span
-                          className={`wallet-status wallet-status-${
-                            payment.refunded ? 'rejected' : payment.status.toLowerCase()
-                          }`}
-                        >
-                          {payment.refunded ? 'Đã hoàn tiền' : payment.statusLabel}
-                        </span>
-                      </td>
-                      <td>
-                        <small>{dateTime(payment.paidAt)}</small>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       )}
     </section>

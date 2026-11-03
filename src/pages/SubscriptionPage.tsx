@@ -1,3 +1,5 @@
+import SupplierLayout from '../components/SupplierLayout';
+import type { AuthUser } from '../types/auth';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from '../components/Icon';
@@ -33,9 +35,11 @@ const benefits = {
 
 export default function SubscriptionPage({
   role,
+  user,
   onLogout,
 }: {
   role: 'STORE_OWNER' | 'SUPPLIER';
+  user?: AuthUser;
   onLogout: () => void;
 }) {
   const [data, setData] = useState<Subscription | null>(null);
@@ -110,16 +114,11 @@ export default function SubscriptionPage({
     }
   }
 
-  if (loading)
-    return (
-      <section className="subscription-page">
-        <p role="status">Đang kiểm tra gói sử dụng…</p>
-      </section>
-    );
+
   const balance = data?.walletBalance ?? 0;
   const shortage = Math.max(0, (data?.monthlyPrice ?? 19000) - balance);
   const walletReady = data?.paymentSource === 'WALLET';
-  return (
+  const content = (
     <section className="subscription-page">
       <div className="subscription-hero">
         <div>
@@ -305,4 +304,27 @@ export default function SubscriptionPage({
       )}
     </section>
   );
+
+  if (role === 'SUPPLIER' && user) {
+    return (
+      <SupplierLayout user={user} activeNav="subscription" onLogout={onLogout} pageTitle="Gói sử dụng">
+        {loading ? (
+          <section className="subscription-page">
+            <p role="status">Đang kiểm tra gói sử dụng…</p>
+          </section>
+        ) : (
+          content
+        )}
+      </SupplierLayout>
+    );
+  }
+
+  if (loading)
+    return (
+      <section className="subscription-page">
+        <p role="status">Đang kiểm tra gói sử dụng…</p>
+      </section>
+    );
+
+  return content;
 }

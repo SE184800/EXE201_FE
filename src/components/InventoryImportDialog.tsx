@@ -15,6 +15,7 @@ type ImportRow = {
   quantity: number;
   purchasePrice?: number;
   sellingPrice?: number;
+  supplierName?: string | null;
   receivedAt: string;
   expiryDate: string | null;
   note: string;
@@ -184,7 +185,7 @@ const InventoryImportDialog = forwardRef<
       </div>
 
       <p className="import-description">
-        Mỗi dòng là một lô nhập. Sản phẩm đã có sẽ được cộng thêm, sản phẩm mới sẽ được tạo tự động.
+        Mỗi dòng là một lô nhập. Hỗ trợ các cột: Tên sản phẩm, Đơn vị, Số lượng, Giá nhập, Giá bán, Nhà cung cấp (NCC), Hạn sử dụng, Ghi chú.
       </p>
 
       <div className="import-template-box">
@@ -267,6 +268,7 @@ const InventoryImportDialog = forwardRef<
                 <tr>
                   <th>Dòng</th>
                   <th>Sản phẩm</th>
+                  <th>Nhà cung cấp</th>
                   <th>Thao tác</th>
                   <th>Số lượng</th>
                   <th>Giá nhập / bán</th>
@@ -283,6 +285,11 @@ const InventoryImportDialog = forwardRef<
                       {row.warnings.map((warning) => (
                         <em key={warning}>{warning}</em>
                       ))}
+                    </td>
+                    <td>
+                      <span style={{ fontSize: '12px', color: row.supplierName ? '#0369a1' : '#94a3b8' }}>
+                        {row.supplierName ? row.supplierName : '—'}
+                      </span>
                     </td>
                     <td>
                       <span className={`import-action import-action-${row.action.toLowerCase()}`}>

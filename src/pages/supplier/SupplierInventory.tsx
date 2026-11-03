@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
 import '../store-inventory.css';
-import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
+import SupplierLayout from '../../components/SupplierLayout';
+import type { AuthUser } from '../../types/auth';
 import type { SupplierProduct } from '../../services/supplier.api';
 import ExportDropdown from '../../components/ExportDropdown';
 import { exportSupplierInventoryToExcel, exportSupplierInventoryToPdf } from '../../utils/exportSupplier';
@@ -66,7 +67,8 @@ function resolveImage(url: string | null | undefined): string | undefined {
   return url;
 }
 
-export default function SupplierInventory({ onLogout }: { onLogout: () => void }) {
+export default function SupplierInventory({ user, onLogout }: { user?: AuthUser; onLogout: () => void }) {
+  const navigate = useNavigate();
   const [items, setItems] = useState<SupplierProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -77,7 +79,7 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
   const [form, setForm] = useState(empty);
   const [saving, setSaving] = useState(false);
   const editor = useRef<HTMLDialogElement>(null);
-  
+
 
   useEffect(() => {
     if (!notice) return;
@@ -95,11 +97,18 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
       if (res.data.products) setItems(res.data.products);
     } catch (issue) {
       if (isUnauthenticated(issue)) onLogout();
-      else setError(getApiError(issue));
+      else {
+        const msg = getApiError(issue);
+        if (msg.includes('gian hàng') || msg.includes('SUPPLIER_PROFILE_REQUIRED')) {
+          navigate('/supplier', { replace: true });
+          return;
+        }
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
-  }, [onLogout]);
+  }, [onLogout, navigate]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -164,33 +173,26 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
       await load();
     } catch (issue) {
       if (isUnauthenticated(issue)) onLogout();
-      else setError(getApiError(issue));
+      else {
+        const msg = getApiError(issue);
+        if (msg.includes('gian hàng') || msg.includes('SUPPLIER_PROFILE_REQUIRED')) {
+          navigate('/supplier', { replace: true });
+          return;
+        }
+        setError(msg);
+      }
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <main className="supplier-page store-dashboard">
-      <header className="supplier-header">
-        <Brand />
-        <Link className="ghost-button catalog-link" to="/supplier">
-          ← Tổng quan chủ vựa
-        </Link>
-      </header>
-      <section className="supplier-main dashboard-content">
-        <nav className="catalog-nav" aria-label="Chủ vựa">
-          <Link to="/supplier">Tổng quan</Link>
-          <Link to="/supplier/products">Sản phẩm đăng bán</Link>
-          <Link to="/supplier/quotes">Báo giá tiếp thị</Link>
-          <Link to="/supplier/orders">Đơn hàng</Link>
-          <Link to="/supplier/inventory" aria-current="page">
-            Kho hàng
-          </Link>
-          <Link to="/supplier/wallet">Ví tiền</Link>
-          <Link to="/supplier/subscription">Gói sử dụng</Link>
-        </nav>
-
+    <SupplierLayout
+      user={user || ({ id: 0, username: 'chuvua', name: 'Chủ vựa', role: 'SUPPLIER' } as AuthUser)}
+      activeNav="inventory"
+      onLogout={onLogout}
+    >
+      <div>
         <div className="dashboard-title">
           <div>
             <p className="dashboard-eyebrow">QUẢN LÝ KHO HÀNG (NỘI BỘ)</p>
@@ -212,7 +214,7 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
 
         {notice && (
           <div className="inventory-toast" role="status">
-            <span className="toast-icon">✓</span>
+            <span className="toast-icon">OK</span>
             <div className="toast-body">
               <strong>Thông báo</strong>
               <p>{notice}</p>
@@ -311,7 +313,7 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
                           aria-label={`Sửa ${item.name}`}
                           onClick={() => edit(item)}
                         >
-                          Chỉnh sửa ↗
+                          Chỉnh sửa
                         </button>
                       </td>
                     </tr>
@@ -498,7 +500,7 @@ export default function SupplierInventory({ onLogout }: { onLogout: () => void }
             </div>
           </form>
         </dialog>
-      </section>
-    </main>
+      </div>
+    </SupplierLayout>
   );
 }
