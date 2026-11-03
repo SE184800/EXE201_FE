@@ -24,7 +24,7 @@ export type WalletTransaction = {
   reference: string;
   status: string;
   /** REAL money needs an admin review, SANDBOX money settles instantly. */
-  method: 'REAL' | 'SANDBOX';
+  method: 'REAL' | 'SANDBOX' | 'WALLET';
   orderId: number | null;
   note: string | null;
   createdAt: string;
@@ -148,12 +148,12 @@ export async function createDepositRequest(input: DepositInput): Promise<Deposit
 }
 
 /** Credits simulated money instantly. No admin review, no real transfer. */
-export async function createSandboxDepositRequest(
-  input: { amount: number; note?: string },
-): Promise<DepositRequest> {
-  return (
-    await api.post<{ request: DepositRequest }>('/wallet/deposits/sandbox', input)
-  ).data.request;
+export async function createSandboxDepositRequest(input: {
+  amount: number;
+  note?: string;
+}): Promise<DepositRequest> {
+  return (await api.post<{ request: DepositRequest }>('/wallet/deposits/sandbox', input)).data
+    .request;
 }
 
 export async function getDepositRequests(
@@ -191,9 +191,8 @@ export async function createQrDepositRequest(input: {
   amount: number;
   note?: string;
 }): Promise<{ request: DepositRequest; qr: QrCode }> {
-  return (
-    await api.post<{ request: DepositRequest; qr: QrCode }>('/wallet/deposits/qr', input)
-  ).data;
+  return (await api.post<{ request: DepositRequest; qr: QrCode }>('/wallet/deposits/qr', input))
+    .data;
 }
 
 /** Confirms the transfer so the money is credited to the wallet. */
@@ -201,9 +200,8 @@ export async function confirmQrDeposit(
   id: number,
   input: { reference?: string } = {},
 ): Promise<DepositRequest> {
-  return (
-    await api.post<{ request: DepositRequest }>(`/wallet/deposits/qr/${id}/confirm`, input)
-  ).data.request;
+  return (await api.post<{ request: DepositRequest }>(`/wallet/deposits/qr/${id}/confirm`, input))
+    .data.request;
 }
 
 export async function createWithdrawalRequest(input: WithdrawalInput): Promise<WithdrawalRequest> {
@@ -212,12 +210,12 @@ export async function createWithdrawalRequest(input: WithdrawalInput): Promise<W
 }
 
 /** Debits simulated money instantly. No admin review, no real transfer. */
-export async function createSandboxWithdrawalRequest(
-  input: { amount: number; note?: string },
-): Promise<WithdrawalRequest> {
-  return (
-    await api.post<{ request: WithdrawalRequest }>('/wallet/withdrawals/sandbox', input)
-  ).data.request;
+export async function createSandboxWithdrawalRequest(input: {
+  amount: number;
+  note?: string;
+}): Promise<WithdrawalRequest> {
+  return (await api.post<{ request: WithdrawalRequest }>('/wallet/withdrawals/sandbox', input)).data
+    .request;
 }
 
 export async function getWithdrawalRequests(
@@ -256,9 +254,8 @@ export async function rejectDeposit(
   id: number,
   input: { adminNote: string },
 ): Promise<DepositRequest> {
-  return (
-    await api.post<{ request: DepositRequest }>(`/admin/wallet/deposits/${id}/reject`, input)
-  ).data.request;
+  return (await api.post<{ request: DepositRequest }>(`/admin/wallet/deposits/${id}/reject`, input))
+    .data.request;
 }
 
 export async function getAdminWithdrawals(
@@ -268,9 +265,7 @@ export async function getAdminWithdrawals(
     .data;
 }
 
-export async function getAdminPayments(
-  params: { page?: number } = {},
-): Promise<OrderPaymentList> {
+export async function getAdminPayments(params: { page?: number } = {}): Promise<OrderPaymentList> {
   return (await api.get<OrderPaymentList>('/admin/wallet/payments', { params })).data;
 }
 
@@ -284,10 +279,7 @@ export async function approveWithdrawal(
   input: { adminNote?: string } = {},
 ): Promise<WithdrawalRequest> {
   return (
-    await api.post<{ request: WithdrawalRequest }>(
-      `/admin/wallet/withdrawals/${id}/approve`,
-      input,
-    )
+    await api.post<{ request: WithdrawalRequest }>(`/admin/wallet/withdrawals/${id}/approve`, input)
   ).data.request;
 }
 
@@ -296,10 +288,7 @@ export async function rejectWithdrawal(
   input: { adminNote: string },
 ): Promise<WithdrawalRequest> {
   return (
-    await api.post<{ request: WithdrawalRequest }>(
-      `/admin/wallet/withdrawals/${id}/reject`,
-      input,
-    )
+    await api.post<{ request: WithdrawalRequest }>(`/admin/wallet/withdrawals/${id}/reject`, input)
   ).data.request;
 }
 
@@ -328,8 +317,9 @@ export async function refundOrder(
   orderId: number,
   input: { reason: string },
 ): Promise<{ id: number; orderId: number; amount: number; reason: string; status: string }> {
-  return (await api.post<{ refund: { id: number; orderId: number; amount: number; reason: string; status: string } }>(
-    `/admin/wallet/orders/${orderId}/refund`,
-    input,
-  )).data.refund;
+  return (
+    await api.post<{
+      refund: { id: number; orderId: number; amount: number; reason: string; status: string };
+    }>(`/admin/wallet/orders/${orderId}/refund`, input)
+  ).data.refund;
 }

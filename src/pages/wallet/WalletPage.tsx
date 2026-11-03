@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import '../catalog.css';
 import './wallet.css';
 import Icon from '../../components/Icon';
@@ -47,6 +48,7 @@ const TRANSACTION_LABELS: Record<string, string> = {
   SANDBOX_DEPOSIT: 'Nạp tiền ảo',
   SANDBOX_WITHDRAWAL: 'Rút tiền ảo',
   QR_DEPOSIT: 'Nạp tiền qua QR',
+  SUBSCRIPTION_PAYMENT: 'Mua gói Basic',
 };
 
 export default function WalletPage({
@@ -56,7 +58,10 @@ export default function WalletPage({
   onLogout: () => void;
   role: 'STORE_OWNER' | 'SUPPLIER';
 }) {
-  const [tab, setTab] = useState<Tab>('overview');
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<Tab>(
+    searchParams.get('tab') === 'deposit' ? 'deposit' : 'overview',
+  );
   const [overview, setOverview] = useState<WalletOverview | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [deposits, setDeposits] = useState<DepositRequest[]>([]);
@@ -116,7 +121,7 @@ export default function WalletPage({
   useEffect(() => {
     let active = true;
     getQrConfig()
-      .then(config => {
+      .then((config) => {
         if (active) setQrConfig(config);
       })
       .catch(() => {
@@ -229,6 +234,14 @@ export default function WalletPage({
 
   return (
     <section className="supplier-panel wallet-panel" aria-label="Quản lý ví tiền">
+      {searchParams.get('from') === 'subscription' && (
+        <Link
+          className="ghost-button"
+          to={`${role === 'SUPPLIER' ? '/supplier' : '/store'}/subscription`}
+        >
+          ← Quay lại mua gói Basic sau khi nạp tiền
+        </Link>
+      )}
       <div className="supplier-panel-title">
         <div>
           <span className="supplier-panel-label">VÍ TIỀN</span>
@@ -280,12 +293,12 @@ export default function WalletPage({
         </article>
         <article className="wallet-kpi">
           <span>Yêu cầu nạp chờ duyệt</span>
-          <strong>{loading ? '—' : overview?.pendingDeposits ?? 0}</strong>
+          <strong>{loading ? '—' : (overview?.pendingDeposits ?? 0)}</strong>
           <small>Quản trị viên đang xác nhận</small>
         </article>
         <article className="wallet-kpi">
           <span>Yêu cầu rút chờ duyệt</span>
-          <strong>{loading ? '—' : overview?.pendingWithdrawals ?? 0}</strong>
+          <strong>{loading ? '—' : (overview?.pendingWithdrawals ?? 0)}</strong>
           <small>Tiền đã được giữ lại</small>
         </article>
       </div>
@@ -293,8 +306,8 @@ export default function WalletPage({
       {tab === 'overview' && (
         <div className="wallet-overview">
           <p className="catalog-hint">
-            Số dư chỉ được thay đổi khi bạn nạp tiền, thanh toán đơn hàng hoặc rút tiền. Mọi thay đổi
-            đều được ghi lại trong lịch sử giao dịch để đối soát.
+            Số dư chỉ được thay đổi khi bạn nạp tiền, thanh toán đơn hàng hoặc rút tiền. Mọi thay
+            đổi đều được ghi lại trong lịch sử giao dịch để đối soát.
           </p>
           <div className="wallet-quick-links">
             <button className="ghost-button" onClick={() => setTab('deposit')}>
@@ -335,7 +348,7 @@ export default function WalletPage({
               />
             ) : (
               <form
-                onSubmit={event => {
+                onSubmit={(event) => {
                   event.preventDefault();
                   if (qrConfig?.enabled) void createQr();
                   else void submitDeposit();
@@ -375,11 +388,7 @@ export default function WalletPage({
                   </p>
                 )}
                 <button className="primary-button" type="submit" disabled={busy}>
-                  {busy
-                    ? 'Đang xử lý…'
-                    : qrConfig?.enabled
-                      ? 'Tạo mã QR nạp tiền'
-                      : 'Nạp tiền'}
+                  {busy ? 'Đang xử lý…' : qrConfig?.enabled ? 'Tạo mã QR nạp tiền' : 'Nạp tiền'}
                 </button>
                 {qrConfig?.enabled && (
                   <button
@@ -407,7 +416,11 @@ export default function WalletPage({
                     {request.reference && <small>Mã giao dịch: {request.reference}</small>}
                   </div>
                   <span className={`wallet-status wallet-status-${request.status.toLowerCase()}`}>
-                    {request.status === 'PENDING' ? 'Chờ xác nhận' : request.isSandbox ? 'Đã nạp' : request.statusLabel}
+                    {request.status === 'PENDING'
+                      ? 'Chờ xác nhận'
+                      : request.isSandbox
+                        ? 'Đã nạp'
+                        : request.statusLabel}
                   </span>
                 </article>
               ))
@@ -434,7 +447,9 @@ export default function WalletPage({
                 required
                 value={withdrawForm.amount}
                 disabled={busy}
-                onChange={(event) => setWithdrawForm({ ...withdrawForm, amount: event.target.value })}
+                onChange={(event) =>
+                  setWithdrawForm({ ...withdrawForm, amount: event.target.value })
+                }
                 placeholder="Ví dụ: 500000"
               />
             </label>
@@ -510,7 +525,9 @@ export default function WalletPage({
                       <td>
                         <span
                           className={
-                            transaction.direction === 'CREDIT' ? 'wallet-amount-in' : 'wallet-amount-out'
+                            transaction.direction === 'CREDIT'
+                              ? 'wallet-amount-in'
+                              : 'wallet-amount-out'
                           }
                         >
                           {transaction.direction === 'CREDIT' ? '+' : '−'}
@@ -524,7 +541,11 @@ export default function WalletPage({
                             transaction.method === 'SANDBOX' ? 'approved' : 'pending'
                           }`}
                         >
-                          {transaction.method === 'SANDBOX' ? 'Tiền ảo' : 'Thường'}
+                          {transaction.method === 'SANDBOX'
+                            ? 'Tiền ảo'
+                            : transaction.method === 'WALLET'
+                              ? 'Số dư ví'
+                              : 'Thường'}
                         </span>
                       </td>
                       <td>
@@ -544,7 +565,9 @@ export default function WalletPage({
 
       {tab === 'payments' && (
         <div className="wallet-list">
-          <h3>{role === 'SUPPLIER' ? 'Tiền đã nhận từ đơn hàng' : 'Lịch sử thanh toán đơn hàng'}</h3>
+          <h3>
+            {role === 'SUPPLIER' ? 'Tiền đã nhận từ đơn hàng' : 'Lịch sử thanh toán đơn hàng'}
+          </h3>
           {!payments.length ? (
             <p className="inventory-empty">
               {role === 'SUPPLIER'
@@ -558,9 +581,7 @@ export default function WalletPage({
                   <tr>
                     <th>Đơn hàng</th>
                     <th>Số tiền</th>
-                    <th>
-                      {role === 'SUPPLIER' ? 'Đã nhận' : 'Phí nền tảng'}
-                    </th>
+                    <th>{role === 'SUPPLIER' ? 'Đã nhận' : 'Phí nền tảng'}</th>
                     <th>Trạng thái</th>
                     <th>Thời gian</th>
                   </tr>
@@ -570,7 +591,9 @@ export default function WalletPage({
                     <tr key={payment.id}>
                       <td>
                         <strong>Đơn #{payment.orderId}</strong>
-                        <small>{role === 'SUPPLIER' ? payment.buyerName : payment.supplierName}</small>
+                        <small>
+                          {role === 'SUPPLIER' ? payment.buyerName : payment.supplierName}
+                        </small>
                       </td>
                       <td>{money(payment.amount)}</td>
                       <td>

@@ -13,6 +13,8 @@ const config: CapacitorConfig = {
   },
   android: {
     backgroundColor: '#f4f7ef',
+    // MainActivity handles system bars AND keyboard insets together.
+    adjustMarginsForEdgeToEdge: 'disable',
   },
 };
 

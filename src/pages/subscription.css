@@ -4,6 +4,67 @@
   padding: 8px 0 40px;
   color: #244436;
 }
+.subscription-wallet {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+  margin-bottom: 20px;
+  border: 1px solid #d9e6d2;
+  border-radius: 12px;
+  background: #fff;
+}
+.subscription-wallet > span {
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+.subscription-wallet > strong {
+  font-size: 28px;
+}
+.subscription-wallet p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.subscription-wallet a {
+  color: #235b40;
+  font-weight: 700;
+  padding-block: 10px;
+}
+.subscription-card ul.subscription-benefits {
+  list-style: none;
+  padding: 0;
+}
+.subscription-benefits li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+}
+.subscription-benefits svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-top: 3px;
+  color: #377047;
+}
+.subscription-benefits strong,
+.subscription-benefits span {
+  display: block;
+  line-height: 1.6;
+}
+.subscription-benefits strong {
+  color: #244436;
+  font-size: 14px;
+}
+.subscription-benefits span {
+  margin-top: 3px;
+}
+.subscription-card {
+  min-width: 0;
+}
+.subscription-table td:last-child {
+  overflow-wrap: anywhere;
+}
 .subscription-hero {
   display: flex;
   align-items: center;

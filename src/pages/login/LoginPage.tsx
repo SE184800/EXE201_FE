@@ -4,7 +4,14 @@ import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
 import { isSubscriptionRequiredError, login } from '../../services/auth.api';
 import { getApiError } from '../../services/api';
-import { renewExpiredSubscription, type Subscription } from '../../services/subscription.api';
+import {
+  renewExpiredSubscription,
+  topUpExpiredSubscription,
+  insufficientWalletBalance,
+  pendingRenewal,
+  savePendingRenewal,
+  type Subscription,
+} from '../../services/subscription.api';
 import type { AuthUser } from '../../types/auth';
 
 function ProductPreview() {
@@ -77,11 +84,16 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
     subscription: Subscription;
   } | null>(null);
   const [paying, setPaying] = useState(false);
+  const [toppingUp, setToppingUp] = useState(false);
+  const [paymentComplete, setPaymentComplete] = useState(false);
+  const [hasPendingPayment, setHasPendingPayment] = useState(false);
   const [paymentError, setPaymentError] = useState('');
   const [showHelp, setShowHelp] = useState(false);
   const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const paymentRequest = useRef<string | null>(null);
+  const topUpRequest = useRef<string | null>(null);
+  const paymentLocked = useRef(false);
 
   useEffect(() => {
     document.title = 'SupplyMind AI · Đăng nhập';
@@ -113,7 +125,13 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
       if (isSubscriptionRequiredError(error)) {
         setPayment({ renewalToken: error.renewalToken, subscription: error.subscription });
         setServerError('');
-        paymentRequest.current = null;
+        paymentRequest.current = error.subscription.id
+          ? pendingRenewal(error.subscription.id)
+          : null;
+        setHasPendingPayment(Boolean(paymentRequest.current));
+        topUpRequest.current = null;
+        setPaymentError('');
+        setPaymentComplete(false);
       } else {
         setServerError(getApiError(error));
       }
@@ -123,17 +141,73 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
   }
 
   async function handleRenewal() {
-    if (!payment || paying) return;
+    if (
+      !payment?.subscription.id ||
+      paymentLocked.current ||
+      payment.subscription.paymentSource !== 'WALLET'
+    )
+      return;
+    if (
+      !paymentComplete &&
+      !paymentRequest.current &&
+      !window.confirm('Trừ 19.000đ từ ví để mua gói Basic 1 tháng và đăng nhập?')
+    )
+      return;
+    paymentLocked.current = true;
     if (!paymentRequest.current) paymentRequest.current = crypto.randomUUID();
+    setHasPendingPayment(true);
     setPaying(true);
     setPaymentError('');
     try {
-      await renewExpiredSubscription(payment.renewalToken, paymentRequest.current);
+      if (!paymentComplete) {
+        savePendingRenewal(payment.subscription.id, paymentRequest.current);
+        const subscription = await renewExpiredSubscription(
+          payment.renewalToken,
+          paymentRequest.current,
+        );
+        setPayment({ ...payment, subscription });
+        setPaymentComplete(true);
+        setHasPendingPayment(false);
+        savePendingRenewal(payment.subscription.id, null);
+      }
       onLogin(await login({ username: username.trim(), password }));
+    } catch (error) {
+      const balance = insufficientWalletBalance(error);
+      if (balance !== null) {
+        setPayment({
+          ...payment,
+          subscription: { ...payment.subscription, walletBalance: balance },
+        });
+        savePendingRenewal(payment.subscription.id, null);
+        paymentRequest.current = null;
+        setHasPendingPayment(false);
+      }
+      setPaymentError(getApiError(error));
+    } finally {
+      paymentLocked.current = false;
+      setPaying(false);
+    }
+  }
+
+  async function handleTopUp() {
+    if (!payment || paymentLocked.current || payment.subscription.paymentSource !== 'WALLET')
+      return;
+    paymentLocked.current = true;
+    topUpRequest.current ||= crypto.randomUUID();
+    setToppingUp(true);
+    setPaymentError('');
+    try {
+      const subscription = await topUpExpiredSubscription(
+        payment.renewalToken,
+        topUpRequest.current,
+      );
+      setPayment({ ...payment, subscription });
+      topUpRequest.current = null;
     } catch (error) {
       setPaymentError(getApiError(error));
     } finally {
-      setPaying(false);
+      paymentLocked.current = false;
+      setToppingUp(false);
     }
   }
 
@@ -205,7 +279,7 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
               <div className="login-payment-status">
                 <Icon name="lock" />
                 <span>
-                  <strong>Gói dùng thử đã hết hạn</strong>
+                  <strong>{paymentComplete ? 'Đã mua gói Basic' : 'Gói sử dụng đã hết hạn'}</strong>
                   <small>@{username.trim()}</small>
                 </span>
               </div>
@@ -218,7 +292,44 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
                 <li>Tiếp tục dùng AI dự báo, nguồn sỉ và đơn hàng</li>
                 <li>Không làm mất dữ liệu đã nhập trước đó</li>
               </ul>
-              <p>Đây là thanh toán mô phỏng phục vụ demo; hệ thống không trừ tiền thật.</p>
+              <p>
+                Số dư ví khả dụng:{' '}
+                <strong>
+                  {(payment.subscription.walletBalance ?? 0).toLocaleString('vi-VN')} ₫
+                </strong>
+              </p>
+              {payment.subscription.paymentSource !== 'WALLET' ? (
+                <p>
+                  Máy chủ chưa bật thanh toán gói bằng ví. Vui lòng thử lại sau khi cập nhật hệ
+                  thống.
+                </p>
+              ) : !paymentComplete &&
+                (payment.subscription.walletBalance ?? 0) < payment.subscription.monthlyPrice ? (
+                <>
+                  <p>
+                    Ví chưa đủ tiền. Cần nạp thêm{' '}
+                    {(
+                      payment.subscription.monthlyPrice - (payment.subscription.walletBalance ?? 0)
+                    ).toLocaleString('vi-VN')}{' '}
+                    ₫ để mua gói.
+                  </p>
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    disabled={paying || toppingUp}
+                    onClick={() => void handleTopUp()}
+                  >
+                    {toppingUp ? 'Đang nạp…' : 'Nạp thử 5.000.000đ vào ví'}
+                  </button>
+                  <p>Nạp thử là tiền hệ thống phục vụ demo, không phải chuyển khoản ngân hàng.</p>
+                </>
+              ) : (
+                <p>
+                  {paymentComplete
+                    ? 'Đã thanh toán thành công. Nếu đăng nhập bị gián đoạn, bấm tiếp tục; hệ thống không thu phí lần nữa.'
+                    : 'Mua gói sẽ trừ 19.000đ từ ví và mở thêm 1 tháng sử dụng. Không tự động gia hạn.'}
+                </p>
+              )}
               {paymentError && (
                 <p className="error-notice" role="alert">
                   {paymentError}
@@ -227,7 +338,14 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
               <button
                 className="primary-button"
                 type="button"
-                disabled={paying}
+                disabled={
+                  paying ||
+                  toppingUp ||
+                  payment.subscription.paymentSource !== 'WALLET' ||
+                  (!paymentComplete &&
+                    !hasPendingPayment &&
+                    (payment.subscription.walletBalance ?? 0) < payment.subscription.monthlyPrice)
+                }
                 onClick={() => void handleRenewal()}
               >
                 {paying ? (
@@ -236,18 +354,24 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
                   </>
                 ) : (
                   <>
-                    Thanh toán 19.000đ và đăng nhập <Icon name="arrow" />
+                    {paymentComplete
+                      ? 'Tiếp tục đăng nhập'
+                      : hasPendingPayment
+                        ? 'Kiểm tra giao dịch và đăng nhập'
+                        : 'Mua gói 19.000đ từ ví và đăng nhập'}{' '}
+                    <Icon name="arrow" />
                   </>
                 )}
               </button>
               <button
                 className="login-payment-back"
                 type="button"
-                disabled={paying}
+                disabled={paying || toppingUp}
                 onClick={() => {
                   setPayment(null);
                   setPaymentError('');
                   paymentRequest.current = null;
+                  setHasPendingPayment(false);
                 }}
               >
                 ← Quay lại nhập tài khoản

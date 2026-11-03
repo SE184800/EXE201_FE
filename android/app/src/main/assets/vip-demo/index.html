@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>SupplyMind · VIP demo</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="store.js" defer></script>
+  <script src="ui.js" defer></script>
+</head>
+<body>
+  <header><div class="brand"><span class="mark">S</span><b>SupplyMind<span> AI</span></b></div><span class="demo-tag">DEMO</span></header>
+  <main>
+    <div class="intro"><p class="eyebrow">GÓI SỬ DỤNG</p><h1>Nhỏ chi phí.<br>Đủ tiện ích.</h1><p>Ví & gói demo lưu trên điện thoại này.</p></div>
+    <nav aria-label="VIP demo"><button class="selected" data-tab="overview" aria-selected="true">Gói & ví</button><button data-tab="benefits" aria-selected="false">Quyền lợi</button><button data-tab="history" aria-selected="false">Lịch sử</button></nav>
+    <p id="message" role="status" hidden></p>
+    <section id="overview" class="panel">
+      <article class="plan card"><div class="card-top"><span>GÓI HIỆN TẠI</span><b id="badge" class="badge">Chưa kích hoạt</b></div><h2 id="plan-name">Chưa có gói VIP</h2><p id="plan-description">Mua Basic để trải nghiệm luồng kích hoạt gói.</p><div class="plan-details"><div><span>Hạn dùng</span><strong id="expiry">—</strong></div><div><span>Còn lại</span><strong id="days">0 ngày</strong></div></div></article>
+      <article class="card wallet"><div class="card-top"><span>VÍ DEMO TRÊN MÁY</span><span class="dot"></span></div><div class="balance" id="balance">0 ₫</div><button id="deposit" class="secondary">＋ Nạp thử 5.000.000đ</button><p class="small">Tiền mô phỏng, không chuyển khoản ngân hàng.</p></article>
+      <article class="card purchase"><div class="offer"><div><p class="eyebrow">VIP BASIC</p><h2>19.000<span>đ / tháng</span></h2></div><span class="sparkle">✦</span></div><p id="purchase-hint">Nạp thêm 19.000đ để mua gói.</p><button id="buy" class="primary">Mua VIP Basic · 19.000đ</button><p class="small">Gia hạn cộng thêm 1 tháng, giữ nguyên ngày còn lại. Không tự động trừ tiền.</p></article>
+    </section>
+    <section id="benefits" class="panel" hidden>
+      <article class="card"><p class="eyebrow">NỘI DUNG GÓI BASIC</p><h2>Công việc mỗi ngày,<br>trong một ứng dụng.</h2><p id="rights-status" class="rights-status">Chưa kích hoạt gói demo</p><ul class="benefits"><li><i>✓</i><div><b>Quản lý kho & nhập hàng</b><p>Theo dõi tồn kho, lô hàng và hạn sử dụng.</p></div></li><li><i>✓</i><div><b>Bán nhanh bằng giọng nói</b><p>Nhận diện sản phẩm và ghi nhận bán hàng.</p></div></li><li><i>✓</i><div><b>AI hỗ trợ nhập hàng</b><p>Dự báo nhu cầu và gợi ý kế hoạch nhập.</p></div></li><li><i>✓</i><div><b>Nguồn sỉ & đơn hàng</b><p>Tìm nguồn hàng, nhận báo giá, theo dõi giao nhận.</p></div></li><li><i>✓</i><div><b>Ví & lịch sử giao dịch</b><p>Xem số dư và các lần nạp, mua gói.</p></div></li></ul><p class="note">Đây là nội dung quyền lợi minh họa. Gói demo không thay đổi quyền truy cập tài khoản online.</p></article>
+    </section>
+    <section id="history" class="panel" hidden><article class="card"><p class="eyebrow">LỊCH SỬ TRÊN MÁY</p><h2>Giao dịch demo</h2><p id="history-empty" class="small">Chưa có giao dịch. Nạp thử để bắt đầu.</p><ol id="transactions"></ol></article></section>
+    <button id="open-main" class="open-main">Mở app chính · kho & bán hàng →</button>
+    <p class="footer-note">Demo chạy không cần mạng, không đồng bộ với ví hệ thống. Khi mở app chính, dùng nút Quay lại của điện thoại để trở về đây.</p>
+    <button id="reset" class="reset">Đặt lại demo</button>
+  </main>
+  <dialog id="confirm"><form method="dialog"><p class="eyebrow" id="confirm-eyebrow">XÁC NHẬN MUA GÓI</p><h2 id="confirm-title">Kích hoạt VIP Basic?</h2><p id="confirm-description"></p><div class="dialog-actions"><button value="cancel" class="secondary">Để sau</button><button value="confirm" id="confirm-action" class="primary">Trừ 19.000đ & kích hoạt</button></div></form></dialog>
+</body>
+</html>
