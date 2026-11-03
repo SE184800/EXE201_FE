@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import '../catalog.css';
 import '../wallet.css';
 import './wallet.css';
@@ -24,6 +25,7 @@ const TYPE_META: Record<
   string,
   { label: string; tagClass: string; category: 'ESCROW' | 'DEPOSIT' | 'WITHDRAW' | 'MOCK' | 'OTHER' }
 > = {
+  SUBSCRIPTION_PAYMENT: { label: 'Mua gói Basic', tagClass: 'tag-info', category: 'OTHER' },
   INITIAL_MOCK: { label: 'Khởi tạo thử nghiệm', tagClass: 'tag-info', category: 'MOCK' },
   MOCK_ADD: { label: 'Cộng tiền thử nghiệm', tagClass: 'tag-success', category: 'MOCK' },
   MOCK_RESET: { label: 'Đặt lại thử nghiệm', tagClass: 'tag-warning', category: 'MOCK' },
@@ -50,10 +52,12 @@ type FilterCategory = 'ALL' | 'ESCROW' | 'DEPOSIT' | 'WITHDRAW' | 'MOCK';
 
 export default function WalletPage({
   onLogout,
+  role,
 }: {
   onLogout: () => void;
   role?: 'STORE_OWNER' | 'SUPPLIER';
 }) {
+  const [searchParams] = useSearchParams();
   const [overview, setOverview] = useState<WalletOverview | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +69,7 @@ export default function WalletPage({
   const [filter, setFilter] = useState<FilterCategory>('ALL');
 
   // Deposit modal state
-  const [showDepositModal, setShowDepositModal] = useState(false);
+  const [showDepositModal, setShowDepositModal] = useState(searchParams.get('tab') === 'deposit');
   const [depositAmount, setDepositAmount] = useState('500000');
   const [depositNote, setDepositNote] = useState('');
   const [qrLoading, setQrLoading] = useState(false);
@@ -309,6 +313,9 @@ export default function WalletPage({
 
   return (
     <section className="wallet-page" aria-label="Ví tiền và Ký quỹ hệ thống">
+      {searchParams.get('from') === 'subscription' && (
+        <Link className="ghost-button" to={`${role === 'SUPPLIER' ? '/supplier' : '/store'}/subscription`}>Quay lại mua gói Basic</Link>
+      )}
       {/* Catalog Hero Banner */}
       <div
         className="catalog-hero wallet-hero"

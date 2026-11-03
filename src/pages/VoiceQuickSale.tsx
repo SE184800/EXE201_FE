@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api, getApiError } from '../services/api';
 
 type Product = { id: number; name: string; unit: string; sellingPrice: number | null };
@@ -39,10 +39,31 @@ export default function VoiceQuickSale({
   items: Product[];
   onSaved: () => Promise<void>;
 }) {
-  const [listening, setListening] = useState(false);
+  const [speechState, setSpeechState] = useState<'idle' | 'starting' | 'listening' | 'processing'>(
+    'idle',
+  );
+  const speech = useRef<any>(null);
+  const speechTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [message, setMessage] = useState('');
   const [heardText, setHeardText] = useState('');
   const [pending, setPending] = useState<{ item: Product; quantity: number }[]>([]);
+  useEffect(
+    () => () => {
+      if (speechTimer.current) clearTimeout(speechTimer.current);
+      const recognition = speech.current;
+      speech.current = null;
+      if (recognition) {
+        recognition.onstart =
+          recognition.onaudioend =
+          recognition.onresult =
+          recognition.onerror =
+          recognition.onend =
+            null;
+        recognition.abort();
+      }
+    },
+    [],
+  );
   async function confirm() {
     try {
       for (const row of pending)
@@ -61,6 +82,7 @@ export default function VoiceQuickSale({
     }
   }
   function start() {
+    if (speech.current) return;
     const SpeechRecognition =
       (
         window as Window & {
@@ -77,9 +99,48 @@ export default function VoiceQuickSale({
     recognition.lang = 'vi-VN';
     recognition.continuous = false;
     recognition.interimResults = false;
-    setListening(true);
-    setMessage('Đang nghe…');
+    speech.current = recognition;
+    let handled = false;
+    function finish() {
+      if (speech.current !== recognition) return;
+      if (speechTimer.current) clearTimeout(speechTimer.current);
+      speechTimer.current = null;
+      speech.current = null;
+      setSpeechState('idle');
+      recognition.onstart =
+        recognition.onaudioend =
+        recognition.onresult =
+        recognition.onerror =
+        recognition.onend =
+          null;
+    }
+    function deadline(ms: number) {
+      if (speechTimer.current) clearTimeout(speechTimer.current);
+      speechTimer.current = setTimeout(() => {
+        handled = true;
+        finish();
+        recognition.abort();
+        setMessage('Hết thời gian chờ giọng nói. Kiểm tra quyền mic rồi bấm thử lại.');
+      }, ms);
+    }
+    setPending([]);
+    setHeardText('');
+    setSpeechState('starting');
+    setMessage('Đang mở mic. Cho phép sử dụng micro nếu điện thoại hỏi.');
+    deadline(45000);
+    recognition.onstart = () => {
+      setSpeechState('listening');
+      setMessage('Đang nghe… Nói tên hàng rồi số lượng.');
+      deadline(25000);
+    };
+    recognition.onaudioend = () => {
+      setSpeechState('processing');
+      setMessage('Đang nhận kết quả…');
+      deadline(12000);
+    };
     recognition.onresult = async (event: any) => {
+      handled = true;
+      finish();
       const text = String(event.results?.[0]?.[0]?.transcript || '');
       const normalized = cleanVoice(text);
       const segments = [...normalized.matchAll(/(.+?)\s+(\d+)(?=\s|$)/g)].map((match) => ({
@@ -125,9 +186,31 @@ export default function VoiceQuickSale({
       setPending(matched);
       setMessage('Kiểm tra nội dung đã nghe rồi bấm Xác nhận lưu.');
     };
-    recognition.onerror = () => setMessage('Không nghe rõ, hãy thử nói “Coca 12, Sting 8”.');
-    recognition.onend = () => setListening(false);
-    recognition.start();
+    recognition.onerror = (event: { error?: string; message?: string }) => {
+      handled = true;
+      finish();
+      const errors: Record<string, string> = {
+        'not-allowed': 'Chưa có quyền mic. Cho phép Micro trong cài đặt ứng dụng rồi thử lại.',
+        'service-not-allowed': 'Dịch vụ nhận giọng nói chưa sẵn sàng trên thiết bị.',
+        'audio-capture': 'Không mở được mic. Đóng ứng dụng khác đang dùng mic rồi thử lại.',
+        'no-speech': 'Chưa nghe rõ. Thử nói “Coca 2”, với tên sản phẩm có trong kho.',
+        network: 'Không kết nối được dịch vụ giọng nói. Kiểm tra mạng rồi thử lại.',
+        aborted: 'Đã dừng nghe.',
+      };
+      setMessage(
+        event.message || errors[event.error || ''] || 'Không nhận được giọng nói. Hãy thử lại.',
+      );
+    };
+    recognition.onend = () => {
+      finish();
+      if (!handled) setMessage('Chưa nhận được nội dung. Bấm mic để thử lại.');
+    };
+    try {
+      recognition.start();
+    } catch {
+      finish();
+      setMessage('Không khởi động được mic. Kiểm tra quyền micro rồi thử lại.');
+    }
   }
   return (
     <section className="dashboard-card voice-quick-sale">
@@ -136,9 +219,25 @@ export default function VoiceQuickSale({
           <span className="section-kicker">BÁN NHANH</span>
           <h2>Nói để cập nhật cuối ca</h2>
         </div>
-        <button className="dash-primary" type="button" onClick={start} disabled={listening}>
-          {listening ? 'Đang nghe…' : 'Bắt đầu nói'}
+        <button
+          className="dash-primary"
+          type="button"
+          onClick={start}
+          disabled={speechState !== 'idle'}
+        >
+          {speechState === 'starting'
+            ? 'Đang mở mic…'
+            : speechState === 'listening'
+              ? '🎙️ Đang nghe…'
+              : speechState === 'processing'
+                ? 'Đang xử lý…'
+                : '🎙️ Bắt đầu nói'}
         </button>
+        {speechState !== 'idle' && (
+          <button type="button" onClick={() => speech.current?.abort()}>
+            Hủy nghe
+          </button>
+        )}
       </div>
       <p className="stock-help">
         Ví dụ: “Coca 12, Sting 8, mì Hảo Hảo 5”. Hệ thống sẽ hiện lại nội dung trước khi lưu.
@@ -153,7 +252,12 @@ export default function VoiceQuickSale({
               </li>
             ))}
           </ul>
-          <button className="dash-primary" type="button" onClick={() => void confirm()}>
+          <button
+            className="dash-primary"
+            type="button"
+            disabled={!pending.length || speechState !== 'idle'}
+            onClick={() => void confirm()}
+          >
             Xác nhận lưu
           </button>
           <button
