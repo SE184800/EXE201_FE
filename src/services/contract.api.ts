@@ -54,16 +54,9 @@ export interface ContractStatusResponse {
 }
 
 export interface SignContractPayload {
-  method?: 'VNEID' | 'PRIVATE_KEY';
+  method?: 'PRIVATE_KEY';
   privateKey?: string;
   agreedTerms: boolean;
-  vneidData?: {
-    cccd?: string;
-    citizenName?: string;
-    authMethod?: string;
-    level?: number;
-    verifiedAt?: string;
-  };
 }
 
 export interface SignContractResponse {

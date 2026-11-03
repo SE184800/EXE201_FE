@@ -168,7 +168,7 @@ function ContractSigningContent({
             </button>
           </div>
           <p style={{ margin: '6px 0 0', fontSize: '13px', color: '#64748b', lineHeight: 1.5 }}>
-            Đọc điều khoản rồi ký bằng khóa cá nhân. VNeID chưa được kết nối, không dùng để xác thực danh tính trong phiên bản này.
+            Đọc điều khoản rồi ký bằng khóa cá nhân.
           </p>
         </div>
 

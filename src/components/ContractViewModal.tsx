@@ -917,7 +917,7 @@ export default function ContractViewModal({
                       {partnerName}
                     </div>
                     <div style={{ fontSize: '11px', color: '#64748b', fontStyle: 'italic', marginBottom: '8px' }}>
-                      (Ký số xác thực danh tính điện tử qua VNeID Mức 2)
+                      (Ký bằng khóa cá nhân)
                     </div>
 
                     {/* Pure Vector SVG Stamp for Bên B */}
@@ -949,7 +949,7 @@ export default function ContractViewModal({
                       <div><strong>Người ký:</strong> {contract.signerInfo?.name || contract.username}</div>
                       <div><strong>Thời gian:</strong> {formatDate(contract.signedAt)}</div>
                       <div>
-                        <strong>Phương thức:</strong> VNeID Mức 2 (Sinh trắc học FaceID)
+                        <strong>Phương thức:</strong> Khóa cá nhân Ed25519
                       </div>
                       <div>
                         <strong>Số chứng chỉ:</strong>{' '}
