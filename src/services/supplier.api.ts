@@ -106,6 +106,7 @@ export type DriverInfo = {
 };
 
 export type SupplierOrder = {
+  deliveredAt?: string | null;
   inventoryImportedAt?: string | null;
   canImportInventory?: boolean;
   inventoryImportBlockedReason?: string | null;

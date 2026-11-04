@@ -1912,16 +1912,28 @@ export default function OrderList({
                         marginTop: '10px',
                         display: 'flex',
                         justifyContent: 'flex-end',
+                        alignItems: 'center',
+                        gap: '8px',
                       }}
                     >
-                      <button
-                        className="table-button"
-                        type="button"
-                        disabled={busy}
-                        onClick={() => openSupplierComplaint(order)}
-                      >
-                        Xử lý khiếu nại
-                      </button>
+                      {['OPEN', 'IN_REVIEW'].includes(order.complaint?.status || '') ? (
+                        <button
+                          className="table-button"
+                          type="button"
+                          disabled={busy}
+                          onClick={() => openSupplierComplaint(order)}
+                        >
+                          Xử lý khiếu nại
+                        </button>
+                      ) : order.complaint?.status === 'ESCALATED' ? (
+                        <span style={{ fontSize: '12px', color: '#7c3aed', fontWeight: 600, background: '#f5f3ff', padding: '4px 10px', borderRadius: '4px', border: '1px solid #ddd6fe' }}>
+                          Khiếu nại đã chuyển lên Admin phân xử. Vui lòng chờ quyết định từ sàn.
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: '12px', color: '#15803d', fontWeight: 600, background: '#f0fdf4', padding: '4px 10px', borderRadius: '4px', border: '1px solid #bbf7d0' }}>
+                          Khiếu nại đã được phân xử / giải quyết dứt điểm.
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2143,7 +2155,7 @@ export default function OrderList({
                       </span>
                     </div>
 
-                    {kind === 'store' && !(order.complaint && ['OPEN', 'IN_REVIEW'].includes(order.complaint.status)) && (
+                    {kind === 'store' && !(order.complaint && ['OPEN', 'IN_REVIEW', 'ESCALATED'].includes(order.complaint.status)) && (
                       <button
                         type="button"
                         className="table-button primary-small"
@@ -2398,24 +2410,34 @@ export default function OrderList({
 
 
               {/* Nút báo cáo đơn hàng khi đã giao (DELIVERED) */}
-              {kind === 'store' && order.status === 'DELIVERED' && !order.complaint && (
-                <div
-                  className="order-card-bottom"
-                  style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #e8eee7' }}
-                >
-                  <p className="catalog-hint" style={{ margin: 0 }}>
-                    Kiểm tra hàng thực nhận rồi cập nhật kho. Nếu có sự cố, bạn có thể gửi báo cáo
-                    khiếu nại.
-                  </p>
-                  <button
-                    className="table-button complaint-card-report-btn"
-                    type="button"
-                    onClick={() => openStoreComplaint(order)}
+              {kind === 'store' && order.status === 'DELIVERED' && !order.complaint && (() => {
+                const isExpired = order.deliveredAt && (Date.now() - new Date(order.deliveredAt).getTime() > 24 * 60 * 60 * 1000);
+                return (
+                  <div
+                    className="order-card-bottom"
+                    style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #e8eee7' }}
                   >
-                    Báo cáo sự cố
-                  </button>
-                </div>
-              )}
+                    {isExpired ? (
+                      <p className="catalog-hint" style={{ margin: 0, color: '#dc2626', fontWeight: 600 }}>
+                        Đã hết thời hạn khiếu nại (24 giờ kể từ khi nhận hàng lúc {new Date(order.deliveredAt!).toLocaleString('vi-VN')}).
+                      </p>
+                    ) : (
+                      <>
+                        <p className="catalog-hint" style={{ margin: 0 }}>
+                          Kiểm tra hàng thực nhận rồi cập nhật kho. Khiếu nại có hiệu lực trong vòng 24 giờ kể từ khi nhận hàng.
+                        </p>
+                        <button
+                          className="table-button complaint-card-report-btn"
+                          type="button"
+                          onClick={() => openStoreComplaint(order)}
+                        >
+                          Báo cáo sự cố
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </article>
           ))}
         </div>
@@ -3032,30 +3054,38 @@ export default function OrderList({
                   </button>
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      className="complaint-btn-danger"
-                      disabled={complaintActionBusy}
-                      onClick={() => void updateComplaint('REJECTED')}
-                    >
-                      Từ chối
-                    </button>
-                    <button
-                      type="button"
-                      className="complaint-btn-ghost"
-                      disabled={complaintActionBusy}
-                      onClick={() => void updateComplaint('IN_REVIEW')}
-                    >
-                      Đang kiểm hàng
-                    </button>
-                    <button
-                      type="button"
-                      className="complaint-btn-primary"
-                      disabled={complaintActionBusy}
-                      onClick={() => void updateComplaint('RESOLVED')}
-                    >
-                      Xác nhận giải quyết
-                    </button>
+                    {['OPEN', 'IN_REVIEW'].includes(complaintOrder?.complaint?.status || '') ? (
+                      <>
+                        <button
+                          type="button"
+                          className="complaint-btn-danger"
+                          disabled={complaintActionBusy}
+                          onClick={() => void updateComplaint('REJECTED')}
+                        >
+                          Từ chối
+                        </button>
+                        <button
+                          type="button"
+                          className="complaint-btn-ghost"
+                          disabled={complaintActionBusy}
+                          onClick={() => void updateComplaint('IN_REVIEW')}
+                        >
+                          Đang kiểm hàng
+                        </button>
+                        <button
+                          type="button"
+                          className="complaint-btn-primary"
+                          disabled={complaintActionBusy}
+                          onClick={() => void updateComplaint('RESOLVED')}
+                        >
+                          Xác nhận giải quyết
+                        </button>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: '13px', color: '#64748b', fontStyle: 'italic', padding: '6px 12px' }}>
+                        Khiếu nại đang ở trạng thái {COMPLAINT_STATUS_MAP[complaintOrder?.complaint?.status || '']?.label || complaintOrder?.complaint?.status}, không thể cập nhật thêm.
+                      </span>
+                    )}
                   </>
                 )}
               </div>
