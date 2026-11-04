@@ -63,19 +63,57 @@ type Settlement = {
   paymentStatus: string;
   region: string | null;
 };
-const navigation = [
-  { path: '', label: 'Tổng quan', icon: 'store' },
-  { path: 'users', label: 'Người dùng', icon: 'user' },
-  { path: 'verification', label: 'Xác minh chủ vựa', icon: 'shield' },
-  { path: 'finance', label: 'Hoa hồng & đối soát', icon: 'box' },
-  { path: 'disputes', label: 'Phân xử khiếu nại', icon: 'shield' },
-  { path: 'wallet', label: 'Quản lý ví tiền', icon: 'chart' },
-  { path: 'holidays', label: 'Ngày lễ & AI', icon: 'sparkle' },
-  { path: 'ai', label: 'Hoạt động AI', icon: 'sparkle' },
-  { path: 'moderation', label: 'Duyệt bài AI', icon: 'sparkle' },
-  { path: 'ai-config', label: 'Cấu hình AI & Ký quỹ', icon: 'sparkle' },
-  { path: 'audit', label: 'Nhật ký hệ thống', icon: 'lock' },
-] as const;
+type NavItem = {
+  path: string;
+  label: string;
+  icon: 'store' | 'user' | 'shield' | 'box' | 'chart' | 'sparkle' | 'lock' | 'calendar';
+};
+
+type NavGroup = {
+  section: string;
+  items: NavItem[];
+};
+
+const navGroups: NavGroup[] = [
+  {
+    section: 'TỔNG QUAN & PHÂN TÍCH',
+    items: [
+      { path: '', label: 'Bảng điều khiển', icon: 'chart' },
+      { path: 'ai', label: 'Giám sát hoạt động AI', icon: 'sparkle' },
+    ],
+  },
+  {
+    section: 'ĐỐI TÁC & VẬN HÀNH',
+    items: [
+      { path: 'users', label: 'Tài khoản & Đối tác', icon: 'user' },
+      { path: 'verification', label: 'Xác minh chủ vựa', icon: 'shield' },
+      { path: 'disputes', label: 'Phân xử khiếu nại', icon: 'shield' },
+    ],
+  },
+  {
+    section: 'TÀI CHÍNH & VÍ TIỀN',
+    items: [
+      { path: 'finance', label: 'Hoa hồng & Đối soát', icon: 'box' },
+      { path: 'wallet', label: 'Quản lý ví & Nạp rút', icon: 'chart' },
+    ],
+  },
+  {
+    section: 'KIỂM DUYỆT & SỰ KIỆN',
+    items: [
+      { path: 'moderation', label: 'Hàng chờ duyệt bài AI', icon: 'sparkle' },
+      { path: 'holidays', label: 'Sự kiện & Ngày lễ', icon: 'calendar' },
+    ],
+  },
+  {
+    section: 'HỆ THỐNG & CẤU HÌNH',
+    items: [
+      { path: 'ai-config', label: 'Cấu hình tham số sàn', icon: 'store' },
+      { path: 'audit', label: 'Nhật ký kiểm toán', icon: 'lock' },
+    ],
+  },
+];
+
+const navigation = navGroups.flatMap((group) => group.items);
 
 /** Wallet sub tabs live under the `wallet` navigation entry. */
 const walletTabs: Record<string, AdminWalletTab> = {
@@ -112,21 +150,26 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
         <Brand light />
         <span className="admin-console-label">QUẢN TRỊ NỀN TẢNG</span>
         <nav aria-label="Quản trị">
-          {navigation.map((item) => (
-            <NavLink
-              key={item.path}
-              to={`/admin${item.path ? '/' + item.path : ''}`}
-              end={item.path === ''}
-              className={({ isActive }) =>
-                isActive ||
-                (item.path !== '' && (tab === item.path || tab.startsWith(item.path + '/')))
-                  ? 'active'
-                  : undefined
-              }
-            >
-              <Icon name={item.icon} />
-              <span>{item.label}</span>
-            </NavLink>
+          {navGroups.map((group) => (
+            <div key={group.section} className="admin-nav-group">
+              <span className="admin-nav-group-title">{group.section}</span>
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={`/admin${item.path ? '/' + item.path : ''}`}
+                  end={item.path === ''}
+                  className={({ isActive }) =>
+                    isActive ||
+                    (item.path !== '' && (tab === item.path || tab.startsWith(item.path + '/')))
+                      ? 'active'
+                      : undefined
+                  }
+                >
+                  <Icon name={item.icon} />
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="admin-sidebar-bottom">
@@ -135,25 +178,45 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
             <strong>{user.name}</strong>
             <small>Quản trị viên</small>
           </div>
-          <button aria-label="Đăng xuất" disabled={busy} onClick={() => void signOut()}>
+          <button aria-label="Đăng xuất" disabled={busy} onClick={() => void signOut()} title="Đăng xuất">
             <Icon name="logout" />
           </button>
         </div>
       </aside>
       <main className="admin-main">
         <header className="admin-topbar">
-          <span>
-            SupplyMind AI <span className="admin-slash">/</span>{' '}
-            {tab in walletTabs
-              ? 'Quản lý ví tiền'
-              : navigation.find((item) => item.path === tab)?.label}
-          </span>
-          <div className="admin-top-actions">
-            <span className="admin-admin-tag">
-              <Icon name="shield" /> Admin
+          <div className="admin-topbar-left">
+            <span className="admin-breadcrumb">
+              SupplyMind B2B <span className="admin-slash">/</span>{' '}
+              <strong>
+                {tab in walletTabs
+                  ? 'Quản lý ví tiền'
+                  : navigation.find((item) => item.path === tab)?.label || 'Bảng điều khiển'}
+              </strong>
             </span>
-            <button disabled={busy} onClick={() => void signOut()}>
-              Đăng xuất
+            <div className="admin-system-status">
+              <span className="admin-status-dot pulse" />
+              <span>Hệ thống: Trực tuyến</span>
+            </div>
+          </div>
+          <div className="admin-top-actions">
+            <div className="admin-datetime-chip">
+              <Icon name="calendar" />
+              <span>
+                {new Date().toLocaleDateString('vi-VN', {
+                  weekday: 'short',
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                })}
+              </span>
+            </div>
+            <span className="admin-admin-tag">
+              <Icon name="shield" /> Super Admin
+            </span>
+            <button className="admin-logout-btn" disabled={busy} onClick={() => void signOut()} title="Đăng xuất khỏi hệ thống">
+              <Icon name="logout" />
+              <span>Đăng xuất</span>
             </button>
           </div>
         </header>
@@ -2774,12 +2837,42 @@ type SystemConfig = {
     escrowHoldDays: number;
     description: string;
   };
+  orderAndDelivery?: {
+    orderAutoCancelHours?: number;
+    complaintWindowHours?: number;
+    deliveryAllowedStartHour?: number;
+    deliveryAllowedEndHour?: number;
+    autoCompleteDeliveredHours?: number;
+    allowWeekendDelivery?: boolean;
+  };
+  consignment?: {
+    maxConsignmentItemsPerStore?: number;
+    settlementCycleDays?: number;
+    allowConsignmentForUnverified?: boolean;
+  };
+  walletLimits?: {
+    minDepositAmount?: number;
+    minWithdrawalAmount?: number;
+    maxDailyWithdrawalAmount?: number;
+    autoApproveWithdrawalThreshold?: number;
+  };
+  systemNotice?: {
+    maintenanceMode?: boolean;
+    maintenanceMessage?: string;
+    announcementEnabled?: boolean;
+    announcementTitle?: string;
+    announcementContent?: string;
+    announcementType?: 'INFO' | 'WARNING' | 'ALERT';
+  };
   updatedAt: string;
   updatedBy: string | null;
 };
 
+type ConfigTabKey = 'all' | 'order' | 'escrow' | 'consignment' | 'wallet' | 'ai' | 'notice';
+
 function AiSystemConfig({ onLogout }: Props) {
   const [revision, setRevision] = useState(0);
+  const [configTab, setConfigTab] = useState<ConfigTabKey>('all');
   const { data, loading, error } = useAdminData<SystemConfig>(
     '/admin/system-config',
     {},
@@ -2788,14 +2881,16 @@ function AiSystemConfig({ onLogout }: Props) {
   );
 
   const [draft, setDraft] = useState<{ source: SystemConfig; value: SystemConfig } | null>(null);
-  const form = draft && draft.source === data ? draft.value : (data ?? null);
+  const rawForm = draft && draft.source === data ? draft.value : (data ?? null);
+
   function setForm(update: SetStateAction<SystemConfig | null>) {
-    setDraft(previous => {
+    setDraft((previous) => {
       const current = previous && previous.source === data ? previous.value : (data ?? null);
       const next = typeof update === 'function' ? update(current) : update;
       return next && data ? { source: data, value: next } : null;
     });
   }
+
   const [newForbiddenWord, setNewForbiddenWord] = useState('');
   const [newRestrictedWord, setNewRestrictedWord] = useState('');
   const [forbiddenSearch, setForbiddenSearch] = useState('');
@@ -2804,27 +2899,60 @@ function AiSystemConfig({ onLogout }: Props) {
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
 
-
   useEffect(() => {
     if (!saveSuccess) return;
     const timer = setTimeout(() => setSaveSuccess(''), 4000);
     return () => clearTimeout(timer);
   }, [saveSuccess]);
 
-  if (loading && !form) {
+  if (loading && !rawForm) {
     return <LoadState loading={true} error="" />;
   }
 
-  if (error && !form) {
+  if (error && !rawForm) {
     return <LoadState loading={false} error={error} />;
   }
 
-  if (!form) return null;
+  if (!rawForm) return null;
+
+  // Normalize with safe defaults
+  const form: SystemConfig = {
+    ...rawForm,
+    orderAndDelivery: {
+      orderAutoCancelHours: rawForm.orderAndDelivery?.orderAutoCancelHours ?? 4,
+      complaintWindowHours: rawForm.orderAndDelivery?.complaintWindowHours ?? 24,
+      deliveryAllowedStartHour: rawForm.orderAndDelivery?.deliveryAllowedStartHour ?? 5,
+      deliveryAllowedEndHour: rawForm.orderAndDelivery?.deliveryAllowedEndHour ?? 21,
+      autoCompleteDeliveredHours: rawForm.orderAndDelivery?.autoCompleteDeliveredHours ?? 48,
+      allowWeekendDelivery: rawForm.orderAndDelivery?.allowWeekendDelivery ?? true,
+    },
+    consignment: {
+      maxConsignmentItemsPerStore: rawForm.consignment?.maxConsignmentItemsPerStore ?? 5,
+      settlementCycleDays: rawForm.consignment?.settlementCycleDays ?? 7,
+      allowConsignmentForUnverified: rawForm.consignment?.allowConsignmentForUnverified ?? false,
+    },
+    walletLimits: {
+      minDepositAmount: rawForm.walletLimits?.minDepositAmount ?? 50000,
+      minWithdrawalAmount: rawForm.walletLimits?.minWithdrawalAmount ?? 100000,
+      maxDailyWithdrawalAmount: rawForm.walletLimits?.maxDailyWithdrawalAmount ?? 50000000,
+      autoApproveWithdrawalThreshold: rawForm.walletLimits?.autoApproveWithdrawalThreshold ?? 2000000,
+    },
+    systemNotice: {
+      maintenanceMode: rawForm.systemNotice?.maintenanceMode ?? false,
+      maintenanceMessage:
+        rawForm.systemNotice?.maintenanceMessage ??
+        'Hệ thống SupplyMind đang bảo trì nâng cấp hệ thống định kỳ. Quý khách vui lòng quay lại sau.',
+      announcementEnabled: rawForm.systemNotice?.announcementEnabled ?? false,
+      announcementTitle: rawForm.systemNotice?.announcementTitle ?? 'Thông báo từ Ban Quản Trị Sàn SupplyMind',
+      announcementContent: rawForm.systemNotice?.announcementContent ?? '',
+      announcementType: rawForm.systemNotice?.announcementType ?? 'INFO',
+    },
+  };
 
   function handleAddForbidden() {
     const trimmed = newForbiddenWord.trim().toLowerCase();
     if (!trimmed) return;
-    if (form?.aiModeration.criticalForbiddenKeywords.includes(trimmed)) {
+    if (form.aiModeration.criticalForbiddenKeywords.includes(trimmed)) {
       alert('Từ cấm này đã có trong danh sách.');
       return;
     }
@@ -2848,9 +2976,7 @@ function AiSystemConfig({ onLogout }: Props) {
         ...curr,
         aiModeration: {
           ...curr.aiModeration,
-          criticalForbiddenKeywords: curr.aiModeration.criticalForbiddenKeywords.filter(
-            (w) => w !== word
-          ),
+          criticalForbiddenKeywords: curr.aiModeration.criticalForbiddenKeywords.filter((w) => w !== word),
         },
       };
     });
@@ -2859,7 +2985,7 @@ function AiSystemConfig({ onLogout }: Props) {
   function handleAddRestricted() {
     const trimmed = newRestrictedWord.trim().toLowerCase();
     if (!trimmed) return;
-    if (form?.aiModeration.restrictedKeywords.includes(trimmed)) {
+    if (form.aiModeration.restrictedKeywords.includes(trimmed)) {
       alert('Từ khóa này đã có trong danh sách.');
       return;
     }
@@ -2890,13 +3016,12 @@ function AiSystemConfig({ onLogout }: Props) {
   }
 
   async function handleSaveAll() {
-    if (!form) return;
     setSaving(true);
     setSaveError('');
     setSaveSuccess('');
     try {
       await api.put('/admin/system-config', form);
-      setSaveSuccess('Đã lưu cấu hình AI duyệt bài và tỷ lệ ký quỹ thành công!');
+      setSaveSuccess('Đã lưu toàn bộ cấu hình tham số sàn và chính sách vận hành thành công!');
       setRevision((n) => n + 1);
     } catch (e) {
       setSaveError(getApiError(e));
@@ -2907,7 +3032,7 @@ function AiSystemConfig({ onLogout }: Props) {
   }
 
   async function handleResetDefault() {
-    if (!window.confirm('Bạn có chắc muốn khôi phục toàn bộ cấu hình AI và ký quỹ về mặc định ban đầu?')) {
+    if (!window.confirm('Bạn có chắc muốn khôi phục toàn bộ cấu hình hệ thống về mặc định ban đầu?')) {
       return;
     }
     setSaving(true);
@@ -2915,7 +3040,7 @@ function AiSystemConfig({ onLogout }: Props) {
     setSaveSuccess('');
     try {
       await api.post('/admin/system-config/reset');
-      setSaveSuccess('Đã khôi phục toàn bộ cấu hình về mặc định ban đầu!');
+      setSaveSuccess('Đã khôi phục toàn bộ cấu hình về mặc định ban đầu thành công!');
       setRevision((n) => n + 1);
     } catch (e) {
       setSaveError(getApiError(e));
@@ -2936,9 +3061,9 @@ function AiSystemConfig({ onLogout }: Props) {
   return (
     <>
       <Heading
-        eyebrow="AI & ESCROW CONFIGURATION"
-        title="Cấu hình AI duyệt bài & Ký quỹ sàn"
-        description="Quản trị viên tùy chỉnh các từ cấm, từ khóa hạn chế, các ngưỡng nhạy cảm cho AI kiểm duyệt bài đăng và điều chỉnh tỷ lệ phần trăm ký quỹ (escrow) phù hợp với sàn thay vì để tự động hoàn toàn."
+        eyebrow="SYSTEM CONFIGURATION & POLICIES"
+        title="Cấu hình Tham số Sàn & Chính sách Vận hành"
+        description="Trung tâm can thiệp và kiểm soát toàn diện: SLA giao nhận, tỷ lệ cọc ký quỹ Escrow, chính sách ký gửi tiếp thị, hạn mức ví nạp/rút, từ cấm kiểm duyệt AI và thông báo bảo trì toàn sàn."
         action={
           <div style={{ display: 'flex', gap: '10px' }}>
             <button
@@ -2969,34 +3094,87 @@ function AiSystemConfig({ onLogout }: Props) {
                 gap: '6px',
               }}
             >
-              {saving ? 'Đang lưu…' : 'Lưu cấu hình'}
+              {saving ? 'Đang lưu…' : 'Lưu toàn bộ cấu hình'}
             </button>
           </div>
         }
       />
 
-      {/* Metrics row */}
-      <div className="admin-metrics four">
+      {/* Metrics Row */}
+      <div className="admin-metrics four" style={{ marginBottom: '18px' }}>
         <Metric
-          label="Từ cấm Mức 3 (Tự cấm)"
-          value={`${form.aiModeration.criticalForbiddenKeywords.length} từ`}
-          note="Chất cấm, vũ khí, hàng giả, cờ bạc..."
+          label="SLA Tự Hủy Đơn Sỉ"
+          value={`${form.orderAndDelivery?.orderAutoCancelHours} giờ`}
+          note="Hoàn 100% cọc nếu vựa chậm duyệt"
         />
         <Metric
-          label="Từ hạn chế Mức 2 (Duyệt)"
-          value={`${form.aiModeration.restrictedKeywords.length} từ`}
-          note="Thuốc lá, xì gà, rượu mạnh..."
-        />
-        <Metric
-          label="Tỷ lệ ký quỹ chuẩn"
+          label="Ký quỹ Escrow Chuẩn"
           value={`${form.escrowDeposit.defaultDepositRate}%`}
-          note={`Mức trần: ${form.escrowDeposit.maxDepositRate}%`}
+          note={`Trần tối đa: ${form.escrowDeposit.maxDepositRate}%`}
         />
         <Metric
-          label="Trạng thái AI duyệt bài"
-          value={form.aiModeration.autoModerationEnabled ? 'Đang BẬT' : 'Đã TẮT'}
-          note={`Độ nghiêm ngặt: ${form.aiModeration.strictness}`}
+          label="Ký Gửi Tiếp Thị Tối Đa"
+          value={`${form.consignment?.maxConsignmentItemsPerStore} mặt hàng`}
+          note={`Đối soát ${form.consignment?.settlementCycleDays} ngày/lần`}
         />
+        <Metric
+          label="Duyệt Rút Tự Động"
+          value={`${((form.walletLimits?.autoApproveWithdrawalThreshold || 0) / 1000000).toLocaleString('vi-VN')} tr ₫`}
+          note={`Hạn mức: ${((form.walletLimits?.maxDailyWithdrawalAmount || 0) / 1000000).toLocaleString('vi-VN')} tr/ngày`}
+        />
+      </div>
+
+      {/* Navigation Tabs for Configuration */}
+      <div className="admin-config-tabs">
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'all' ? 'active' : ''}`}
+          onClick={() => setConfigTab('all')}
+        >
+          Tất cả cấu hình
+        </button>
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'order' ? 'active' : ''}`}
+          onClick={() => setConfigTab('order')}
+        >
+          1. Đơn hàng & SLA giao hàng
+        </button>
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'escrow' ? 'active' : ''}`}
+          onClick={() => setConfigTab('escrow')}
+        >
+          2. Ký quỹ & Đặt cọc sỉ
+        </button>
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'consignment' ? 'active' : ''}`}
+          onClick={() => setConfigTab('consignment')}
+        >
+          3. Hàng ký gửi tiếp thị
+        </button>
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'wallet' ? 'active' : ''}`}
+          onClick={() => setConfigTab('wallet')}
+        >
+          4. Hạn mức Ví & Nạp rút
+        </button>
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'ai' ? 'active' : ''}`}
+          onClick={() => setConfigTab('ai')}
+        >
+          5. Kiểm duyệt AI & Từ cấm
+        </button>
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'notice' ? 'active' : ''}`}
+          onClick={() => setConfigTab('notice')}
+        >
+          6. Thông báo sàn & Bảo trì
+        </button>
       </div>
 
       {saveSuccess && (
@@ -3023,436 +3201,888 @@ function AiSystemConfig({ onLogout }: Props) {
       )}
 
       <div className="admin-config-container">
-        {/* CARD 1: CẤU HÌNH PHẦN TRĂM KÝ QUỸ */}
-        <section className="admin-config-card">
-          <div className="admin-config-card-header">
-            <div>
+        {/* CARD 1: CẤU HÌNH ĐƠN HÀNG & SLA GIAO HÀNG */}
+        {(configTab === 'all' || configTab === 'order') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
+              <span className="admin-mini-label" style={{ color: '#0284c7' }}>SLA VẬN HÀNH & ĐƠN HÀNG</span>
+              <h2>Chính sách Đặt hàng & SLA Giao hàng</h2>
+              <p>
+                Thiết lập giới hạn thời gian chủ vựa tiếp nhận đơn sỉ, thời hạn cho phép tiệm khiếu nại và khung giờ giao hàng trong ngày.
+              </p>
+            </div>
+
+            <div className="admin-config-grid">
+              <div className="admin-config-field">
+                <label htmlFor="orderAutoCancelHours">Thời hạn vựa tiếp nhận đơn trước khi tự hủy (giờ)</label>
+                <input
+                  id="orderAutoCancelHours"
+                  type="number"
+                  min={1}
+                  max={72}
+                  value={form.orderAndDelivery?.orderAutoCancelHours}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      orderAndDelivery: {
+                        ...form.orderAndDelivery,
+                        orderAutoCancelHours: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Nếu vựa không duyệt chuẩn bị hàng trong số giờ này, hệ thống tự động hủy đơn và hoàn 100% cọc về ví cho tiệm.</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="complaintWindowHours">Thời hạn khiếu nại sau khi nhận hàng (giờ)</label>
+                <input
+                  id="complaintWindowHours"
+                  type="number"
+                  min={1}
+                  max={168}
+                  value={form.orderAndDelivery?.complaintWindowHours}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      orderAndDelivery: {
+                        ...form.orderAndDelivery,
+                        complaintWindowHours: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Thời gian tối đa để chủ tạp hóa kiểm hàng và bấm gửi khiếu nại (Mặc định: 24 giờ).</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="autoCompleteDeliveredHours">Thời hạn tự động hoàn tất đơn sau khi giao (giờ)</label>
+                <input
+                  id="autoCompleteDeliveredHours"
+                  type="number"
+                  min={12}
+                  max={168}
+                  value={form.orderAndDelivery?.autoCompleteDeliveredHours}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      orderAndDelivery: {
+                        ...form.orderAndDelivery,
+                        autoCompleteDeliveredHours: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Nếu quá thời gian này và tiệm không khiếu nại, hệ thống tự động hoàn tất đơn và giải ngân cho vựa.</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label>Khung giờ giao hàng cho phép trong ngày</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    placeholder="Từ (giờ)"
+                    style={{ width: '100px' }}
+                    value={form.orderAndDelivery?.deliveryAllowedStartHour}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        orderAndDelivery: {
+                          ...form.orderAndDelivery,
+                          deliveryAllowedStartHour: Number(e.target.value),
+                        },
+                      })
+                    }
+                  />
+                  <span>đến</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={24}
+                    placeholder="Đến (giờ)"
+                    style={{ width: '100px' }}
+                    value={form.orderAndDelivery?.deliveryAllowedEndHour}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        orderAndDelivery: {
+                          ...form.orderAndDelivery,
+                          deliveryAllowedEndHour: Number(e.target.value),
+                        },
+                      })
+                    }
+                  />
+                  <span style={{ fontSize: '13px', color: '#64748b' }}>giờ hàng ngày</span>
+                </div>
+                <small>Ví dụ: từ 5h sáng đến 21h tối. Tránh việc vựa hẹn giờ giao ban đêm gây phiền toái cho tiệm.</small>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '16px' }} className="admin-config-toggle">
+              <span>
+                <strong>Cho phép chuyến xe giao hàng vào cuối tuần (Thứ Bảy & Chủ Nhật)</strong>
+                <small>Khi bật, chủ vựa có thể lên lịch chuyến xe giao hàng vào các ngày cuối tuần như bình thường.</small>
+              </span>
+              <input
+                type="checkbox"
+                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                checked={form.orderAndDelivery?.allowWeekendDelivery}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    orderAndDelivery: {
+                      ...form.orderAndDelivery,
+                      allowWeekendDelivery: e.target.checked,
+                    },
+                  })
+                }
+              />
+            </div>
+          </section>
+        )}
+
+        {/* CARD 2: CẤU HÌNH PHẦN TRĂM KÝ QUỸ ESCROW */}
+        {(configTab === 'all' || configTab === 'escrow') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
               <span className="admin-mini-label">CHÍNH SÁCH BẢO ĐẢM TÀI CHÍNH</span>
               <h2>Tỷ lệ phần trăm ký quỹ (Escrow Deposit Rate)</h2>
               <p>
                 Admin điều chỉnh tỷ lệ phần trăm tiền cọc đảm bảo hợp đồng sỉ giữa tiệm tạp hóa và chủ vựa. Tiền cọc được tạm giữ an toàn trong hệ thống ký quỹ cho đến khi đơn hàng hoàn tất.
               </p>
             </div>
-            
-          </div>
 
-          <div className="admin-config-grid">
-            <div className="admin-config-field">
-              <label htmlFor="defaultDepositRate">Tỷ lệ ký quỹ chuẩn khuyến nghị (%)</label>
-              <input
-                id="defaultDepositRate"
-                type="number"
-                min={0}
-                max={100}
-                step={0.5}
-                value={form.escrowDeposit.defaultDepositRate}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    escrowDeposit: {
-                      ...form.escrowDeposit,
-                      defaultDepositRate: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-              <small>Mức cọc chuẩn áp dụng mặc định khi chủ vựa gửi báo giá (VD: 10% hoặc 20%).</small>
+            <div className="admin-config-grid">
+              <div className="admin-config-field">
+                <label htmlFor="defaultDepositRate">Tỷ lệ ký quỹ chuẩn khuyến nghị (%)</label>
+                <input
+                  id="defaultDepositRate"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  value={form.escrowDeposit.defaultDepositRate}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      escrowDeposit: {
+                        ...form.escrowDeposit,
+                        defaultDepositRate: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Mức cọc chuẩn áp dụng mặc định khi chủ vựa gửi báo giá (Mặc định: 10%).</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="maxDepositRate">Tỷ lệ ký quỹ tối đa cho phép (%)</label>
+                <input
+                  id="maxDepositRate"
+                  type="number"
+                  min={form.escrowDeposit.minDepositRate}
+                  max={100}
+                  step={0.5}
+                  value={form.escrowDeposit.maxDepositRate}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      escrowDeposit: {
+                        ...form.escrowDeposit,
+                        maxDepositRate: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Mức trần tối đa, chủ vựa không được phép yêu cầu cọc vượt ngưỡng này (Mặc định: 50%).</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="highValueThreshold">Ngưỡng đơn giá trị cao (VNĐ)</label>
+                <input
+                  id="highValueThreshold"
+                  type="number"
+                  min={0}
+                  step={500000}
+                  value={form.escrowDeposit.highValueThreshold}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      escrowDeposit: {
+                        ...form.escrowDeposit,
+                        highValueThreshold: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Đơn hàng vượt giá trị này sẽ tự động áp dụng chính sách ký quỹ bảo đảm.</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="escrowHoldDays">Thời gian tạm giữ ký quỹ sau khi giao (ngày)</label>
+                <input
+                  id="escrowHoldDays"
+                  type="number"
+                  min={0}
+                  max={30}
+                  value={form.escrowDeposit.escrowHoldDays}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      escrowDeposit: {
+                        ...form.escrowDeposit,
+                        escrowHoldDays: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Số ngày giữ cọc để chủ tạp hóa kiểm tra hàng hóa trước khi giải tỏa hoàn tất.</small>
+              </div>
             </div>
+          </section>
+        )}
 
-            <div className="admin-config-field">
-              <label htmlFor="maxDepositRate">Tỷ lệ ký quỹ tối đa cho phép (%)</label>
-              <input
-                id="maxDepositRate"
-                type="number"
-                min={form.escrowDeposit.minDepositRate}
-                max={100}
-                step={0.5}
-                value={form.escrowDeposit.maxDepositRate}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    escrowDeposit: {
-                      ...form.escrowDeposit,
-                      maxDepositRate: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-              <small>Mức trần tối đa, chủ vựa không được phép yêu cầu cọc vượt ngưỡng này (VD: 50%).</small>
-            </div>
-
-            <div className="admin-config-field">
-              <label htmlFor="highValueThreshold">Ngưỡng đơn giá trị cao (VNĐ)</label>
-              <input
-                id="highValueThreshold"
-                type="number"
-                min={0}
-                step={500000}
-                value={form.escrowDeposit.highValueThreshold}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    escrowDeposit: {
-                      ...form.escrowDeposit,
-                      highValueThreshold: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-              <small>Đơn hàng vượt giá trị này sẽ tự động áp dụng chính sách ký quỹ bảo đảm.</small>
-            </div>
-
-            <div className="admin-config-field">
-              <label htmlFor="escrowHoldDays">Thời gian tạm giữ ký quỹ sau khi giao (ngày)</label>
-              <input
-                id="escrowHoldDays"
-                type="number"
-                min={0}
-                max={30}
-                value={form.escrowDeposit.escrowHoldDays}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    escrowDeposit: {
-                      ...form.escrowDeposit,
-                      escrowHoldDays: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-              <small>Số ngày giữ cọc để chủ tạp hóa kiểm tra hàng hóa trước khi giải tỏa hoàn tất.</small>
-            </div>
-          </div>
-        </section>
-
-        {/* CARD 2: QUẢN LÝ TỪ CẤM NGHIÊM TRỌNG (MỨC 3) */}
-        <section className="admin-config-card">
-          <div className="admin-config-card-header">
-            <div>
-              <span className="admin-mini-label" style={{ color: '#b91c1c' }}>MỨC 3 · TỰ ĐỘNG CẤM ĐĂNG BÁN</span>
-              <h2>Quản lý Danh sách Từ cấm Nghiêm trọng</h2>
+        {/* CARD 3: CẤU HÌNH HÀNG KÝ GỬI TIẾP THỊ */}
+        {(configTab === 'all' || configTab === 'consignment') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
+              <span className="admin-mini-label" style={{ color: '#0d9488' }}>MÔ HÌNH HÀNG TIẾP THỊ 0Đ</span>
+              <h2>Chính sách Hàng Ký Gửi & Bán Thử</h2>
               <p>
-                Khi sản phẩm có chứa bất kỳ từ cấm nào bên dưới (trong tên, danh mục, quy cách hoặc mô tả), AI sẽ ngay lập tức từ chối và cấm đăng bán thẳng để bảo vệ an toàn sàn.
+                Quản lý quy định đưa hàng vào bán thử tại tiệm tạp hóa không cần vốn nhập trước, hạn chế rủi ro nợ xấu và chu kỳ đối soát thanh toán.
               </p>
             </div>
-            
-          </div>
 
-          <div className="admin-tag-input-row">
-            <input
-              type="text"
-              placeholder="Nhập từ cấm mới (VD: tiền giả, pháo sáng, súng bắn cát...) rồi nhấn Thêm"
-              value={newForbiddenWord}
-              onChange={(e) => setNewForbiddenWord(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleAddForbidden();
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="admin-primary"
-              onClick={handleAddForbidden}
-              disabled={!newForbiddenWord.trim()}
-              style={{ padding: '9px 18px', whiteSpace: 'nowrap' }}
-            >
-              + Thêm từ cấm
-            </button>
-          </div>
+            <div className="admin-config-grid">
+              <div className="admin-config-field">
+                <label htmlFor="maxConsignmentItemsPerStore">Số lượng mặt hàng ký gửi tối đa tại 1 tiệm</label>
+                <input
+                  id="maxConsignmentItemsPerStore"
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={form.consignment?.maxConsignmentItemsPerStore}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      consignment: {
+                        ...form.consignment,
+                        maxConsignmentItemsPerStore: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Mỗi chủ vựa chỉ được ký gửi tối đa số mặt hàng này tại cùng 1 tiệm tạp hóa (Mặc định: 5 mặt hàng).</small>
+              </div>
 
-          <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>
-              Tổng cộng {form.aiModeration.criticalForbiddenKeywords.length} từ cấm:
-            </span>
-            <input
-              type="text"
-              placeholder="Lọc nhanh từ cấm..."
-              value={forbiddenSearch}
-              onChange={(e) => setForbiddenSearch(e.target.value)}
-              style={{
-                padding: '4px 10px',
-                borderRadius: '6px',
-                border: '1px solid #cbd5e1',
-                fontSize: '12px',
-                maxWidth: '200px',
-              }}
-            />
-          </div>
+              <div className="admin-config-field">
+                <label htmlFor="settlementCycleDays">Chu kỳ nhắc nhở đối soát định kỳ (ngày)</label>
+                <input
+                  id="settlementCycleDays"
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={form.consignment?.settlementCycleDays}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      consignment: {
+                        ...form.consignment,
+                        settlementCycleDays: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Hệ thống tự động phát thông báo nhắc nhở tiệm tạp hóa thanh toán tiền sỉ các mặt hàng ký gửi đã bán lẻ.</small>
+              </div>
+            </div>
 
-          <div className="admin-tag-cloud">
-            {filteredForbidden.length > 0 ? (
-              filteredForbidden.map((word) => (
-                <span key={word} className="admin-tag-chip critical">
-                  <span>{word}</span>
-                  <button
-                    type="button"
-                    className="admin-tag-remove-btn"
-                    onClick={() => handleRemoveForbidden(word)}
-                    title={`Xóa từ "${word}" khỏi danh sách từ cấm`}
-                    aria-label={`Xóa ${word}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))
-            ) : (
-              <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '8px' }}>
-                Không tìm thấy từ cấm nào khớp với tìm kiếm.
+            <div style={{ marginTop: '16px' }} className="admin-config-toggle">
+              <span>
+                <strong>Yêu cầu Chủ vựa phải hoàn tất Xác minh uy tín (Approved) mới được đưa hàng ký gửi</strong>
+                <small>Bảo vệ chủ tiệm tạp hóa khỏi các nhà cung cấp chưa được chứng thực giấy tờ kinh doanh hợp lệ.</small>
               </span>
-            )}
-          </div>
-        </section>
+              <input
+                type="checkbox"
+                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                checked={!form.consignment?.allowConsignmentForUnverified}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    consignment: {
+                      ...form.consignment,
+                      allowConsignmentForUnverified: !e.target.checked,
+                    },
+                  })
+                }
+              />
+            </div>
+          </section>
+        )}
 
-        {/* CARD 3: QUẢN LÝ TỪ KHÓA HẠN CHẾ (MỨC 2) */}
-        <section className="admin-config-card">
-          <div className="admin-config-card-header">
-            <div>
-              <span className="admin-mini-label" style={{ color: '#b45309' }}>MỨC 2 · CẦN ADMIN DUYỆT</span>
-              <h2>Quản lý Danh sách Từ khóa Hạn chế / Có điều kiện</h2>
+        {/* CARD 4: CẤU HÌNH HẠN MỨC VÍ & NẠP RÚT */}
+        {(configTab === 'all' || configTab === 'wallet') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
+              <span className="admin-mini-label" style={{ color: '#7c3aed' }}>KIỂM SOÁT TÀI CHÍNH & VÍ ĐIỆN TỬ</span>
+              <h2>Hạn mức Ví & Kiểm soát Nạp / Rút Tiền</h2>
               <p>
-                Sản phẩm chứa các từ khóa này (thuốc lá, xì gà, rượu, thực phẩm chức năng...) sẽ không bị cấm ngay mà được đưa vào Hàng chờ duyệt để Admin kiểm tra giấy phép kinh doanh.
+                Thiết lập hạn mức nạp rút tối thiểu, tối đa mỗi ngày và ngưỡng duyệt tự động nhằm phòng ngừa rủi ro chiếm đoạt ví và rửa tiền.
               </p>
             </div>
-            
-          </div>
 
-          <div className="admin-tag-input-row">
-            <input
-              type="text"
-              placeholder="Nhập từ khóa hạn chế mới (VD: thuốc lào, shisha, vape, rượu ngoại...) rồi nhấn Thêm"
-              value={newRestrictedWord}
-              onChange={(e) => setNewRestrictedWord(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleAddRestricted();
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="admin-primary"
-              onClick={handleAddRestricted}
-              disabled={!newRestrictedWord.trim()}
-              style={{ padding: '9px 18px', whiteSpace: 'nowrap' }}
-            >
-              + Thêm từ hạn chế
-            </button>
-          </div>
+            <div className="admin-config-grid">
+              <div className="admin-config-field">
+                <label htmlFor="minDepositAmount">Số tiền nạp tối thiểu mỗi giao dịch (VNĐ)</label>
+                <input
+                  id="minDepositAmount"
+                  type="number"
+                  min={10000}
+                  step={10000}
+                  value={form.walletLimits?.minDepositAmount}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      walletLimits: {
+                        ...form.walletLimits,
+                        minDepositAmount: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Số tiền tối thiểu một lần nạp vào ví (Mặc định: 50.000đ).</small>
+              </div>
 
-          <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>
-              Tổng cộng {form.aiModeration.restrictedKeywords.length} từ khóa hạn chế:
-            </span>
-            <input
-              type="text"
-              placeholder="Lọc từ hạn chế..."
-              value={restrictedSearch}
-              onChange={(e) => setRestrictedSearch(e.target.value)}
-              style={{
-                padding: '4px 10px',
-                borderRadius: '6px',
-                border: '1px solid #cbd5e1',
-                fontSize: '12px',
-                maxWidth: '200px',
-              }}
-            />
-          </div>
+              <div className="admin-config-field">
+                <label htmlFor="minWithdrawalAmount">Số tiền rút tối thiểu mỗi giao dịch (VNĐ)</label>
+                <input
+                  id="minWithdrawalAmount"
+                  type="number"
+                  min={10000}
+                  step={10000}
+                  value={form.walletLimits?.minWithdrawalAmount}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      walletLimits: {
+                        ...form.walletLimits,
+                        minWithdrawalAmount: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Mức rút tối thiểu tránh các giao dịch siêu nhỏ gây quá tải ngân hàng (Mặc định: 100.000đ).</small>
+              </div>
 
-          <div className="admin-tag-cloud">
-            {filteredRestricted.length > 0 ? (
-              filteredRestricted.map((word) => (
-                <span key={word} className="admin-tag-chip warning">
-                  <span>{word}</span>
-                  <button
-                    type="button"
-                    className="admin-tag-remove-btn"
-                    onClick={() => handleRemoveRestricted(word)}
-                    title={`Xóa từ "${word}" khỏi danh sách hạn chế`}
-                    aria-label={`Xóa ${word}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))
-            ) : (
-              <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '8px' }}>
-                Không tìm thấy từ khóa nào khớp với tìm kiếm.
+              <div className="admin-config-field">
+                <label htmlFor="maxDailyWithdrawalAmount">Hạn mức rút tiền tối đa mỗi ngày (VNĐ/tài khoản)</label>
+                <input
+                  id="maxDailyWithdrawalAmount"
+                  type="number"
+                  min={500000}
+                  step={5000000}
+                  value={form.walletLimits?.maxDailyWithdrawalAmount}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      walletLimits: {
+                        ...form.walletLimits,
+                        maxDailyWithdrawalAmount: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Giới hạn bảo vệ tài sản, một tài khoản không thể rút vượt ngưỡng này trong vòng 24 giờ (Mặc định: 50.000.000đ).</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="autoApproveWithdrawalThreshold">Ngưỡng tự động duyệt lệnh rút tiền (VNĐ)</label>
+                <input
+                  id="autoApproveWithdrawalThreshold"
+                  type="number"
+                  min={0}
+                  step={500000}
+                  value={form.walletLimits?.autoApproveWithdrawalThreshold}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      walletLimits: {
+                        ...form.walletLimits,
+                        autoApproveWithdrawalThreshold: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Các lệnh rút dưới mức này sẽ được hệ thống duyệt ngay; trên mức này bắt buộc Admin kiểm tra chứng từ (Mặc định: 2.000.000đ).</small>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* CARD 5: CẤU HÌNH THÔNG BÁO SÀN & BẢO TRÌ */}
+        {(configTab === 'all' || configTab === 'notice') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
+              <span className="admin-mini-label" style={{ color: '#ea580c' }}>TRẠNG THÁI NỀN TẢNG & TRUYỀN THÔNG</span>
+              <h2>Thông báo Toàn sàn & Chế độ Bảo trì</h2>
+              <p>
+                Phát đi thông báo khẩn cấp (thời tiết, bão lũ, kỳ nghỉ lễ Tết) đến toàn bộ tiệm tạp hóa và chủ vựa hoặc bật chế độ bảo trì kỹ thuật.
+              </p>
+            </div>
+
+            <div className="admin-config-toggle">
+              <span>
+                <strong>Bật chế độ bảo trì hệ thống toàn sàn (Maintenance Mode)</strong>
+                <small>Khi bật, hệ thống sẽ tạm khóa các thao tác đặt hàng sỉ và hiển thị lời nhắn bảo trì cho người dùng.</small>
               </span>
-            )}
-          </div>
-        </section>
+              <input
+                type="checkbox"
+                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                checked={form.systemNotice?.maintenanceMode}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    systemNotice: {
+                      ...form.systemNotice,
+                      maintenanceMode: e.target.checked,
+                    },
+                  })
+                }
+              />
+            </div>
 
-        {/* CARD 4: CÀI ĐẶT THUẬT TOÁN & NGƯỠNG RỦI RO AI */}
-        <section className="admin-config-card">
-          <div className="admin-config-card-header">
-            <div>
+            {form.systemNotice?.maintenanceMode && (
+              <div className="admin-config-field" style={{ marginBottom: '16px' }}>
+                <label htmlFor="maintenanceMessage">Lời nhắn thông báo bảo trì hiển thị cho người dùng</label>
+                <textarea
+                  id="maintenanceMessage"
+                  rows={3}
+                  value={form.systemNotice?.maintenanceMessage}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      systemNotice: {
+                        ...form.systemNotice,
+                        maintenanceMessage: e.target.value,
+                      },
+                    })
+                  }
+                />
+              </div>
+            )}
+
+            <div className="admin-config-toggle">
+              <span>
+                <strong>Kích hoạt Banner thông báo khẩn cấp toàn sàn</strong>
+                <small>Hiển thị thanh banner nổi bật ở đầu trang của cả Tiệm tạp hóa lẫn Chủ vựa.</small>
+              </span>
+              <input
+                type="checkbox"
+                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                checked={form.systemNotice?.announcementEnabled}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    systemNotice: {
+                      ...form.systemNotice,
+                      announcementEnabled: e.target.checked,
+                    },
+                  })
+                }
+              />
+            </div>
+
+            {form.systemNotice?.announcementEnabled && (
+              <div className="admin-config-grid" style={{ marginTop: '12px' }}>
+                <div className="admin-config-field">
+                  <label htmlFor="announcementTitle">Tiêu đề thông báo</label>
+                  <input
+                    id="announcementTitle"
+                    type="text"
+                    placeholder="VD: Cảnh báo bão số 6 ảnh hưởng các tuyến vận chuyển nông sản miền Trung..."
+                    value={form.systemNotice?.announcementTitle}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        systemNotice: {
+                          ...form.systemNotice,
+                          announcementTitle: e.target.value,
+                        },
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="admin-config-field">
+                  <label htmlFor="announcementType">Mức độ ưu tiên thông báo</label>
+                  <select
+                    id="announcementType"
+                    value={form.systemNotice?.announcementType}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        systemNotice: {
+                          ...form.systemNotice,
+                          announcementType: e.target.value as 'INFO' | 'WARNING' | 'ALERT',
+                        },
+                      })
+                    }
+                  >
+                    <option value="INFO">Thông tin chung (Màu xanh dương)</option>
+                    <option value="WARNING">Cảnh báo lưu ý (Màu vàng cam)</option>
+                    <option value="ALERT">Khẩn cấp nghiêm trọng (Màu đỏ)</option>
+                  </select>
+                </div>
+
+                <div className="admin-config-field" style={{ gridColumn: '1 / -1' }}>
+                  <label htmlFor="announcementContent">Nội dung chi tiết thông báo</label>
+                  <textarea
+                    id="announcementContent"
+                    rows={3}
+                    placeholder="Nhập nội dung chi tiết thông báo gửi đến các chủ tiệm và chủ vựa..."
+                    value={form.systemNotice?.announcementContent}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        systemNotice: {
+                          ...form.systemNotice,
+                          announcementContent: e.target.value,
+                        },
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* CARD 6: CÀI ĐẶT THUẬT TOÁN & NGƯỠNG RỦI RO AI */}
+        {(configTab === 'all' || configTab === 'ai') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
               <span className="admin-mini-label">QUY TẮC PHÁ GIÁ & SỐ LƯỢNG ẢO</span>
               <h2>Cài đặt Thuật toán AI & Ngưỡng Rủi ro</h2>
               <p>
                 Điều chỉnh các ngưỡng giá tối thiểu/tối đa và số lượng MOQ để AI phát hiện kịp thời các hành vi phá giá, tạo đơn ảo hoặc số lượng phi thực tế.
               </p>
             </div>
-            
-          </div>
 
-          {/* Toggle Enable/Disable AI */}
-          <div className="admin-config-toggle">
-            <span>
-              <strong>Kích hoạt tính năng AI kiểm duyệt tự động</strong>
-              <small>Khi tắt, các bài đăng sản phẩm sỉ sẽ không bị AI kiểm tra hay chặn tự động.</small>
-            </span>
-            <input
-              type="checkbox"
-              style={{ width: '20px', height: '20px', cursor: 'pointer' }}
-              checked={form.aiModeration.autoModerationEnabled}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  aiModeration: {
-                    ...form.aiModeration,
-                    autoModerationEnabled: e.target.checked,
-                  },
-                })
-              }
-            />
-          </div>
-
-          <div className="admin-config-grid">
-            <div className="admin-config-field">
-              <label htmlFor="strictness">Độ nghiêm ngặt của AI</label>
-              <select
-                id="strictness"
-                value={form.aiModeration.strictness}
+            <div className="admin-config-toggle">
+              <span>
+                <strong>Kích hoạt tính năng AI kiểm duyệt tự động</strong>
+                <small>Khi tắt, các bài đăng sản phẩm sỉ sẽ không bị AI kiểm tra hay chặn tự động.</small>
+              </span>
+              <input
+                type="checkbox"
+                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                checked={form.aiModeration.autoModerationEnabled}
                 onChange={(e) =>
                   setForm({
                     ...form,
                     aiModeration: {
                       ...form.aiModeration,
-                      strictness: e.target.value as 'STANDARD' | 'STRICT' | 'LENIENT',
+                      autoModerationEnabled: e.target.checked,
                     },
                   })
                 }
+              />
+            </div>
+
+            <div className="admin-config-grid">
+              <div className="admin-config-field">
+                <label htmlFor="strictness">Độ nghiêm ngặt của AI</label>
+                <select
+                  id="strictness"
+                  value={form.aiModeration.strictness}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      aiModeration: {
+                        ...form.aiModeration,
+                        strictness: e.target.value as 'STANDARD' | 'STRICT' | 'LENIENT',
+                      },
+                    })
+                  }
+                >
+                  <option value="STANDARD">Tiêu chuẩn (Khuyên dùng - Cân bằng kiểm duyệt)</option>
+                  <option value="STRICT">Nghiêm ngặt (Tăng độ nhạy cảnh báo 25%, kiểm soát chặt)</option>
+                  <option value="LENIENT">Linh hoạt (Nới lỏng, chỉ chặn vi phạm nặng)</option>
+                </select>
+                <small>Quyết định hệ số tính điểm rủi ro (risk score) của sản phẩm.</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="minSuspiciousPrice">Giá sỉ tối thiểu nghi vấn giá ảo / phá giá (VNĐ)</label>
+                <input
+                  id="minSuspiciousPrice"
+                  type="number"
+                  min={0}
+                  step={100}
+                  value={form.aiModeration.minSuspiciousPrice}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      aiModeration: {
+                        ...form.aiModeration,
+                        minSuspiciousPrice: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Giá sỉ thấp hơn mức này sẽ bị coi là giá ảo phá giá (Mặc định: 500đ).</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="warningLowPrice">Giá sỉ thấp bất thường cần xác minh (VNĐ)</label>
+                <input
+                  id="warningLowPrice"
+                  type="number"
+                  min={form.aiModeration.minSuspiciousPrice}
+                  step={500}
+                  value={form.aiModeration.warningLowPrice}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      aiModeration: {
+                        ...form.aiModeration,
+                        warningLowPrice: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Sản phẩm trong khoảng này sẽ cảnh báo Mức 2 để Admin xác minh.</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="maxSuspiciousPrice">Giá sỉ tối đa bất thường (VNĐ)</label>
+                <input
+                  id="maxSuspiciousPrice"
+                  type="number"
+                  min={form.aiModeration.warningLowPrice}
+                  step={10000000}
+                  value={form.aiModeration.maxSuspiciousPrice}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      aiModeration: {
+                        ...form.aiModeration,
+                        maxSuspiciousPrice: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Giá sỉ vượt trần này sẽ bị AI cấm vì nghi ngờ thông tin sai lệch.</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="maxMoq">Số lượng MOQ tối đa phi thực tế</label>
+                <input
+                  id="maxMoq"
+                  type="number"
+                  min={1}
+                  step={1000}
+                  value={form.aiModeration.maxMoq}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      aiModeration: {
+                        ...form.aiModeration,
+                        maxMoq: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Số lượng tối thiểu (MOQ) vượt ngưỡng này sẽ bị cấm (Mặc định: 50.000).</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="warningMoq">Ngưỡng MOQ cao cần kiểm tra</label>
+                <input
+                  id="warningMoq"
+                  type="number"
+                  min={1}
+                  max={form.aiModeration.maxMoq}
+                  step={500}
+                  value={form.aiModeration.warningMoq}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      aiModeration: {
+                        ...form.aiModeration,
+                        warningMoq: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>MOQ vượt ngưỡng này sẽ cảnh báo Admin duyệt (Mặc định: 5.000).</small>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* CARD 7: QUẢN LÝ TỪ CẤM NGHIÊM TRỌNG (MỨC 3) */}
+        {(configTab === 'all' || configTab === 'ai') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
+              <span className="admin-mini-label" style={{ color: '#b91c1c' }}>MỨC 3 · TỰ ĐỘNG CẤM ĐĂNG BÁN</span>
+              <h2>Quản lý Danh sách Từ cấm Nghiêm trọng</h2>
+              <p>
+                Khi sản phẩm có chứa bất kỳ từ cấm nào bên dưới (trong tên, danh mục, quy cách hoặc mô tả), AI sẽ ngay lập tức từ chối và cấm đăng bán thẳng để bảo vệ an toàn sàn.
+              </p>
+            </div>
+
+            <div className="admin-tag-input-row">
+              <input
+                type="text"
+                placeholder="Nhập từ cấm mới (VD: tiền giả, pháo sáng, súng bắn cát...) rồi nhấn Thêm"
+                value={newForbiddenWord}
+                onChange={(e) => setNewForbiddenWord(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddForbidden();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="admin-primary"
+                onClick={handleAddForbidden}
+                disabled={!newForbiddenWord.trim()}
+                style={{ padding: '9px 18px', whiteSpace: 'nowrap' }}
               >
-                <option value="STANDARD">Tiêu chuẩn (Khuyên dùng - Cân bằng kiểm duyệt)</option>
-                <option value="STRICT">Nghiêm ngặt (Tăng độ nhạy cảnh báo 25%, kiểm soát chặt)</option>
-                <option value="LENIENT">Linh hoạt (Nới lỏng, chỉ chặn vi phạm nặng)</option>
-              </select>
-              <small>Quyết định hệ số tính điểm rủi ro (risk score) của sản phẩm.</small>
+                + Thêm từ cấm
+              </button>
             </div>
 
-            <div className="admin-config-field">
-              <label htmlFor="minSuspiciousPrice">Giá sỉ tối thiểu nghi vấn giá ảo / phá giá (VNĐ)</label>
+            <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>
+                Tổng cộng {form.aiModeration.criticalForbiddenKeywords.length} từ cấm:
+              </span>
               <input
-                id="minSuspiciousPrice"
-                type="number"
-                min={0}
-                step={100}
-                value={form.aiModeration.minSuspiciousPrice}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    aiModeration: {
-                      ...form.aiModeration,
-                      minSuspiciousPrice: Number(e.target.value),
-                    },
-                  })
-                }
+                type="text"
+                placeholder="Lọc nhanh từ cấm..."
+                value={forbiddenSearch}
+                onChange={(e) => setForbiddenSearch(e.target.value)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '12px',
+                  maxWidth: '200px',
+                }}
               />
-              <small>Giá sỉ thấp hơn mức này sẽ bị coi là giá ảo phá giá (Mặc định: 500đ).</small>
             </div>
 
-            <div className="admin-config-field">
-              <label htmlFor="warningLowPrice">Giá sỉ thấp bất thường cần xác minh (VNĐ)</label>
-              <input
-                id="warningLowPrice"
-                type="number"
-                min={form.aiModeration.minSuspiciousPrice}
-                step={500}
-                value={form.aiModeration.warningLowPrice}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    aiModeration: {
-                      ...form.aiModeration,
-                      warningLowPrice: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-              <small>Sản phẩm trong khoảng này sẽ cảnh báo Mức 2 để Admin xác minh.</small>
+            <div className="admin-tag-cloud">
+              {filteredForbidden.length > 0 ? (
+                filteredForbidden.map((word) => (
+                  <span key={word} className="admin-tag-chip critical">
+                    <span>{word}</span>
+                    <button
+                      type="button"
+                      className="admin-tag-remove-btn"
+                      onClick={() => handleRemoveForbidden(word)}
+                      title={`Xóa từ "${word}" khỏi danh sách từ cấm`}
+                      aria-label={`Xóa ${word}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '8px' }}>
+                  Không tìm thấy từ cấm nào khớp với tìm kiếm.
+                </span>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* CARD 8: QUẢN LÝ TỪ KHÓA HẠN CHẾ (MỨC 2) */}
+        {(configTab === 'all' || configTab === 'ai') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
+              <span className="admin-mini-label" style={{ color: '#b45309' }}>MỨC 2 · CẦN ADMIN DUYỆT</span>
+              <h2>Quản lý Danh sách Từ khóa Hạn chế / Có điều kiện</h2>
+              <p>
+                Sản phẩm chứa các từ khóa này (thuốc lá, xì gà, rượu, thực phẩm chức năng...) sẽ không bị cấm ngay mà được đưa vào Hàng chờ duyệt để Admin kiểm tra giấy phép kinh doanh.
+              </p>
             </div>
 
-            <div className="admin-config-field">
-              <label htmlFor="maxSuspiciousPrice">Giá sỉ tối đa bất thường (VNĐ)</label>
+            <div className="admin-tag-input-row">
               <input
-                id="maxSuspiciousPrice"
-                type="number"
-                min={form.aiModeration.warningLowPrice}
-                step={10000000}
-                value={form.aiModeration.maxSuspiciousPrice}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    aiModeration: {
-                      ...form.aiModeration,
-                      maxSuspiciousPrice: Number(e.target.value),
-                    },
-                  })
-                }
+                type="text"
+                placeholder="Nhập từ khóa hạn chế mới (VD: thuốc lào, shisha, vape, rượu ngoại...) rồi nhấn Thêm"
+                value={newRestrictedWord}
+                onChange={(e) => setNewRestrictedWord(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddRestricted();
+                  }
+                }}
               />
-              <small>Giá sỉ vượt trần này sẽ bị AI cấm vì nghi ngờ thông tin sai lệch.</small>
+              <button
+                type="button"
+                className="admin-primary"
+                onClick={handleAddRestricted}
+                disabled={!newRestrictedWord.trim()}
+                style={{ padding: '9px 18px', whiteSpace: 'nowrap' }}
+              >
+                + Thêm từ hạn chế
+              </button>
             </div>
 
-            <div className="admin-config-field">
-              <label htmlFor="maxMoq">Số lượng MOQ tối đa phi thực tế</label>
+            <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>
+                Tổng cộng {form.aiModeration.restrictedKeywords.length} từ khóa hạn chế:
+              </span>
               <input
-                id="maxMoq"
-                type="number"
-                min={1}
-                step={1000}
-                value={form.aiModeration.maxMoq}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    aiModeration: {
-                      ...form.aiModeration,
-                      maxMoq: Number(e.target.value),
-                    },
-                  })
-                }
+                type="text"
+                placeholder="Lọc từ hạn chế..."
+                value={restrictedSearch}
+                onChange={(e) => setRestrictedSearch(e.target.value)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '12px',
+                  maxWidth: '200px',
+                }}
               />
-              <small>Số lượng tối thiểu (MOQ) vượt ngưỡng này sẽ bị cấm (Mặc định: 50.000).</small>
             </div>
 
-            <div className="admin-config-field">
-              <label htmlFor="warningMoq">Ngưỡng MOQ cao cần kiểm tra</label>
-              <input
-                id="warningMoq"
-                type="number"
-                min={1}
-                max={form.aiModeration.maxMoq}
-                step={500}
-                value={form.aiModeration.warningMoq}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    aiModeration: {
-                      ...form.aiModeration,
-                      warningMoq: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-              <small>MOQ vượt ngưỡng này sẽ cảnh báo Admin duyệt (Mặc định: 5.000).</small>
+            <div className="admin-tag-cloud">
+              {filteredRestricted.length > 0 ? (
+                filteredRestricted.map((word) => (
+                  <span key={word} className="admin-tag-chip warning">
+                    <span>{word}</span>
+                    <button
+                      type="button"
+                      className="admin-tag-remove-btn"
+                      onClick={() => handleRemoveRestricted(word)}
+                      title={`Xóa từ "${word}" khỏi danh sách hạn chế`}
+                      aria-label={`Xóa ${word}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '8px' }}>
+                  Không tìm thấy từ khóa nào khớp với tìm kiếm.
+                </span>
+              )}
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* BOTTOM ACTION BUTTONS */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '14px', marginTop: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '14px', marginTop: '14px', marginBottom: '20px' }}>
           <button
             type="button"
             onClick={handleResetDefault}
