@@ -29,6 +29,9 @@ import {
   createConsignmentRequest,
   getStoreConsignmentRequests,
   confirmConsignmentReceipt,
+  getStoreConsignmentSettlements,
+  payConsignmentSettlement,
+  type ConsignmentSettlement,
   type ConsignmentRequest,
 } from '../services/consignment.api';
 
@@ -1883,7 +1886,51 @@ function ConsignmentHistoryDialog({
   onClose: () => void;
   onConfirmReceipt: (requestId: string) => Promise<void>;
 }) {
+  const [activeTab, setActiveTab] = useState<'settlements' | 'requests'>('settlements');
+  const [settlements, setSettlements] = useState<ConsignmentSettlement[]>([]);
+  const [loadingSettlements, setLoadingSettlements] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [settlingId, setSettlingId] = useState<number | null>(null);
+  const [msg, setMsg] = useState('');
+
+  const loadSettlements = async () => {
+    setLoadingSettlements(true);
+    try {
+      const data = await getStoreConsignmentSettlements();
+      setSettlements(data || []);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingSettlements(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadSettlements();
+  }, []);
+
+  async function handleSettle(item: ConsignmentSettlement) {
+    if (
+      !window.confirm(
+        `Xác nhận kết toán ${item.unsettledQty} ${item.unit} "${item.productName}"?\nSố tiền ${item.dueAmount.toLocaleString('vi-VN')} ₫ sẽ được trừ từ Ví khả dụng để chuyển cho ${item.supplierName}.`
+      )
+    ) {
+      return;
+    }
+    setSettlingId(item.itemId);
+    setMsg('');
+    try {
+      const res = await payConsignmentSettlement(item.itemId, { qty: item.unsettledQty, method: 'WALLET' });
+      setMsg(res.message || 'Kết toán thành công!');
+      await loadSettlements();
+    } catch (err: any) {
+      window.alert(err?.response?.data?.message || err?.message || 'Lỗi khi kết toán.');
+    } finally {
+      setSettlingId(null);
+    }
+  }
+
+  const totalDue = settlements.reduce((sum, s) => sum + s.dueAmount, 0);
 
   async function handleConfirm(id: string) {
     setConfirmingId(id);
@@ -1900,14 +1947,149 @@ function ConsignmentHistoryDialog({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <div>
             <span className="supplier-panel-label">HÀNG TIẾP THỊ & KÝ GỬI</span>
-            <h2>Theo dõi yêu cầu bù hàng / đổi date</h2>
+            <h2>Quản lý & Kết toán hàng ký gửi tiếp thị</h2>
           </div>
           <button className="dialog-close" onClick={onClose} style={{ fontSize: '24px', cursor: 'pointer', border: 'none', background: 'none' }}>
             ×
           </button>
         </div>
 
-        {!requests.length ? (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+          <button
+            type="button"
+            className={`table-button ${activeTab === 'settlements' ? 'primary-small' : ''}`}
+            style={activeTab === 'settlements' ? { background: '#0284c7', color: '#fff' } : {}}
+            onClick={() => setActiveTab('settlements')}
+          >
+            Bảng kê kết toán hàng đã bán ({settlements.filter((s) => s.unsettledQty > 0).length})
+          </button>
+          <button
+            type="button"
+            className={`table-button ${activeTab === 'requests' ? 'primary-small' : ''}`}
+            style={activeTab === 'requests' ? { background: '#0284c7', color: '#fff' } : {}}
+            onClick={() => setActiveTab('requests')}
+          >
+            Yêu cầu bù hàng / Đổi date ({requests.length})
+          </button>
+        </div>
+
+        {msg && (
+          <div
+            style={{
+              marginBottom: '12px',
+              padding: '10px 14px',
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: '6px',
+              color: '#166534',
+              fontSize: '13px',
+            }}
+          >
+            {msg}
+          </div>
+        )}
+
+        {activeTab === 'settlements' && (
+          <div>
+            <div
+              style={{
+                background: '#f0f9ff',
+                border: '1px solid #bae6fd',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                marginBottom: '14px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '8px',
+              }}
+            >
+              <div>
+                <span style={{ fontSize: '12px', color: '#0369a1', fontWeight: 600 }}>TỔNG TIỀN CẦN KẾT TOÁN TRẢ VỰA</span>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0284c7' }}>
+                  {totalDue.toLocaleString('vi-VN')} ₫
+                </div>
+              </div>
+              <button
+                type="button"
+                className="table-button"
+                style={{ fontSize: '12px' }}
+                onClick={() => void loadSettlements()}
+                disabled={loadingSettlements}
+              >
+                Làm mới
+              </button>
+            </div>
+
+            {loadingSettlements ? (
+              <p style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>Đang tải bảng kê đối soát...</p>
+            ) : !settlements.length ? (
+              <p style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>
+                Hiện tiệm chưa có mặt hàng ký gửi tiếp thị nào trong kho.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {settlements.map((s) => (
+                  <div
+                    key={s.itemId}
+                    style={{
+                      background: '#ffffff',
+                      border: s.unsettledQty > 0 ? '1px solid #bae6fd' : '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '10px',
+                    }}
+                  >
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#0f172a' }}>{s.productName}</h4>
+                      <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
+                        NCC: <strong>{s.supplierName}</strong> · Tồn kho: {s.currentStock} {s.unit}
+                      </div>
+                      <div style={{ fontSize: '0.82rem', color: '#334155', marginTop: '4px' }}>
+                        Đã bán: <strong>{s.totalSold}</strong> {s.unit} · Đã trả: <strong>{s.settledQty}</strong> {s.unit} · Cần trả: <strong style={{ color: '#b91c1c' }}>{s.unsettledQty}</strong> {s.unit}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                        Giá sỉ thỏa thuận: <strong>{s.settlementPrice.toLocaleString('vi-VN')} ₫</strong>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '1rem',
+                          fontWeight: 700,
+                          color: s.dueAmount > 0 ? '#b91c1c' : '#15803d',
+                          margin: '2px 0 6px 0',
+                        }}
+                      >
+                        {s.dueAmount > 0 ? `Cần trả: ${s.dueAmount.toLocaleString('vi-VN')} ₫` : 'Đã kết toán đủ'}
+                      </div>
+                      {s.unsettledQty > 0 && (
+                        <button
+                          type="button"
+                          className="table-button primary-small"
+                          style={{ background: '#0284c7', color: '#fff', fontSize: '12px', padding: '4px 10px' }}
+                          disabled={settlingId === s.itemId}
+                          onClick={() => handleSettle(s)}
+                        >
+                          {settlingId === s.itemId ? 'Đang trừ ví...' : 'Kết toán qua Ví'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'requests' && (
+          <div>
+            {!requests.length ? (
           <p style={{ textAlign: 'center', color: '#64748b', padding: '30px 0' }}>
             Chưa có yêu cầu bù hàng hoặc đổi date nào.
           </p>
@@ -1982,6 +2164,8 @@ function ConsignmentHistoryDialog({
                 </div>
               </div>
             ))}
+          </div>
+        )}
           </div>
         )}
       </div>

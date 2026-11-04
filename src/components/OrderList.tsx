@@ -33,6 +33,7 @@ const statuses = {
   DELIVERED: 'Đã giao',
   COMPLETED: 'Hoàn tất',
   REJECTED: 'Đã từ chối',
+  CANCELLED: 'Đã hủy',
 };
 
 const COMPLAINT_STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
@@ -40,6 +41,9 @@ const COMPLAINT_STATUS_MAP: Record<string, { label: string; color: string; bg: s
   IN_REVIEW: { label: 'Chủ vựa đang xử lý', color: '#1d4ed8', bg: '#eff6ff' },
   RESOLVED: { label: 'Đã giải quyết', color: '#15803d', bg: '#f0fdf4' },
   REJECTED: { label: 'Chủ vựa từ chối', color: '#b91c1c', bg: '#fef2f2' },
+  ESCALATED: { label: 'Chờ Admin phân xử', color: '#7c3aed', bg: '#f5f3ff' },
+  ADMIN_RESOLVED_BUYER: { label: 'Admin xử Tiệm thắng (Đã hoàn tiền)', color: '#15803d', bg: '#f0fdf4' },
+  ADMIN_RESOLVED_SUPPLIER: { label: 'Admin xử Vựa thắng', color: '#475569', bg: '#f1f5f9' },
 };
 
 const COMPLAINT_REASONS: { code: string; label: string }[] = [
@@ -765,6 +769,48 @@ export default function OrderList({
     setComplaintResolution(DESIRED_RESOLUTIONS[0].code);
     setComplaintImages([]);
     setComplaintMessage('');
+  };
+
+  const handleCancelOrder = async (order: SupplierOrder) => {
+    const reason = window.prompt(
+      `Xác nhận hủy đơn hàng #${order.id}?\nNhập lý do hủy đơn (hoặc bấm OK để hủy):`,
+      'Tôi muốn điều chỉnh lại mặt hàng'
+    );
+    if (reason === null) return;
+    try {
+      const res = await fetch(`/api/orders/${order.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() || 'Cửa hàng tự hủy khi đơn chưa được duyệt.' }),
+      });
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.message || 'Không thể hủy đơn hàng.');
+      window.alert(resData.message || 'Đã hủy đơn hàng thành công.');
+      setReload((n) => n + 1);
+    } catch (err: any) {
+      window.alert(err.message || 'Lỗi khi hủy đơn hàng.');
+    }
+  };
+
+  const handleEscalateComplaint = async (complaintId: number) => {
+    const reason = window.prompt(
+      'Chủ vựa đã từ chối khiếu nại. Bạn có muốn yêu cầu Quản trị viên hệ thống can thiệp giải quyết không?\nNhập nội dung kháng cáo (nếu có):',
+      'Chủ vựa từ chối không thỏa đáng, đề nghị Quản trị viên kiểm tra hình ảnh bằng chứng và hoàn tiền.'
+    );
+    if (reason === null) return;
+    try {
+      const res = await fetch(`/api/complaints/${complaintId}/escalate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.message || 'Không thể gửi kháng cáo.');
+      window.alert(resData.message || 'Đã gửi yêu cầu kháng cáo lên Admin thành công.');
+      setReload((n) => n + 1);
+    } catch (err: any) {
+      window.alert(err.message || 'Lỗi khi gửi kháng cáo.');
+    }
   };
 
   const openSupplierComplaint = (order: SupplierOrder) => {
@@ -1840,6 +1886,26 @@ export default function OrderList({
                     </small>
                   )}
 
+                  {kind === 'store' && order.complaint && order.complaint.status === 'REJECTED' && (
+                    <div
+                      style={{
+                        marginTop: '10px',
+                        display: 'flex',
+                        justifyContent: 'flex-end',
+                      }}
+                    >
+                      <button
+                        className="table-button"
+                        type="button"
+                        style={{ background: '#7c3aed', color: '#fff', borderColor: '#6d28d9', fontWeight: 600 }}
+                        disabled={busy}
+                        onClick={() => handleEscalateComplaint(order.complaint!.id)}
+                      >
+                        Kháng cáo lên Admin
+                      </button>
+                    </div>
+                  )}
+
                   {kind === 'supplier' && (
                     <div
                       style={{
@@ -2270,9 +2336,29 @@ export default function OrderList({
                               type="button"
                               className="table-button primary-small"
                               style={{ backgroundColor: '#0284c7', fontWeight: 700 }}
-                              onClick={() => setPaymentOrder(order)}
+                              onClick={async () => {
+                                if (Number(order.total) === 0) {
+                                  if (window.confirm('Xác nhận đã nhận đủ hàng giao bù và hoàn tất đơn hàng này?')) {
+                                    try {
+                                      const res = await fetch(`/api/orders/${order.id}/pay`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ method: 'COD', amount: 0 }),
+                                      });
+                                      if (res.ok) {
+                                        await fetch(`/api/orders/${order.id}/complete`, { method: 'POST' });
+                                      }
+                                      setReload((n) => n + 1);
+                                    } catch (e: any) {
+                                      window.alert(e.message || 'Lỗi khi hoàn tất đơn.');
+                                    }
+                                  }
+                                  return;
+                                }
+                                setPaymentOrder(order);
+                              }}
                             >
-                              Trả tiền
+                              {Number(order.total) === 0 ? 'Nhận đủ hàng bù & Hoàn tất' : 'Trả tiền'}
                             </button>
                           )}
                       </div>
@@ -2285,7 +2371,24 @@ export default function OrderList({
                 <p className="order-rejection">Lý do từ chối: {order.rejectReason}</p>
               )}
 
-              {kind === 'store' && order.status === 'PENDING' && order.depositStatus !== 'SUBMITTED' && (
+              {kind === 'store' && order.status === 'PENDING' && (
+                <div style={{ marginTop: '8px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="table-button danger"
+                    style={{ padding: '4px 10px', fontSize: '13px' }}
+                    onClick={() => handleCancelOrder(order)}
+                  >
+                    Hủy đơn hàng
+                  </button>
+                  <p className="catalog-hint" style={{ margin: 0 }}>
+                    {order.depositStatus === 'PENDING'
+                      ? 'Chưa chuyển cọc. Bạn có thể hủy đơn nếu đổi ý.'
+                      : 'Đơn đang chờ chủ vựa duyệt. Hủy đơn sẽ tự động hoàn lại tiền cọc về Ví.'}
+                  </p>
+                </div>
+              )}
+              {false && kind === 'store' && order.status === 'PENDING' && order.depositStatus !== 'SUBMITTED' && (
                 <p className="catalog-hint">
                   {order.depositStatus === 'PENDING'
                     ? 'Chuyển cọc rồi bấm báo đã chuyển.'

@@ -8,6 +8,7 @@ import type { AuthUser } from '../../types/auth';
 import { AdminDialog, Badge, DateFields, Empty, LoadState, Metric, Pager } from './admin.shared';
 import { dateTime, defaultPeriod, money, useAdminData } from './admin.data';
 import AdminWalletSection, { type AdminWalletTab } from './AdminWalletPage';
+import AdminDisputes from './AdminDisputes';
 import './admin.css';
 
 type Props = { onLogout: () => void };
@@ -67,6 +68,7 @@ const navigation = [
   { path: 'users', label: 'Người dùng', icon: 'user' },
   { path: 'verification', label: 'Xác minh chủ vựa', icon: 'shield' },
   { path: 'finance', label: 'Hoa hồng & đối soát', icon: 'box' },
+  { path: 'disputes', label: 'Phân xử khiếu nại', icon: 'shield' },
   { path: 'wallet', label: 'Quản lý ví tiền', icon: 'chart' },
   { path: 'holidays', label: 'Ngày lễ & AI', icon: 'sparkle' },
   { path: 'ai', label: 'Hoạt động AI', icon: 'sparkle' },
@@ -167,6 +169,8 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
             <Users onLogout={onLogout} />
           ) : tab === 'verification' ? (
             <Verifications onLogout={onLogout} />
+          ) : tab === 'disputes' ? (
+            <AdminDisputes onLogout={onLogout} />
           ) : tab === 'finance' ? (
             <Finance onLogout={onLogout} />
           ) : tab in walletTabs ? (
