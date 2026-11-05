@@ -22,6 +22,7 @@ import ExportDropdown from './ExportDropdown';
 import { exportSupplierOrdersToExcel, exportSupplierOrdersToPdf } from '../utils/exportSupplier';
 import { depositOrderWithWallet, getWallet } from '../services/wallet.api';
 import './complaint-dialog.css';
+import OrderStepper from './OrderStepper';
 import { orderPaymentSummary, supplierPaymentBank } from '../utils/orderPayment';
 
 const statuses = {
@@ -965,6 +966,9 @@ export default function OrderList({
                     : `Đã thanh toán ví · ${money(order.walletPayment.amount)}`}
                 </p>
               )}
+
+              {/* Tiến trình 5 bước: Đặt đơn -> Duyệt đơn -> Soạn hàng (Hẹn giờ) -> Đang giao -> Hàng đã đến */}
+              <OrderStepper order={order} />
 
               <div className="order-items">
                 {order.items.map((item) => (

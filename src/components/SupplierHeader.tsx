@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import NotificationBell from './NotificationBell';
 import Brand from './Brand';
 import Icon from './Icon';
 import TopbarBalance from './TopbarBalance';
@@ -20,6 +21,7 @@ export default function SupplierHeader({
   loggingOut = false,
 }: SupplierHeaderProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [accountOpen, setAccountOpen] = useState(false);
   const [tabsOpen, setTabsOpen] = useState(false);
   const accountMenu = useRef<HTMLDivElement>(null);
@@ -154,6 +156,7 @@ export default function SupplierHeader({
       </div>
 
       <div className="supplier-header-right">
+        <NotificationBell onNavigateOrder={() => navigate('/supplier/orders')} />
         <TopbarBalance linkTo="/supplier/wallet" />
 
         <div

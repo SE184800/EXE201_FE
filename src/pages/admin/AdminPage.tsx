@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode, type SetSt
 import { NavLink, Navigate, useParams } from 'react-router-dom';
 import Brand from '../../components/Brand';
 import Icon from '../../components/Icon';
+import NotificationBell from '../../components/NotificationBell';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
 import { logout } from '../../services/auth.api';
 import type { AuthUser } from '../../types/auth';
@@ -200,6 +201,7 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
             </div>
           </div>
           <div className="admin-top-actions">
+            <NotificationBell />
             <div className="admin-datetime-chip">
               <Icon name="calendar" />
               <span>
