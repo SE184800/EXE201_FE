@@ -25,6 +25,8 @@ import InventoryImportDialog, {
   type InventoryImportDialogHandle,
 } from '../components/InventoryImportDialog';
 import OverviewRestockSuggestions from '../components/OverviewRestockSuggestions';
+import TodayDeliveryAlert from '../components/TodayDeliveryAlert';
+import type { SupplierOrder } from '../services/supplier.api';
 import type { AuthUser } from '../types/auth';
 import {
   createConsignmentRequest,
@@ -134,6 +136,7 @@ export default function StoreInventory({
   const importDialog = useRef<InventoryImportDialogHandle>(null);
 
   const [consignmentRequests, setConsignmentRequests] = useState<ConsignmentRequest[]>([]);
+  const [storeOrders, setStoreOrders] = useState<SupplierOrder[]>([]);
   const [requestingConsignment, setRequestingConsignment] = useState<{ item: Item; type: 'RESTOCK' | 'EXCHANGE_EXPIRY' } | null>(null);
   const [showConsignmentHistory, setShowConsignmentHistory] = useState(false);
   const [showContractModal, setShowContractModal] = useState(false);
@@ -151,6 +154,21 @@ export default function StoreInventory({
       .then((res) => setContractSigned(res.isSigned))
       .catch(() => { });
   }, [revision]);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get<{ orders: SupplierOrder[] }>('/orders')
+      .then(({ data }) => {
+        if (active && Array.isArray(data.orders)) {
+          setStoreOrders(data.orders);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [revision, activeTab]);
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
@@ -907,6 +925,11 @@ export default function StoreInventory({
           {activeTab === 'quick-sale' && <VoiceQuickSale items={items} onSaved={refresh} />}
           {activeTab === 'overview' && (
             <>
+              <TodayDeliveryAlert
+                orders={storeOrders}
+                role="STORE_OWNER"
+                onViewOrders={() => setActiveTab('orders')}
+              />
               <OverviewRestockSuggestions
                 revision={revision}
                 onLogout={onLogout}

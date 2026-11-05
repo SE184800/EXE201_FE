@@ -7,6 +7,7 @@ import SupplierLayout from '../../components/SupplierLayout';
 import SupplierVerification from './SupplierVerification';
 import SupplierOnboarding from '../../components/SupplierOnboarding';
 import ContractSigningModal from '../../components/ContractSigningModal';
+import TodayDeliveryAlert from '../../components/TodayDeliveryAlert';
 import { getContractStatus } from '../../services/contract.api';
 import { getApiError, getApiFieldErrors, isUnauthenticated } from '../../services/api';
 import { logout } from '../../services/auth.api';
@@ -366,6 +367,7 @@ export default function SupplierDashboard({
                 <b>Kiểm tra ngay →</b>
               </Link>
             )}
+            <TodayDeliveryAlert orders={data.orders} role="SUPPLIER" />
             <section className="supplier-kpis">
               <Link to="/supplier/products" style={{ textDecoration: 'none', color: 'inherit' }}>
                 <Kpi
