@@ -16,6 +16,14 @@
     </style>
 
 
+    <!-- Notification settings use a light surface, so controls must not inherit DayNight's white text. -->
+    <style name="AppTheme.Notifications" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:windowBackground">#F4F7EF</item>
+        <item name="android:textColorPrimary">#1C3024</item>
+        <item name="android:textColorSecondary">#526258</item>
+        <item name="colorAccent">#287245</item>
+    </style>
+
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
     </style>

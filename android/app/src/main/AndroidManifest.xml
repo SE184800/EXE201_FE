@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Special app access, granted by the user via ACTION_REQUEST_SCHEDULE_EXACT_ALARM.
+         Lint bundled with AGP 8.7 misclassifies the API 36 app-op permission as system-only. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <queries>
         <intent>
             <action android:name="android.speech.RecognitionService" />
@@ -7,7 +15,8 @@
     </queries>
 
     <application
-        android:allowBackup="true"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/notification_backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -21,18 +30,29 @@
             android:launchMode="singleTask"
             android:windowSoftInputMode="adjustResize"
             android:exported="true">
-
-        </activity>
-
-        <activity android:name=".VipDemoActivity"
-            android:theme="@style/AppTheme.NoActionBar"
-            android:exported="true"
-            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity android:name=".VipDemoActivity"
+            android:theme="@style/AppTheme.NoActionBar"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize">
+        </activity>
+        <activity android:name=".NotificationSettingsActivity" android:exported="false" android:theme="@style/AppTheme.Notifications" />
+        <receiver android:name=".NotificationAlarmReceiver" android:exported="false" />
+        <receiver android:name=".NotificationBootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        <service android:name=".NotificationSyncJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -42,8 +62,4 @@
         </provider>
     </application>
 
-    <!-- Permissions -->
-
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 </manifest>
