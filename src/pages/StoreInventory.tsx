@@ -7,6 +7,7 @@ import StoreRevenue from './StoreRevenue';
 import ProfilePage, { type StoreProfile, type Profile } from './ProfilePage';
 import StoreOnboarding from '../components/StoreOnboarding';
 import ContractSigningModal from '../components/ContractSigningModal';
+import PartnerProfileEditModal from '../components/PartnerProfileEditModal';
 import { getContractStatus } from '../services/contract.api';
 import RestockPage from './RestockPage';
 import SalesCalendar from './SalesCalendar';
@@ -20,6 +21,7 @@ import NotificationBell from '../components/NotificationBell';
 import TopbarBalance from '../components/TopbarBalance';
 import Brand from '../components/Brand';
 import Icon from '../components/Icon';
+import DatePicker from '../components/DatePicker';
 import ExportSalesDialog from '../components/ExportSalesDialog';
 import InventoryImportDialog, {
   type InventoryImportDialogHandle,
@@ -140,6 +142,7 @@ export default function StoreInventory({
   const [requestingConsignment, setRequestingConsignment] = useState<{ item: Item; type: 'RESTOCK' | 'EXCHANGE_EXPIRY' } | null>(null);
   const [showConsignmentHistory, setShowConsignmentHistory] = useState(false);
   const [showContractModal, setShowContractModal] = useState(false);
+  const [showPartnerEditModal, setShowPartnerEditModal] = useState(false);
   const [contractSigned, setContractSigned] = useState<boolean | null>(null);
   const [contractRefreshKey, setContractRefreshKey] = useState(0);
 
@@ -521,7 +524,17 @@ export default function StoreInventory({
         }}
       >
         <p>Đang chuẩn bị không gian cửa hàng…</p>
-      </main>
+        <PartnerProfileEditModal
+        isOpen={showPartnerEditModal}
+        onClose={() => setShowPartnerEditModal(false)}
+        role="STORE_OWNER"
+        storeProfile={storeProfile}
+        onSaved={(updated) => {
+          setStoreProfile(updated);
+          setNotice('Đã cập nhật thông tin thành công. Hồ sơ đã được chuyển sang trạng thái Đang chờ duyệt.');
+        }}
+      />
+    </main>
     );
   }
 
@@ -982,11 +995,10 @@ export default function StoreInventory({
                   </div>
                   <label>
                     Ngày giao dịch
-                    <input
-                      type="date"
+                    <DatePicker
                       value={quickDate}
                       max={new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })}
-                      onChange={(e) => setQuickDate(e.target.value)}
+                      onChange={(val) => setQuickDate(val)}
                     />
                   </label>
                 </div>
@@ -1523,13 +1535,11 @@ export default function StoreInventory({
           </label>
           <label className="inventory-name">
             Hạn sử dụng <span className="optional-label">Không bắt buộc</span>
-            <input
-              type="date"
-              min="0001-01-01"
-              max="9999-12-31"
+            <DatePicker
               value={form.expiryDate}
               disabled={saving}
-              onChange={(e) => setForm({ ...form, expiryDate: e.target.value })}
+              onChange={(val) => setForm({ ...form, expiryDate: val })}
+              placeholder="DD/MM/YYYY (hạn in trên bao bì)"
             />
             <small>Nhập ngày in trên bao bì. Nhiều lô hàng? Dùng hạn gần nhất.</small>
           </label>

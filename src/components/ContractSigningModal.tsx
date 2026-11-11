@@ -30,6 +30,26 @@ function ContractSigningContent({
   const [agreed, setAgreed] = useState(false);
   const [privateKey, setPrivateKey] = useState('');
   const [errorNotice, setErrorNotice] = useState('');
+  const [showFullKey, setShowFullKey] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(false);
+  const [maskInput, setMaskInput] = useState(true);
+
+  async function handleCopyKey(key: string) {
+    try {
+      await navigator.clipboard.writeText(key);
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 2000);
+    } catch {
+      // fallback if clipboard API is blocked
+    }
+  }
+
+  function getMaskedKey(key: string): string {
+    if (!key || key.length <= 16) return '••••••••••••••••';
+    const prefix = key.slice(0, 8);
+    const suffix = key.slice(-8);
+    return `${prefix}••••••••••••••••••••••••••••••${suffix}`;
+  }
 
   useEffect(() => {
     if (!isOpen) return;
@@ -283,28 +303,95 @@ function ContractSigningContent({
                     >
                       Khóa bí mật cá nhân (Private Key) để ký tên: <span style={{ color: '#dc2626' }}>*</span>
                     </label>
-                    {contract?.rawPrivateKey && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPrivateKey(contract.rawPrivateKey || '');
-                          if (errorNotice) setErrorNotice('');
-                        }}
+                  </div>
+
+                  {/* Secure Private Key Display Box with Masking & Copy */}
+                  {contract?.rawPrivateKey && (
+                    <div
+                      style={{
+                        marginBottom: '14px',
+                        padding: '12px 14px',
+                        backgroundColor: '#0b1329',
+                        border: '1px solid #1e293b',
+                        borderRadius: '8px',
+                        color: '#f8fafc',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                        <span style={{ fontSize: '12px', fontWeight: 700, color: '#38bdf8', letterSpacing: '0.04em' }}>
+                          KHÓA BÍ MẬT CỦA BẠN (PRIVATE KEY)
+                        </span>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            onClick={() => setShowFullKey(!showFullKey)}
+                            style={{
+                              fontSize: '11.5px',
+                              fontWeight: 600,
+                              color: '#cbd5e1',
+                              backgroundColor: '#1e293b',
+                              border: '1px solid #334155',
+                              borderRadius: '4px',
+                              padding: '3px 8px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {showFullKey ? 'Ẩn khóa' : 'Hiện đầy đủ'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyKey(contract.rawPrivateKey || '')}
+                            style={{
+                              fontSize: '11.5px',
+                              fontWeight: 600,
+                              color: copiedKey ? '#86efac' : '#38bdf8',
+                              backgroundColor: '#0f172a',
+                              border: `1px solid ${copiedKey ? '#22c55e' : '#0284c7'}`,
+                              borderRadius: '4px',
+                              padding: '3px 8px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {copiedKey ? 'Đã sao chép!' : 'Sao chép khóa'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPrivateKey(contract.rawPrivateKey || '');
+                              if (errorNotice) setErrorNotice('');
+                            }}
+                            style={{
+                              fontSize: '11.5px',
+                              fontWeight: 650,
+                              color: '#ffffff',
+                              backgroundColor: '#16a34a',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '3px 8px',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            Dùng khóa này để ký
+                          </button>
+                        </div>
+                      </div>
+                      <div
                         style={{
-                          fontSize: '12px',
-                          fontWeight: 650,
-                          color: '#166534',
-                          backgroundColor: '#dcfce7',
-                          border: '1px solid #86efac',
+                          fontSize: '12.5px',
+                          fontFamily: 'Consolas, Monaco, monospace',
+                          color: '#7dd3fc',
+                          wordBreak: 'break-all',
+                          backgroundColor: '#020617',
+                          padding: '8px 10px',
                           borderRadius: '6px',
-                          padding: '4px 10px',
-                          cursor: 'pointer',
+                          border: '1px solid #1e293b',
+                          letterSpacing: showFullKey ? 'normal' : '0.1em',
                         }}
                       >
-                        Điền nhanh Private Key (Thử nghiệm)
-                      </button>
-                    )}
-                  </div>
+                        {showFullKey ? contract.rawPrivateKey : getMaskedKey(contract.rawPrivateKey)}
+                      </div>
+                    </div>
+                  )}
 
                   <div
                     style={{
@@ -316,9 +403,31 @@ function ContractSigningContent({
                       fontSize: '12px',
                       color: '#166534',
                       lineHeight: 1.5,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '8px',
                     }}
                   >
-                    <strong>Khóa ký:</strong> Dùng khóa cá nhân đã được cấp cho tài khoản. Không chia sẻ khóa này cho người khác.
+                    <span>
+                      <strong>Khóa ký:</strong> Dùng khóa cá nhân đã được cấp cho tài khoản. Không chia sẻ khóa này cho người khác.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setMaskInput(!maskInput)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        fontSize: '11.5px',
+                        color: '#15803d',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      {maskInput ? 'Hiện ký tự ô nhập' : 'Che ký tự ô nhập'}
+                    </button>
                   </div>
 
                   <textarea
@@ -341,6 +450,7 @@ function ContractSigningContent({
                       resize: 'vertical',
                       boxSizing: 'border-box',
                       backgroundColor: '#ffffff',
+                      ...(maskInput && privateKey ? ({ WebkitTextSecurity: 'disc' } as React.CSSProperties) : {}),
                     }}
                   />
 

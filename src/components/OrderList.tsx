@@ -18,6 +18,7 @@ import {
   type SupplierOrder,
 } from '../services/supplier.api';
 import Icon from './Icon';
+import DatePicker from './DatePicker';
 import ExportDropdown from './ExportDropdown';
 import { exportSupplierOrdersToExcel, exportSupplierOrdersToPdf } from '../utils/exportSupplier';
 import { depositOrderWithWallet, getWallet } from '../services/wallet.api';
@@ -3206,15 +3207,11 @@ export default function OrderList({
                       <span style={{ fontSize: '12px', fontWeight: 650, color: '#334155', display: 'block', marginBottom: '5px' }}>
                         Chọn ngày nhận hàng:
                       </span>
-                      <input
-                        type="date"
+                      <DatePicker
                         required
                         min={init.minDate}
                         value={rescheduleDate}
-                        lang="vi"
-                        autoFocus
-                        onChange={(e) => {
-                          const newDate = e.target.value;
+                        onChange={(newDate) => {
                           setRescheduleDate(newDate);
                           let nextH = rescheduleHour;
                           const nextAvailH = newDate !== init.todayStr

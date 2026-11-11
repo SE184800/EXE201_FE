@@ -1,3 +1,4 @@
+import DatePicker from '../components/DatePicker';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from '../components/Icon';
@@ -180,26 +181,20 @@ export default function StoreRevenue({ onLogout }: { onLogout: () => void }) {
         <form onSubmit={submit}>
           <label>
             Từ ngày
-            <input
-              aria-label="Từ ngày"
-              type="date"
+            <DatePicker
               required
-              min="1900-01-01"
-              max="9999-12-30"
+              max={draft.to || undefined}
               value={draft.from}
-              onChange={(event) => setDraft({ ...draft, from: event.target.value })}
+              onChange={(val) => setDraft({ ...draft, from: val })}
             />
           </label>
           <label>
             Đến ngày
-            <input
-              aria-label="Đến ngày"
-              type="date"
+            <DatePicker
               required
-              min="1900-01-01"
-              max="9999-12-30"
+              min={draft.from || undefined}
               value={draft.to}
-              onChange={(event) => setDraft({ ...draft, to: event.target.value })}
+              onChange={(val) => setDraft({ ...draft, to: val })}
             />
           </label>
           <button className="dash-primary" type="submit">

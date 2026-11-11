@@ -7,6 +7,7 @@ import SupplierLayout from '../../components/SupplierLayout';
 import SupplierVerification from './SupplierVerification';
 import SupplierOnboarding from '../../components/SupplierOnboarding';
 import ContractSigningModal from '../../components/ContractSigningModal';
+import PartnerProfileEditModal from '../../components/PartnerProfileEditModal';
 import TodayDeliveryAlert from '../../components/TodayDeliveryAlert';
 import { getContractStatus } from '../../services/contract.api';
 import { getApiError, getApiFieldErrors, isUnauthenticated } from '../../services/api';
@@ -53,6 +54,7 @@ export default function SupplierDashboard({
   const [busy, setBusy] = useState(false);
   const [profile, setProfile] = useState(EMPTY_PROFILE);
   const [showContractModal, setShowContractModal] = useState(false);
+  const [showPartnerEditModal, setShowPartnerEditModal] = useState(false);
   const [contractSigned, setContractSigned] = useState<boolean | null>(null);
   const [profileErrors, setProfileErrors] = useState<
     Partial<Record<keyof SupplierProfileInput, string>>
@@ -485,6 +487,16 @@ export default function SupplierDashboard({
         }}
         user={user}
       />
+      <PartnerProfileEditModal
+        isOpen={showPartnerEditModal}
+        onClose={() => setShowPartnerEditModal(false)}
+        role="SUPPLIER"
+        supplierProfile={data?.profile}
+        onSaved={(updated) => {
+          setData((prev) => prev ? { ...prev, profile: updated } : prev);
+          setNotice('Đã cập nhật thông tin thành công. Hồ sơ đã được chuyển sang trạng thái Đang chờ duyệt.');
+        }}
+      />
     </SupplierLayout>
   );
 }
@@ -550,25 +562,7 @@ function ProfileForm({
           />
         </Field>
         <Field
-          label={
-            <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-              <span>Mã số thuế / Mã ĐKKD</span>
-              <a
-                href="https://masothue.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{
-                  fontSize: '11px',
-                  color: '#2563eb',
-                  textDecoration: 'underline',
-                  marginLeft: 'auto',
-                  fontWeight: 500,
-                }}
-              >
-                Tra cứu (masothue.com)
-              </a>
-            </span>
-          }
+          label="Mã số thuế / Mã ĐKKD"
           error={errors.taxCode}
         >
           <input

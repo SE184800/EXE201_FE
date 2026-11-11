@@ -1,3 +1,4 @@
+import DatePicker from '../components/DatePicker';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 
@@ -301,13 +302,12 @@ export default function StockActivity({
           </label>
           <label>
             Ngày giao dịch
-            <input
-              type="date"
+            <DatePicker
               required
               max={new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })}
               value={occurredOn}
               disabled={busy}
-              onChange={(e) => setOccurredOn(e.target.value)}
+              onChange={(val) => setOccurredOn(val)}
             />
             <small>
               Quên nhập hôm qua? Chọn đúng ngày thực tế, hệ thống sẽ cộng vào báo cáo ngày đó.
@@ -315,12 +315,12 @@ export default function StockActivity({
           </label>
           <label>
             Hạn sử dụng của lô (không bắt buộc)
-            <input
-              type="date"
+            <DatePicker
               min={occurredOn}
               value={lotExpiryDate}
               disabled={busy}
-              onChange={(e) => setLotExpiryDate(e.target.value)}
+              onChange={(val) => setLotExpiryDate(val)}
+              placeholder="DD/MM/YYYY (hạn sử dụng lô)"
             />
             <small>Ngày này có thể ở tương lai; đây là hạn dùng, không phải ngày nhập.</small>
           </label>

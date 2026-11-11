@@ -472,7 +472,7 @@ function TermsModal({
         {/* Modal Body */}
         <div className="terms-modal-body">
           <div className="terms-preamble-box">
-            <strong>Lời mở đầu:</strong> Chào mừng bạn đến với <strong>SupplyMind AI</strong> (SGRestockAI) — nền tảng công nghệ trung gian kết nối Thương mại Điện tử B2B giữa Nhà bán sỉ / Chủ vựa (<code>SUPPLIER</code>) và Các cơ sở kinh doanh, Cửa hàng tạp hóa bán lẻ (<code>STORE_OWNER</code>). Bằng việc tích chọn đồng ý và hoàn tất đăng ký, bạn xác nhận đã đọc, hiểu và cam kết tuân thủ đầy đủ các điều khoản dưới đây.
+            <strong>Lời mở đầu:</strong> Chào mừng bạn đến với <strong>SupplyMind AI</strong> (SGRestockAI) — nền tảng công nghệ trung gian kết nối Thương mại Điện tử B2B giữa Nhà bán sỉ / Chủ vựa và Các cơ sở kinh doanh, Cửa hàng tạp hóa bán lẻ. Bằng việc tích chọn đồng ý và hoàn tất đăng ký, bạn xác nhận đã đọc, hiểu và cam kết tuân thủ đầy đủ các điều khoản dưới đây.
           </div>
 
           {/* Điều 1 */}
@@ -513,7 +513,7 @@ function TermsModal({
               <div className="terms-tier-item">
                 <span className="terms-tier-pill rejected">Cấp độ 3 · Vi phạm nghiêm trọng</span>
                 <div>
-                  <strong>AI tự động cấm thẳng (Auto Rejected):</strong> Áp dụng khi phát hiện từ 2 lỗi trở lên, hoặc xuất hiện từ cấm nghiêm trọng (vũ khí, ma túy, chất nổ, tài liệu phản động, hàng giả mạo nhãn hiệu sở hữu trí tuệ), hoặc quy cách/số lượng đăng bán vượt ngưỡng phi thực tế. Hệ thống AI tự động chặn và cấm thẳng mà không cần quản trị viên duyệt. Tài khoản vi phạm tái diễn sẽ bị khóa vĩnh viễn.
+                  <strong>AI tự động cấm thẳng (Auto Rejected):</strong> Áp dụng khi phát hiện từ 2 lỗi trở lên, hoặc xuất hiện từ cấm nghiêm trọng (vũ khí, ma túy, chất nổ, tài liệu phản động, hàng giả mạo nhãn hiệu sở hữu trí tuệ), hoặc quy cách/số lượng đăng bán vượt ngưỡng phi thực tế. Hệ thống AI tự động chặn và cấm thẳng mà không cần quản trị viên duyệt.
                 </div>
               </div>
             </div>

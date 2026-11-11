@@ -8,7 +8,6 @@ import { normalizePhone } from '../validation/registration';
 import { POPULAR_BANKS } from '../constants/banks';
 import { validateQrCodeImage } from '../utils/qrValidator';
 import { resolveAddressCoordinates } from '../utils/geo';
-import { lookupTaxCode, type TaxBusinessInfo } from '../services/tax.api';
 
 type StoreOnboardingProps = {
   user: AuthUser;
@@ -60,45 +59,6 @@ export default function StoreOnboarding({
   const [uploadingQr, setUploadingQr] = useState(false);
   const [qrUploadError, setQrUploadError] = useState('');
   const [bankingError, setBankingError] = useState('');
-
-  // Tax Verification State
-  const [taxVerifying, setTaxVerifying] = useState(false);
-  const [taxNotice, setTaxNotice] = useState('');
-  const [taxVerifiedInfo, setTaxVerifiedInfo] = useState<TaxBusinessInfo | null>(null);
-  const [taxVerifyError, setTaxVerifyError] = useState('');
-
-  async function handleVerifyTaxCode() {
-    const clean = taxCode.trim().replace(/\s+/g, '');
-    if (!clean) {
-      setTaxVerifyError('Vui lòng nhập mã số thuế trước khi kiểm tra.');
-      return;
-    }
-    setTaxNotice('');
-    setTaxVerifying(true);
-    setTaxVerifyError('');
-    try {
-      const res = await lookupTaxCode(clean);
-      setTaxVerifiedInfo(res.verified ? res.data : null);
-      setTaxNotice(res.verified ? '' : (res.message || 'Đúng định dạng. Chưa xác minh thông tin đăng ký.'));
-      setTaxVerifyError('');
-      if (fieldErrors.taxCode) setFieldErrors((prev) => ({ ...prev, taxCode: undefined }));
-    } catch (err: unknown) {
-      setTaxVerifiedInfo(null);
-      setTaxVerifyError(getApiError(err));
-    } finally {
-      setTaxVerifying(false);
-    }
-  }
-
-  function applyTaxInfoToForm() {
-    if (!taxVerifiedInfo) return;
-    if (taxVerifiedInfo.businessName) {
-      setStoreName(taxVerifiedInfo.businessName);
-    }
-    if (taxVerifiedInfo.address && !taxVerifiedInfo.address.startsWith('Khu vực')) {
-      setStoreAddress(taxVerifiedInfo.address);
-    }
-  }
 
   async function verifyAddressOnMap() {
     const trimmed = storeAddress.trim();
@@ -254,7 +214,7 @@ export default function StoreOnboarding({
     setStep(2);
   }
 
-  async function handleSave(includeBanking: boolean) {
+  async function handleSave() {
     if (saving) return;
 
     setError('');
@@ -268,18 +228,23 @@ export default function StoreOnboarding({
     }
     setFieldErrors({});
 
-    let cleanAccount = bankAccountNumber.trim().replace(/[\s.-]/g, '');
-    if (includeBanking && cleanAccount) {
-      if (!/^[A-Za-z0-9]{4,34}$/.test(cleanAccount)) {
-        setBankingError('Số tài khoản ngân hàng không hợp lệ (4–34 ký tự, chỉ gồm chữ cái và số).');
-        return;
-      }
-      if (!bankName) {
-        setBankingError('Vui lòng chọn ngân hàng thụ hưởng.');
-        return;
-      }
-    } else if (!includeBanking) {
-      cleanAccount = '';
+    const cleanAccount = bankAccountNumber.trim().replace(/[\s.-]/g, '');
+    if (!bankName) {
+      setBankingError('Vui lòng chọn ngân hàng thụ hưởng.');
+      return;
+    }
+    if (!cleanAccount) {
+      setBankingError('Vui lòng nhập số tài khoản ngân hàng để phục vụ đối soát và thanh toán.');
+      return;
+    }
+    if (!/^[A-Za-z0-9]{4,34}$/.test(cleanAccount)) {
+      setBankingError('Số tài khoản ngân hàng không hợp lệ (4–34 ký tự, chỉ gồm chữ cái và số).');
+      return;
+    }
+    const cleanHolder = bankAccountHolder.trim().replace(/\s+/g, ' ');
+    if (!cleanHolder || cleanHolder.length < 2) {
+      setBankingError('Vui lòng nhập tên chủ tài khoản thụ hưởng.');
+      return;
     }
 
     setSaving(true);
@@ -305,11 +270,10 @@ export default function StoreOnboarding({
         latitude,
         longitude,
         isAddressVerified,
-        bankName: includeBanking && cleanAccount ? effectiveBankName : null,
-        bankAccountNumber: includeBanking && cleanAccount ? cleanAccount : null,
-        bankAccountHolder:
-          includeBanking && cleanAccount ? bankAccountHolder.trim().toUpperCase() : null,
-        bankQrImageUrl: includeBanking && cleanAccount ? bankQrImageUrl || null : null,
+        bankName: effectiveBankName,
+        bankAccountNumber: cleanAccount,
+        bankAccountHolder: cleanHolder.toUpperCase(),
+        bankQrImageUrl: bankQrImageUrl || null,
       };
 
       const { data } = await api.put<{ storeProfile: StoreProfile; message?: string }>(
@@ -446,9 +410,7 @@ export default function StoreOnboarding({
                 </>
               ) : (
                 <>
-                  Thông tin này được dùng để tự động điền nhanh khi bạn thực hiện nạp hoặc rút tiền trong
-                  Ví. Bạn có thể <strong>bỏ qua bước này</strong> và cập nhật sau bất kỳ lúc nào trong
-                  phần Hồ sơ cá nhân.
+                  Thông tin này bắt buộc để kích hoạt thanh toán đơn hàng sỉ, đối soát doanh thu và rút tiền từ Ví nền tảng.
                 </>
               )}
             </p>
@@ -459,7 +421,7 @@ export default function StoreOnboarding({
             onSubmit={(e) => {
               e.preventDefault();
               if (step === 1) goToStep2();
-              else void handleSave(true);
+              else void handleSave();
             }}
             style={{ padding: '32px' }}
             noValidate
@@ -606,134 +568,30 @@ export default function StoreOnboarding({
                   >
                     Mã số thuế (Hộ kinh doanh / Doanh nghiệp) <span style={{ color: '#dc2626' }}>*</span>
                   </label>
-                  <a
-                    href="https://masothue.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontSize: '12px',
-                      color: '#2563eb',
-                      textDecoration: 'underline',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    Tra cứu mã số thuế (masothue.com)
-                  </a>
                 </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <input
-                    id="onboarding-taxCode"
-                    type="text"
-                    maxLength={14}
-                    disabled={saving}
-                    placeholder="Ví dụ: 0316789123 hoặc 0300588569"
-                    value={taxCode}
-                    onChange={(e) => {
-                      setTaxCode(e.target.value);
-                      setTaxNotice('');
-                      if (taxVerifiedInfo) setTaxVerifiedInfo(null);
-                      if (taxVerifyError) setTaxVerifyError('');
-                      if (fieldErrors.taxCode) setFieldErrors({ ...fieldErrors, taxCode: undefined });
-                    }}
-                    style={{
-                      flex: 1,
-                      padding: '10px 14px',
-                      borderRadius: '8px',
-                      border: `1px solid ${fieldErrors.taxCode || taxVerifyError ? '#dc2626' : taxVerifiedInfo ? '#16a34a' : '#cbd5e1'}`,
-                      fontSize: '14px',
-                      boxSizing: 'border-box',
-                      outline: 'none',
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={handleVerifyTaxCode}
-                    disabled={saving || taxVerifying || !taxCode.trim()}
-                    style={{
-                      padding: '10px 16px',
-                      backgroundColor: taxVerifiedInfo ? '#f0fdf4' : '#166534',
-                      color: taxVerifiedInfo ? '#166534' : '#ffffff',
-                      border: `1px solid ${taxVerifiedInfo ? '#86efac' : '#166534'}`,
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      fontWeight: 650,
-                      cursor: saving || taxVerifying || !taxCode.trim() ? 'not-allowed' : 'pointer',
-                      opacity: saving || taxVerifying || !taxCode.trim() ? 0.6 : 1,
-                      whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {taxVerifying ? 'Đang kiểm tra…' : taxVerifiedInfo ? 'Đã tra cứu' : 'Kiểm tra định dạng'}
-                  </button>
-                </div>
-
-                {/* Tax verification error */}
-                {taxNotice && <p role="status">{taxNotice}</p>}
-                {taxVerifyError && (
-                  <div
-                    style={{
-                      marginTop: '6px',
-                      padding: '8px 12px',
-                      backgroundColor: '#fef2f2',
-                      border: '1px solid #fecaca',
-                      borderRadius: '6px',
-                      color: '#b91c1c',
-                      fontSize: '12.5px',
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    <strong>Kiểm tra lại:</strong> {taxVerifyError}
-                  </div>
-                )}
-
-                {/* Tax verified result card */}
-                {taxVerifiedInfo && (
-                  <div
-                    style={{
-                      marginTop: '8px',
-                      padding: '12px 14px',
-                      backgroundColor: '#f0fdf4',
-                      border: '1px solid #86efac',
-                      borderRadius: '8px',
-                      fontSize: '12.5px',
-                      color: '#166534',
-                      lineHeight: 1.5,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                      <span style={{ fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.04em', color: '#15803d', backgroundColor: '#dcfce7', padding: '2px 8px', borderRadius: '4px' }}>
-                        THÔNG TIN TRA CỨU
-                      </span>
-                      <button
-                        type="button"
-                        onClick={applyTaxInfoToForm}
-                        style={{
-                          fontSize: '11.5px',
-                          fontWeight: 600,
-                          color: '#15803d',
-                          backgroundColor: '#ffffff',
-                          border: '1px solid #86efac',
-                          borderRadius: '4px',
-                          padding: '2px 8px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Áp dụng vào form
-                      </button>
-                    </div>
-                    <div><strong>Tên pháp nhân:</strong> {taxVerifiedInfo.businessName}</div>
-                    <div><strong>Người đại diện:</strong> {taxVerifiedInfo.representative}</div>
-                    <div><strong>Địa chỉ đăng ký:</strong> {taxVerifiedInfo.address}</div>
-                    <div style={{ fontSize: '11.5px', color: '#166534', marginTop: '2px' }}>
-                      <strong>Trạng thái:</strong> {taxVerifiedInfo.status}
-                    </div>
-                  </div>
-                )}
-
+                <input
+                  id="onboarding-taxCode"
+                  type="text"
+                  maxLength={14}
+                  disabled={saving}
+                  placeholder="Ví dụ: 0316789123 hoặc 0300588569-001"
+                  value={taxCode}
+                  onChange={(e) => {
+                    setTaxCode(e.target.value);
+                    if (fieldErrors.taxCode) setFieldErrors({ ...fieldErrors, taxCode: undefined });
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    border: `1px solid ${fieldErrors.taxCode ? '#dc2626' : '#cbd5e1'}`,
+                    fontSize: '14px',
+                    boxSizing: 'border-box',
+                    outline: 'none',
+                  }}
+                />
                 <small style={{ color: '#64748b', display: 'block', marginTop: '4px', fontSize: '12px' }}>
-                  Hệ thống kiểm tra trực tiếp tính hợp lệ của mã số thuế (thuật toán Modulo 11) và dữ liệu cơ sở kinh doanh theo quy chuẩn Tổng cục Thuế.
+                  Mã số thuế gồm 10 đến 14 ký tự của cơ sở kinh doanh đã đăng ký.
                 </small>
                 {fieldErrors.taxCode && (
                   <span
@@ -1022,44 +880,30 @@ export default function StoreOnboarding({
                   gap: '12px',
                 }}
               >
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => void handleSave(false)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#64748b',
-                    fontSize: '14px',
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                    padding: '8px 12px',
-                    textDecoration: 'underline',
-                  }}
-                >
-                  Bỏ qua bước tài khoản ngân hàng
-                </button>
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => goToStep2()}
-                  style={{
-                    background: '#214e39',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '10px',
-                    padding: '12px 24px',
-                    fontSize: '15px',
-                    fontWeight: 600,
-                    cursor: saving ? 'not-allowed' : 'pointer',
-                    opacity: saving ? 0.7 : 1,
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    boxShadow: '0 2px 4px rgba(33, 78, 57, 0.2)',
-                  }}
-                >
-                  Tiếp tục: Thiết lập tài khoản nhận tiền →
-                </button>
+                <div style={{ marginLeft: 'auto' }}>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => goToStep2()}
+                    style={{
+                      background: '#214e39',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: '12px 24px',
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      opacity: saving ? 0.7 : 1,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      boxShadow: '0 2px 4px rgba(33, 78, 57, 0.2)',
+                    }}
+                  >
+                    Tiếp tục: Thiết lập tài khoản ngân hàng →
+                  </button>
+                </div>
               </div>
             )}
 
@@ -1322,17 +1166,16 @@ export default function StoreOnboarding({
                   )}
                 </div>
 
-                {/* Bottom Actions for Step 2 */}
+                {/* Bottom Actions for Step 2 - Side by Side */}
                 <div
                   style={{
-                    marginTop: '20px',
+                    marginTop: '28px',
                     paddingTop: '20px',
                     borderTop: '1px solid #e2e8f0',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    flexWrap: 'wrap',
-                    gap: '12px',
+                    gap: '16px',
                   }}
                 >
                   <button
@@ -1344,7 +1187,7 @@ export default function StoreOnboarding({
                       color: '#334155',
                       border: '1px solid #cbd5e1',
                       borderRadius: '8px',
-                      padding: '10px 18px',
+                      padding: '12px 20px',
                       fontSize: '14px',
                       fontWeight: 600,
                       cursor: 'pointer',
@@ -1353,44 +1196,25 @@ export default function StoreOnboarding({
                     ← Quay lại sửa thông tin tiệm
                   </button>
 
-                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => void handleSave(false)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#64748b',
-                        fontSize: '14px',
-                        cursor: saving ? 'not-allowed' : 'pointer',
-                        padding: '10px 14px',
-                        textDecoration: 'underline',
-                      }}
-                    >
-                      Bỏ qua bước này
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => void handleSave(true)}
-                      style={{
-                        background: '#214e39',
-                        color: '#ffffff',
-                        border: 'none',
-                        borderRadius: '10px',
-                        padding: '12px 24px',
-                        fontSize: '15px',
-                        fontWeight: 600,
-                        cursor: saving ? 'not-allowed' : 'pointer',
-                        opacity: saving ? 0.7 : 1,
-                        boxShadow: '0 2px 4px rgba(33, 78, 57, 0.2)',
-                      }}
-                    >
-                      {saving ? 'Đang lưu…' : 'Lưu tài khoản & Hoàn tất →'}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void handleSave()}
+                    style={{
+                      background: '#214e39',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '10px',
+                      padding: '12px 26px',
+                      fontSize: '15px',
+                      fontWeight: 600,
+                      cursor: saving ? 'not-allowed' : 'pointer',
+                      opacity: saving ? 0.7 : 1,
+                      boxShadow: '0 2px 4px rgba(33, 78, 57, 0.2)',
+                    }}
+                  >
+                    {saving ? 'Đang lưu…' : 'Lưu tài khoản & Hoàn tất →'}
+                  </button>
                 </div>
               </div>
             )}

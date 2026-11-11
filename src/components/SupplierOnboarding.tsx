@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import Brand from './Brand';
 import Icon from './Icon';
 import { getApiError, getApiFieldErrors, isUnauthenticated } from '../services/api';
-import { quickVerifySupplier, saveSupplierProfile, type SupplierProfile } from '../services/supplier.api';
+import { saveSupplierProfile, type SupplierProfile } from '../services/supplier.api';
 import type { AuthUser } from '../types/auth';
 import { normalizePhone } from '../validation/registration';
 import { resolveAddressCoordinates } from '../utils/geo';
@@ -210,13 +210,6 @@ export default function SupplierOnboarding({
       };
 
       const saved = await saveSupplierProfile(payload);
-      try {
-        const verified = await quickVerifySupplier();
-        onCompleted(verified);
-        return;
-      } catch {
-        // Fallback to saved profile if quick verify is unavailable
-      }
       onCompleted(saved);
     } catch (issue) {
       const apiErrors = getApiFieldErrors<keyof SupplierOnboardingErrors>(issue, [
@@ -483,22 +476,6 @@ export default function SupplierOnboarding({
                   >
                     Mã số thuế / Mã số ĐKKD <span style={{ color: '#dc2626' }}>*</span>
                   </label>
-                  <a
-                    href="https://masothue.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontSize: '12px',
-                      color: '#2563eb',
-                      textDecoration: 'underline',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    Tra cứu mã số thuế (masothue.com)
-                  </a>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input

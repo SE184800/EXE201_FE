@@ -206,6 +206,21 @@ const KNOWN_COORDINATES: Array<{ match: RegExp; lat: number; lon: number; label:
   },
 ];
 
+// List of all 63 legitimate administrative provinces / cities in Vietnam (normalized without accents)
+const VALID_PROVINCES = [
+  'ho chi minh', 'hcm', 'sai gon', 'ha noi', 'da nang', 'hai phong', 'can tho',
+  'binh duong', 'dong nai', 'ba ria vung tau', 'vung tau', 'long an', 'tien giang',
+  'ben tre', 'vinh long', 'tra vinh', 'hau giang', 'soc trang', 'dong thap',
+  'an giang', 'kien giang', 'bac lieu', 'ca mau', 'tay ninh', 'binh phuoc',
+  'lam dong', 'dak lak', 'dak nong', 'gia lai', 'kon tum', 'khanh hoa',
+  'ninh thuan', 'binh thuan', 'phu yen', 'binh dinh', 'quang ngai', 'quang nam',
+  'thua thien hue', 'hue', 'quang tri', 'quang binh', 'ha tinh', 'nghe an',
+  'thanh hoa', 'ninh binh', 'nam dinh', 'thai binh', 'ha nam', 'hung yen',
+  'hai duong', 'bac ninh', 'bac giang', 'vinh phuc', 'phu tho', 'thai nguyen',
+  'tuyen quang', 'ha giang', 'cao bang', 'bac kan', 'lang son', 'quang ninh',
+  'lao cai', 'yen bai', 'dien bien', 'lai chau', 'son la', 'hoa binh'
+];
+
 export interface ResolvedCoordinates {
   lat: number;
   lon: number;
@@ -217,19 +232,36 @@ export function resolveAddressCoordinates(
 ): ResolvedCoordinates | null {
   if (!addressText || typeof addressText !== 'string') return null;
   const raw = addressText.trim();
-  if (raw.length < 3) return null;
+  if (raw.length < 8) return null;
 
   const normalized = stripVietnameseAccents(raw);
+
+  // Check for corrupted or non-existent province/city designations (e.g. "tp.ho chi da", "thanh pho xyz")
+  const provMatch = normalized.match(/(?:tp\.?|thanh pho|tinh)\s*([a-z0-9\s.-]+)$/i);
+  if (provMatch) {
+    const declaredProvince = provMatch[1].trim().replace(/^[.\s-]+|[.\s-]+$/g, '');
+    if (declaredProvince.length >= 2) {
+      const isProvinceValid = VALID_PROVINCES.some((p) =>
+        declaredProvince.includes(p) || p.includes(declaredProvince)
+      );
+      // If user typed a province/city designation but it's corrupted or fake (e.g. "ho chi da"), reject
+      if (!isProvinceValid) {
+        return null;
+      }
+    }
+  }
+
+  // Also check for explicit typos in major cities
+  if (/(\bho chi da\b|\bchi da\b|\btp\.?\s*da\b)/i.test(normalized)) {
+    return null;
+  }
+
   const match = KNOWN_COORDINATES.find((item) => item.match.test(normalized));
   if (match) {
     return { lat: match.lat, lon: match.lon, displayName: raw };
   }
 
-  // If text has valid address length (>= 6 chars), provide standard center coordinates
-  if (normalized.length >= 6) {
-    return { lat: 10.7769, lon: 106.7009, displayName: raw };
-  }
-
+  // Never return arbitrary fallback coordinates for unrecognized addresses
   return null;
 }
 

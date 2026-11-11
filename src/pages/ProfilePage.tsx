@@ -28,6 +28,11 @@ export type StoreProfile = {
   bankAccountNumber?: string | null;
   bankAccountHolder?: string | null;
   bankQrImageUrl?: string | null;
+  verificationStatus?: 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED';
+  verificationNote?: string | null;
+  verificationVersion?: number;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
 };
 
 export type Profile = {
@@ -1056,27 +1061,9 @@ export default function ProfilePage({
 
               {/* Tax Code */}
               <div style={{ marginBottom: '14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <label htmlFor="taxCode" style={{ margin: 0, fontWeight: 500, fontSize: '14px', color: '#1e293b' }}>
-                    Mã số thuế (Hộ kinh doanh / Doanh nghiệp)
-                  </label>
-                  <a
-                    href="https://masothue.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontSize: '12px',
-                      color: '#2563eb',
-                      textDecoration: 'underline',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontWeight: 500,
-                    }}
-                  >
-                    Tra cứu mã số thuế (masothue.com)
-                  </a>
-                </div>
+                <label htmlFor="taxCode" style={{ display: 'block', marginBottom: '6px', fontWeight: 500, fontSize: '14px', color: '#1e293b' }}>
+                  Mã số thuế (Hộ kinh doanh / Doanh nghiệp)
+                </label>
                 <input
                   id="taxCode"
                   maxLength={14}
@@ -1090,7 +1077,7 @@ export default function ProfilePage({
                   style={{ width: '100%', boxSizing: 'border-box' }}
                 />
                 <small style={{ color: '#64748b', display: 'block', marginTop: '4px' }}>
-                  Có thể tra cứu trực tiếp bằng tên tiệm hoặc họ tên chủ tiệm trên masothue.com.
+                  Mã số thuế gồm 10 đến 14 ký tự của cơ sở kinh doanh đã đăng ký.
                 </small>
                 {fieldErrors.taxCode && (
                   <span
@@ -1280,19 +1267,9 @@ export default function ProfilePage({
                 </label>
 
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <label htmlFor="supplierTaxCode" style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
-                      Mã số thuế / Mã số ĐKKD
-                    </label>
-                    <a
-                      href="https://masothue.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ fontSize: '12px', color: '#2563eb', textDecoration: 'underline', fontWeight: 600 }}
-                    >
-                      Tra cứu (masothue.com)
-                    </a>
-                  </div>
+                  <label htmlFor="supplierTaxCode" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '6px' }}>
+                    Mã số thuế / Mã số ĐKKD
+                  </label>
                   <input
                     id="supplierTaxCode"
                     type="text"
