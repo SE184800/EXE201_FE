@@ -90,8 +90,8 @@ export default function WalletQrCode({
         </div>
       </dl>
       <p className="wallet-qr-hint">
-        Mở ứng dụng ngân hàng, chọn quét mã QR, kiểm tra số tiền và thông tin chuyển khoản rồi bấm
-        xác nhận bên dưới.
+        Quét mã bằng ứng dụng ngân hàng và kiểm tra thông tin trước khi chuyển. Sau khi chuyển,
+        bấm bên dưới để gửi phiếu chờ đối soát.
       </p>
       <div className="wallet-qr-actions">
         <button className="primary-button" type="button" onClick={onConfirm} disabled={busy}>

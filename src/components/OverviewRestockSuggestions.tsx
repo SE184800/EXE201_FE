@@ -97,10 +97,8 @@ export default function OverviewRestockSuggestions({
     >
       <div className="card-heading overview-restock-heading">
         <div>
-          <span className="section-kicker">AI GỢI Ý NHẬP HÀNG</span>
-          <h2 id="overview-restock-title">Chuẩn bị hàng cho ngày sắp tới</h2>
+          <h2 id="overview-restock-title">Gợi ý nhập hàng</h2>
         </div>
-        <span className="overview-restock-alert-badge">CẢNH BÁO MỚI</span>
       </div>
 
       {loading ? (
@@ -109,8 +107,7 @@ export default function OverviewRestockSuggestions({
             <Icon name="sparkle" />
           </span>
           <div>
-            <strong>AI đang kiểm tra kho…</strong>
-            <p>Đối chiếu lịch bán hàng, tồn kho và cấu hình ngày lễ.</p>
+            <strong>Đang tải gợi ý…</strong>
           </div>
         </div>
       ) : error ? (
@@ -139,12 +136,9 @@ export default function OverviewRestockSuggestions({
                 {nearestHoliday.isCurrent ? 'ĐANG DIỄN RA' : `CÒN ${nearestHoliday.daysUntil} NGÀY`}
               </span>
               <strong>{nearestHoliday.name}</strong>
-              <p>
-                {nearestHoliday.description || 'AI đang theo dõi nhu cầu hàng hóa cho dịp này.'}
-              </p>
               <p className="holiday-overview-alert">
                 {actionableCount > 0
-                  ? `AI phát hiện ${actionableCount} mặt hàng nên nhập thêm.`
+                  ? `${actionableCount} mặt hàng nên nhập thêm.`
                   : 'Tồn kho hiện tại vẫn đủ theo dự báo.'}
               </p>
             </div>

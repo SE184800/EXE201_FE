@@ -9,9 +9,11 @@ import {
   confirmQrDeposit,
   createQrDepositRequest,
   createWithdrawalRequest,
+  getDepositRequests,
   getWallet,
   getWalletTransactions,
   type QrCode,
+  type DepositRequest,
   type WalletOverview,
   type WalletTransaction,
 } from '../../services/wallet.api';
@@ -59,6 +61,7 @@ export default function WalletPage({
   const [searchParams] = useSearchParams();
   const [overview, setOverview] = useState<WalletOverview | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
+  const [deposits, setDeposits] = useState<DepositRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -94,13 +97,15 @@ export default function WalletPage({
 
   const load = useCallback(async () => {
     try {
-      const [walletRes, txRes] = await Promise.all([
+      const [walletRes, txRes, depositRes] = await Promise.all([
         getWallet(),
         getWalletTransactions({ page: 1 }),
+        getDepositRequests({ page: 1 }),
       ]);
       setError('');
       setOverview(walletRes);
       setTransactions(txRes.transactions || []);
+      setDeposits(depositRes.requests.filter((request) => request.method === 'VIET_QR' && request.status !== 'AWAITING_TRANSFER' && !request.isSandbox));
     } catch (e) {
       setError(getApiError(e));
       if (isUnauthenticated(e)) onLogout();
@@ -188,7 +193,7 @@ export default function WalletPage({
     setBusy(true);
     try {
       await confirmQrDeposit(qrTicketId);
-      setNotice('Xác nhận nạp tiền thành công! Số dư ví đã được cập nhật.');
+      setNotice('Đã gửi yêu cầu. Tiền sẽ vào ví sau khi quản trị viên đối soát.');
       setShowDepositModal(false);
       setQr(null);
       setQrTicketId(null);
@@ -383,6 +388,20 @@ export default function WalletPage({
       </div>
 
       {/* Transaction History Section */}
+      {deposits.length > 0 && (
+        <section className="supplier-panel wallet-transactions-panel" aria-label="Phiếu nạp QR gần đây">
+          <h3>Phiếu nạp QR gần đây</h3>
+          <ul>
+            {deposits.map((request) => (
+              <li key={request.id}>
+                <strong>#{request.id} · {money(request.amount)}</strong>{' · '}
+                {request.status === 'PENDING' ? 'Chờ đối soát' : request.status === 'APPROVED' ? 'Đã duyệt' : 'Từ chối'}
+                {request.status === 'REJECTED' && request.adminNote ? ` · ${request.adminNote}` : ''}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <div className="supplier-panel wallet-transactions-panel">
         <div
           className="transactions-header"

@@ -20,7 +20,7 @@
       if (state.version !== 1 || !Number.isSafeInteger(state.balance) || state.balance < 0
         || !Array.isArray(state.history) || state.history.length > 100
         || (state.expiresAt !== null && !Number.isFinite(Date.parse(state.expiresAt)))) {
-        throw new Error('Không đọc được dữ liệu demo. Chọn Đặt lại demo để bắt đầu lại.');
+        throw new Error('Không đọc được dữ liệu demo trên máy.');
       }
       return state;
     }
@@ -39,7 +39,7 @@
         state.balance += TOP_UP;
       } else {
         if (state.balance < PRICE) {
-          const error = new Error('Ví demo chưa đủ 19.000đ. Hãy nạp thử trước khi mua gói.');
+          const error = new Error('Số dư demo chưa đủ để mua gói.');
           error.code = 'INSUFFICIENT_FUNDS';
           throw error;
         }

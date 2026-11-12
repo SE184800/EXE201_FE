@@ -184,7 +184,6 @@ export default function StoreInventory({
   const editVersion = useRef<string | null>(null);
   const [question, setQuestion] = useState('');
   const [asking, setAsking] = useState(false);
-  const [aiMode, setAiMode] = useState('Chưa bật AI · Tra cứu cơ bản');
   const [quickDate, setQuickDate] = useState(() =>
     new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }),
   );
@@ -367,13 +366,6 @@ export default function StoreInventory({
           })),
         },
         { timeout: 35000 },
-      );
-      setAiMode(
-        data.mode === 'AI'
-          ? 'AI đang kết nối'
-          : data.mode === 'RULES'
-            ? 'Chưa bật AI · Tra cứu cơ bản'
-            : 'AI tạm không khả dụng',
       );
       setMessages((current) => [
         ...current,
@@ -1726,9 +1718,6 @@ export default function StoreInventory({
           </span>
           <div>
             <h3>Trợ lý SupplyMind</h3>
-            <p>
-              <span className="online-dot" /> {aiMode}
-            </p>
           </div>
           <button
             className="chat-close"
@@ -1782,9 +1771,6 @@ export default function StoreInventory({
             <Icon name="arrow" />
           </button>
         </form>
-        <p className="inventory-chat-note">
-          AI khi được cấu hình · Chỉ đọc kho của bạn, không tự đặt hàng
-        </p>
       </section>
       <button
         className="chat-launcher"
@@ -2050,10 +2036,14 @@ function ConsignmentHistoryDialog({
     ) {
       return;
     }
-    setSettlingId(item.itemId);
+    setSettlingId(item.lotId);
     setMsg('');
     try {
-      const res = await payConsignmentSettlement(item.itemId, { qty: item.unsettledQty, method: 'WALLET' });
+      const res = await payConsignmentSettlement(item.lotId, {
+        qty: item.unsettledQty,
+        expectedSettledQty: item.settledQty,
+        method: 'WALLET',
+      });
       setMsg(res.message || 'Kết toán thành công!');
       await loadSettlements();
     } catch (err: any) {
@@ -2165,7 +2155,7 @@ function ConsignmentHistoryDialog({
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 {settlements.map((s) => (
                   <div
-                    key={s.itemId}
+                    key={s.lotId}
                     style={{
                       background: '#ffffff',
                       border: s.unsettledQty > 0 ? '1px solid #bae6fd' : '1px solid #e2e8f0',
@@ -2181,7 +2171,7 @@ function ConsignmentHistoryDialog({
                     <div>
                       <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#0f172a' }}>{s.productName}</h4>
                       <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
-                        NCC: <strong>{s.supplierName}</strong> · Tồn kho: {s.currentStock} {s.unit}
+                        Lô #{s.lotId}{s.orderId ? ` · Đơn #${s.orderId}` : ''} · NCC: <strong>{s.supplierName}</strong> · Tồn lô: {s.currentStock} {s.unit}
                       </div>
                       <div style={{ fontSize: '0.82rem', color: '#334155', marginTop: '4px' }}>
                         Đã bán: <strong>{s.totalSold}</strong> {s.unit} · Đã trả: <strong>{s.settledQty}</strong> {s.unit} · Cần trả: <strong style={{ color: '#b91c1c' }}>{s.unsettledQty}</strong> {s.unit}
@@ -2206,10 +2196,10 @@ function ConsignmentHistoryDialog({
                           type="button"
                           className="table-button primary-small"
                           style={{ background: '#0284c7', color: '#fff', fontSize: '12px', padding: '4px 10px' }}
-                          disabled={settlingId === s.itemId}
+                          disabled={settlingId !== null}
                           onClick={() => handleSettle(s)}
                         >
-                          {settlingId === s.itemId ? 'Đang trừ ví...' : 'Kết toán qua Ví'}
+                          {settlingId === s.lotId ? 'Đang trừ ví...' : 'Kết toán qua Ví'}
                         </button>
                       )}
                     </div>

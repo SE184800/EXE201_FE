@@ -130,8 +130,8 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
   }, [onLogout, revision, navigate]);
 
   const subtotal = useMemo(
-    () => lines.reduce((sum, line) => sum + line.quantity * discountedPrice(line.unitPrice, line.discountRate), 0),
-    [lines],
+    () => form.isConsignment ? 0 : lines.reduce((sum, line) => sum + line.quantity * discountedPrice(line.unitPrice, line.discountRate), 0),
+    [form.isConsignment, lines],
   );
   const total = subtotal + form.deliveryFee;
 
@@ -208,8 +208,8 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
         lines: lines.map((line) => ({
           productId: line.product.id,
           quantity: line.quantity,
-          unitPrice: line.unitPrice,
-          discountRate: line.discountRate,
+          unitPrice: form.isConsignment ? 0 : line.unitPrice,
+          discountRate: form.isConsignment ? 0 : line.discountRate,
           expectedUpdatedAt: line.product.updatedAt,
         })),
       });
@@ -414,11 +414,13 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                   {form.isConsignment && (
                     <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.88rem' }}>
                       <label>
-                        <span style={{ color: '#374151', fontWeight: 500 }}>Giá sỉ thỏa thuận thu về (khi tiệm bán được):</span>
+                        <span style={{ color: '#374151', fontWeight: 500 }}>Giá quyết toán theo quy cách báo giá</span>
                         <input
                           type="number"
-                          min={0}
-                          step={1000}
+                          min={0.01}
+                          max={1000000000}
+                          step={0.01}
+                          required
                           value={form.settlementPrice || ''}
                           onChange={(e) => setForm({ ...form, settlementPrice: Number(e.target.value) })}
                           placeholder="Ví dụ: 25000"
@@ -493,7 +495,8 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                     min={form.isConsignment ? 0 : 0.01}
                     max="1000000000"
                     step="0.01"
-                    value={lineForm.unitPrice === 0 && form.isConsignment ? 0 : lineForm.unitPrice || ''}
+                    disabled={form.isConsignment}
+                    value={form.isConsignment ? 0 : lineForm.unitPrice || ''}
                     onChange={(event) =>
                       setLineForm({ ...lineForm, unitPrice: Number(event.target.value) })
                     }
@@ -501,9 +504,9 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                 </label>
                 <label>
                   Chiết khấu (%)
-                  <input type="number" min="0" max="100" step="0.01" value={lineForm.discountRate}
+                  <input type="number" min="0" max="100" step="0.01" disabled={form.isConsignment} value={form.isConsignment ? 0 : lineForm.discountRate}
                     onChange={e => setLineForm({ ...lineForm, discountRate: Number(e.target.value) })} />
-                  <small>Giá sau giảm: {money(discountedPrice(lineForm.unitPrice, lineForm.discountRate))}</small>
+                  {!form.isConsignment && <small>Giá sau giảm: {money(discountedPrice(lineForm.unitPrice, lineForm.discountRate))}</small>}
                 </label>
                 <button type="button" className="ghost-button" onClick={addLine}>
                   + Thêm mặt hàng
@@ -515,11 +518,11 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                     <span>
                       <strong>{line.product.name}</strong>
                       <small>
-                        {line.quantity} × {line.product.packaging} · {money(discountedPrice(line.unitPrice, line.discountRate))}
-                        {line.discountRate > 0 && ` (giảm ${line.discountRate}% từ ${money(line.unitPrice)})`}
+                        {line.quantity} × {line.product.packaging} · {money(form.isConsignment ? 0 : discountedPrice(line.unitPrice, line.discountRate))}
+                        {!form.isConsignment && line.discountRate > 0 && ` (giảm ${line.discountRate}% từ ${money(line.unitPrice)})`}
                       </small>
                     </span>
-                    <b>{money(line.quantity * discountedPrice(line.unitPrice, line.discountRate))}</b>
+                    <b>{money(form.isConsignment ? 0 : line.quantity * discountedPrice(line.unitPrice, line.discountRate))}</b>
                     <button
                       type="button"
                       aria-label={`Xóa ${line.product.name}`}
@@ -593,7 +596,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                   </div>
                   {quote.isConsignment && (
                     <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '6px', padding: '8px 10px', margin: '6px 0', fontSize: '0.88rem', color: '#166534' }}>
-                      <strong>Giá thanh toán sau khi bán:</strong> Tiệm chỉ trả {money(quote.settlementPrice || 0)}/mặt hàng sau khi bán được.
+                      <strong>Giá quyết toán sau khi bán:</strong> {money(quote.settlementPrice || 0)} theo mỗi đơn vị quy cách trong báo giá.
                     </div>
                   )}
                   <div className="quote-items">

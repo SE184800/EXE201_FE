@@ -18,27 +18,36 @@ export default function TopbarBalance({ onNavigateWallet, linkTo, className = ''
 
   useEffect(() => {
     let active = true;
-    const refresh = () => getWallet()
-      .then((data) => {
+    let inFlight = false;
+    const refresh = async () => {
+      if (inFlight || document.visibilityState === 'hidden') return;
+      inFlight = true;
+      try {
+        const { wallet: balance } = await getWallet();
         if (active) {
-          const available = data.wallet.balance;
-          const held = data.wallet.heldBalance;
-          const total = data.wallet.total;
           setWallet({
-            availableBalance: available,
-            lockedBalance: held,
-            totalBalance: total,
+            availableBalance: balance.balance,
+            lockedBalance: balance.heldBalance,
+            totalBalance: balance.total,
           });
         }
-      })
-      .catch(() => {})
-      .finally(() => {
+      } catch {
+        // Keep the last balance when a refresh fails.
+      } finally {
+        inFlight = false;
         if (active) setLoading(false);
-      });
+      }
+    };
     void refresh();
+    const timer = window.setInterval(refresh, 30_000);
     window.addEventListener('supplymind:wallet-changed', refresh);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
     return () => {
+      window.clearInterval(timer);
       window.removeEventListener('supplymind:wallet-changed', refresh);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
       active = false;
     };
   }, []);
@@ -46,7 +55,7 @@ export default function TopbarBalance({ onNavigateWallet, linkTo, className = ''
   const displayAmount = loading
     ? '…'
     : show
-      ? money(wallet?.availableBalance ?? 0)
+      ? wallet ? money(wallet.availableBalance) : 'Không tải được'
       : '****** ₫';
 
   const content = (

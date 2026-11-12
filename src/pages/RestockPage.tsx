@@ -60,62 +60,6 @@ function budget(lines: { quantity: number; purchasePrice: number | null }[]) {
   return `${missing ? 'Tạm tính phần có giá' : 'Chi phí dự kiến'}: ${money(total)}${missing ? ` · ${missing} mặt hàng chưa có giá nhập` : ''}`;
 }
 
-const DEMO_HOLIDAYS: Holiday[] = [
-  {
-    id: 'CHRISTMAS_DEMO',
-    name: 'Lễ Giáng Sinh & Chào Đón Năm Mới (Mô Phỏng Demo AI)',
-    categories: ['Bia', 'Nước giải khát', 'Bánh kẹo', 'Rượu', 'Snack'],
-    multiplier: 1.6,
-    description:
-      'Dự báo tiệc cuối năm & lễ hội làm nhu cầu Đồ uống, Bia & Bánh kẹo tăng vọt (+60%).',
-    daysUntil: 12,
-    isUpcoming: true,
-    isCurrent: false,
-  },
-];
-
-const DEMO_ITEMS: Forecast[] = [
-  {
-    itemId: 9991,
-    name: 'Bia Heineken (Thùng 24 lon)',
-    unit: 'Thùng',
-    quantity: 6,
-    averageDailySales: 4.2,
-    daysUntilStockout: 1.4,
-    purchasePrice: 430000,
-    suggestedQuantity: 42,
-    holidayMultiplier: 1.6,
-    holidayName: 'Lễ Giáng Sinh & Chào Đón Năm Mới',
-    notes: ['Dịp Lễ [Giáng Sinh & Năm Mới]: AI tự động tăng nhu cầu gợi ý nhập x1.6 (+60%).'],
-  },
-  {
-    itemId: 9992,
-    name: 'Nước ngọt Coca-Cola (Thùng 24 lon)',
-    unit: 'Thùng',
-    quantity: 10,
-    averageDailySales: 5.0,
-    daysUntilStockout: 2.0,
-    purchasePrice: 195000,
-    suggestedQuantity: 48,
-    holidayMultiplier: 1.6,
-    holidayName: 'Lễ Giáng Sinh & Chào Đón Năm Mới',
-    notes: ['Dịp Lễ [Giáng Sinh & Năm Mới]: AI tự động tăng nhu cầu gợi ý nhập x1.6 (+60%).'],
-  },
-  {
-    itemId: 9993,
-    name: 'Bánh Quy Danisa 454g (Hộp thiếc biếu)',
-    unit: 'Hộp',
-    quantity: 4,
-    averageDailySales: 2.5,
-    daysUntilStockout: 1.6,
-    purchasePrice: 185000,
-    suggestedQuantity: 24,
-    holidayMultiplier: 1.6,
-    holidayName: 'Lễ Giáng Sinh & Chào Đón Năm Mới',
-    notes: ['Dịp Lễ [Giáng Sinh & Năm Mới]: AI tự động tăng nhu cầu gợi ý nhập x1.6 (+60%).'],
-  },
-];
-
 export default function RestockPage({
   revision,
   onLogout,
@@ -243,8 +187,6 @@ export default function RestockPage({
     openView('forecast');
   }
 
-  const displayHolidays = upcomingHolidays.length > 0 ? upcomingHolidays : DEMO_HOLIDAYS;
-  const displayItems = items.length > 0 ? items : DEMO_ITEMS;
 
   const printableLines = (() => {
     if (printPlanTarget) {
@@ -254,7 +196,7 @@ export default function RestockPage({
       return printPlanTarget.lines;
     }
 
-    const allSelected = displayItems
+    const allSelected = items
       .map((item) => {
         const inputVal = quantities[item.itemId];
         const qty =
@@ -355,41 +297,36 @@ export default function RestockPage({
       {view === 'forecast' ? (
         <form onSubmit={(e) => void save(e)}>
           <fieldset disabled={saving || loading}>
-            {/* BANNER NGÀY LỄ DEMO - CHỈ HIỂN THỊ TẠI TAB GỢI Ý NHẬP HÀNG */}
-            <div
-              style={{
-                background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
-                borderLeft: '5px solid #2563eb',
-                padding: '14px 18px',
-                borderRadius: '8px',
-                marginTop: '10px',
-                marginBottom: '16px',
-                color: '#1e3a8a',
-                boxShadow: '0 2px 6px rgba(37,99,235,0.1)',
-              }}
-            >
-              <strong style={{ fontSize: '15.5px', color: '#1d4ed8' }}>
-                AI CẢNH BÁO LỊCH NGÀY LỄ (DEMO CHẾ ĐỘ GIÁNG SINH & NĂM MỚI):
-              </strong>
-              {displayHolidays.map((h) => (
-                <p
-                  key={h.id}
-                  style={{ margin: '6px 0 0 0', fontSize: '13.5px', lineHeight: '1.5' }}
-                >
-                  • <strong>{h.name}</strong> (
-                  {h.isCurrent ? 'Đang diễn ra' : `còn ${h.daysUntil} ngày nữa`}): {h.description}
-                  <span style={{ color: '#059669', fontWeight: 'bold', marginLeft: '6px' }}>
-                    (Hệ số gợi ý nhập x{h.multiplier})
-                  </span>
-                </p>
-              ))}
-            </div>
-
-            <p className="restock-explanation">
-              Ước tính thống kê từ tối đa 30 ngày trọn vẹn gần nhất, kết hợp mô hình{' '}
-              <strong>Lịch Ngày Lễ tại Việt Nam</strong> để tự động điều chỉnh tăng số lượng gợi ý
-              nhập hàng.
-            </p>
+            {upcomingHolidays.length > 0 && (
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+                  borderLeft: '5px solid #2563eb',
+                  padding: '14px 18px',
+                  borderRadius: '8px',
+                  marginTop: '10px',
+                  marginBottom: '16px',
+                  color: '#1e3a8a',
+                  boxShadow: '0 2px 6px rgba(37,99,235,0.1)',
+                }}
+              >
+                <strong style={{ fontSize: '15.5px', color: '#1d4ed8' }}>
+                  Lịch ngày lễ
+                </strong>
+                {upcomingHolidays.map((h) => (
+                  <p
+                    key={h.id}
+                    style={{ margin: '6px 0 0 0', fontSize: '13.5px', lineHeight: '1.5' }}
+                  >
+                    • <strong>{h.name}</strong> (
+                    {h.isCurrent ? 'Đang diễn ra' : `còn ${h.daysUntil} ngày nữa`})
+                    <span style={{ color: '#059669', fontWeight: 'bold', marginLeft: '6px' }}>
+                      (Hệ số gợi ý nhập x{h.multiplier})
+                    </span>
+                  </p>
+                ))}
+              </div>
+            )}
 
             <div className="restock-controls">
               <label>
@@ -430,7 +367,7 @@ export default function RestockPage({
                 type="button"
                 className="inventory-refresh"
                 onClick={() => {
-                  setQuantities((current) => fillEmptySuggestions(current, displayItems));
+                  setQuantities((current) => fillEmptySuggestions(current, items));
                   change();
                 }}
               >
@@ -452,7 +389,10 @@ export default function RestockPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {displayItems.map((item) => (
+                  {!loading && items.length === 0 && (
+                    <tr><td colSpan={7}>Chưa có mặt hàng để gợi ý nhập.</td></tr>
+                  )}
+                  {items.map((item) => (
                     <tr key={item.itemId}>
                       <td>
                         <strong>{item.name}</strong>
@@ -474,12 +414,6 @@ export default function RestockPage({
                           </span>
                         )}
                         <small style={{ display: 'block', color: '#6b7280' }}>{item.unit}</small>
-                        <details>
-                          <summary>Cơ sở ước tính</summary>
-                          {item.notes.map((text) => (
-                            <p key={text}>{text}</p>
-                          ))}
-                        </details>
                       </td>
                       <td>{item.quantity}</td>
                       <td>
@@ -528,7 +462,7 @@ export default function RestockPage({
 
             <p className="restock-success">
               {budget(
-                displayItems.map((item) => ({
+                items.map((item) => ({
                   quantity: Number(quantities[item.itemId] ?? 0),
                   purchasePrice: item.purchasePrice,
                 })),
@@ -567,7 +501,7 @@ export default function RestockPage({
                 hoạch không đặt mua hàng hay cộng hàng vào kho.
               </p>
               <div className="restock-actions">
-                <button className="dash-primary" disabled={!displayItems.length}>
+                <button className="dash-primary" disabled={!items.length}>
                   {saving ? 'Đang lưu…' : editing ? 'Lưu thay đổi' : 'Lưu kế hoạch'}
                 </button>
                 <button

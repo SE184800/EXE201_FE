@@ -158,7 +158,7 @@ export default function StoreQuotes({ onLogout }: { onLogout: () => void }) {
                 <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 14px', margin: '8px 0', fontSize: '0.9rem', color: '#166534' }}>
                   <strong>Chính sách chào hàng tiếp thị từ chủ vựa:</strong>
                   <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>
-                    <li><strong>Tiền hàng trả sau khi bán:</strong> <strong>{money(quote.settlementPrice || 0)}</strong>/sản phẩm. Phí giao, nếu có, ghi bên dưới.</li>
+                    <li><strong>Tiền hàng trả sau khi bán:</strong> {money(quote.settlementPrice || 0)} theo mỗi đơn vị quy cách trong báo giá. Phí giao, nếu có, ghi bên dưới.</li>
                     {quote.autoExchangeExpiry && <li><strong>Đổi hàng cận hạn:</strong> Cửa hàng gửi yêu cầu, chủ vựa xác nhận việc đổi hàng.</li>}
                     {quote.autoRestock && <li><strong>Bổ sung hàng:</strong> Gửi yêu cầu khi gần hết hàng, chờ chủ vựa xác nhận.</li>}
                   </ul>

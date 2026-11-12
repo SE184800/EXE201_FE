@@ -188,16 +188,6 @@ const InventoryImportDialog = forwardRef<
         Mỗi dòng là một lô nhập. Hỗ trợ các cột: Tên sản phẩm, Đơn vị, Số lượng, Giá nhập, Giá bán, Nhà cung cấp (NCC), Hạn sử dụng, Ghi chú.
       </p>
 
-      <div className="import-template-box">
-        <div>
-          <strong>Chưa có file đúng mẫu?</strong>
-          <small>Tải mẫu, điền dữ liệu tại tab “Nhập kho” rồi tải lên đây.</small>
-        </div>
-        <a className="ghost-button" href="/mau-nhap-kho.xlsx" download>
-          Tải file mẫu
-        </a>
-      </div>
-
       <label className="inventory-file-picker">
         <span>Chọn file Excel (.xlsx, tối đa 3 MB)</span>
         <input
