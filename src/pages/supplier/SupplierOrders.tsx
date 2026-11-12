@@ -442,6 +442,7 @@ function DispatchDriverDialog({
 
   const earliestTimeTodayDisplay = canDeliverToday ? `${initialDeliveryHour}:${initialDeliveryMinute}` : '';
   const [deliveryNotes, setDeliveryNotes] = useState(initialData?.deliveryNotes || '');
+  const [saveToDirectory, setSaveToDirectory] = useState(false);
   const [error, setError] = useState('');
 
 
@@ -478,6 +479,7 @@ function DispatchDriverDialog({
       setVehicleType(driver.vehicleType || 'Xe ba gác chở hàng');
       setLicensePlate(driver.licensePlate || '');
       if (driver.deliveryNotes) setDeliveryNotes(driver.deliveryNotes);
+      setSaveToDirectory(false);
       setError('');
     }
   }
@@ -543,6 +545,7 @@ function DispatchDriverDialog({
         licensePlate: licensePlate.trim() || undefined,
         estimatedDeliveryTime: finalDeliveryTime,
         deliveryNotes: deliveryNotes.trim() || undefined,
+        saveToDirectory,
       },
       shouldDispatch,
     );
@@ -758,6 +761,29 @@ function DispatchDriverDialog({
           />
         </label>
 
+        {(!selectedDriverId || selectedDriverId === 'CUSTOM') && (
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              marginTop: '10px',
+              fontSize: '13px',
+              color: '#334155',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={saveToDirectory}
+              onChange={(e) => setSaveToDirectory(e.target.checked)}
+              disabled={busy}
+            />
+            <span>Lưu thông tin tài xế này vào danh bạ dùng lại</span>
+          </label>
+        )}
+
         <div className="supplier-dialog-actions" style={{ marginTop: '16px' }}>
           <button type="button" className="ghost-button" onClick={onCancel} disabled={busy}>
             Hủy
@@ -799,15 +825,6 @@ function DispatchDriverDialog({
   );
 }
 
-function parseItemPackaging(packagingStr?: string) {
-  if (!packagingStr) return { multiplier: 1, unit: 'đơn vị' };
-  const m = packagingStr.match(/(?:thùng|két|hộp|lốc|khay|kiện)\s+(\d+)\s*([a-zA-ZÀ-ỹ]+)/i);
-  if (m) {
-    return { multiplier: parseInt(m[1], 10), unit: m[2].trim() };
-  }
-  return { multiplier: 1, unit: 'đơn vị' };
-}
-
 function SupplierIncidentDialog({
   order,
   busy,
@@ -836,7 +853,6 @@ function SupplierIncidentDialog({
   }, []);
 
   const [selectedItems, setSelectedItems] = useState<Record<number, number>>({});
-  const [looseItems, setLooseItems] = useState<Record<number, { isLoose: boolean; looseQty: number | string }>>({});
   const [damageType, setDamageType] = useState('DAMAGED_TRANSIT');
   const [notes, setNotes] = useState('');
   const [action, setAction] = useState('DEDUCT_COD');
@@ -855,7 +871,6 @@ function SupplierIncidentDialog({
     const isAll = Object.keys(selectedItems).length === order.items.length;
     if (isAll) {
       setSelectedItems({});
-      setLooseItems({});
     } else {
       const map: Record<number, number> = {};
       order.items.forEach((it) => {
@@ -868,46 +883,6 @@ function SupplierIncidentDialog({
   function handleQuantityChange(productId: number, qty: number, maxQty: number) {
     const cleanQty = Math.max(1, Math.min(qty, maxQty));
     setSelectedItems((prev) => ({ ...prev, [productId]: cleanQty }));
-  }
-
-  function handleLooseQtyChange(productId: number, rawVal: string, maxLoose: number) {
-    let digits = rawVal.replace(/\D/g, '');
-    if (digits.startsWith('0')) {
-      digits = digits.replace(/^0+/, '');
-    }
-    let qty: number | string = digits;
-    if (digits !== '') {
-      const num = parseInt(digits, 10);
-      if (num > maxLoose) {
-        qty = maxLoose;
-      } else {
-        qty = num;
-      }
-    }
-    setLooseItems((prev) => ({
-      ...prev,
-      [productId]: { isLoose: true, looseQty: qty },
-    }));
-  }
-
-  function getEffectiveLooseQty(looseQty: number | string | undefined, maxLoose: number): number {
-    if (typeof looseQty === 'number' && looseQty > 0) return Math.min(looseQty, maxLoose);
-    if (typeof looseQty === 'string' && looseQty.trim() !== '') {
-      const n = parseInt(looseQty, 10);
-      if (n > 0) return Math.min(n, maxLoose);
-    }
-    return 1;
-  }
-
-  function toggleLooseMode(productId: number) {
-    setLooseItems((prev) => {
-      const current = prev[productId];
-      const isLoose = !current?.isLoose;
-      return {
-        ...prev,
-        [productId]: { isLoose, looseQty: current?.looseQty || 1 },
-      };
-    });
   }
 
   function toggleItem(productId: number, maxQty: number) {
@@ -938,13 +913,6 @@ function SupplierIncidentDialog({
   const totalCalculatedLoss = Object.entries(selectedItems).reduce((sum, [pIdStr, qty]) => {
     const item = order.items.find((it) => it.productId === Number(pIdStr));
     if (!item) return sum;
-    const packInfo = parseItemPackaging(item.packaging);
-    const loose = looseItems[item.productId];
-    const isLoose = loose?.isLoose && packInfo.multiplier > 1;
-    if (isLoose) {
-      const eff = getEffectiveLooseQty(loose.looseQty, packInfo.multiplier * item.quantity);
-      return sum + (eff / (packInfo.multiplier * item.quantity)) * item.lineTotal;
-    }
     return sum + (qty / item.quantity) * item.lineTotal;
   }, 0);
 
@@ -960,29 +928,13 @@ function SupplierIncidentDialog({
       .map(([productIdStr, qty]) => {
         const item = order.items.find((it) => it.productId === Number(productIdStr));
         if (!item) return null;
-        const packInfo = parseItemPackaging(item.packaging);
-        const loose = looseItems[item.productId];
-        const isLoose = loose?.isLoose && packInfo.multiplier > 1;
-
-        let displayName = item.productName;
-        let displayPkg = item.packaging;
-        let finalQty = qty;
-
-        if (isLoose) {
-          const effectiveLoose = getEffectiveLooseQty(loose.looseQty, packInfo.multiplier * item.quantity);
-          displayName = `${item.productName} (Hỏng lẻ ${effectiveLoose}/${packInfo.multiplier} ${packInfo.unit})`;
-          displayPkg = `${effectiveLoose} ${packInfo.unit}`;
-          finalQty = Math.max(1, Math.round(effectiveLoose / packInfo.multiplier) || 1);
-          calculatedLoss += (effectiveLoose / (packInfo.multiplier * item.quantity)) * item.lineTotal;
-        } else {
-          calculatedLoss += (qty / item.quantity) * item.lineTotal;
-        }
+        calculatedLoss += (qty / item.quantity) * item.lineTotal;
 
         return {
           productId: item.productId,
-          productName: displayName,
-          packaging: displayPkg,
-          quantity: finalQty,
+          productName: item.productName,
+          packaging: item.packaging,
+          quantity: qty,
         };
       })
       .filter(Boolean) as Array<{ productId: number; productName: string; packaging?: string; quantity: number }>;
@@ -1018,7 +970,7 @@ function SupplierIncidentDialog({
             Lập báo cáo sự cố hư hại hàng khi giao
           </h2>
           <p style={{ fontSize: '13px', color: '#64748b', marginTop: '2px', marginBottom: '12px' }}>
-            Tài xế trong lúc giao gặp sự cố làm hỏng hàng. Chọn mặt hàng bị hỏng (nguyên thùng hoặc hỏng lẻ gói/lon bên trong) và phương án xử lý luồng tiền.
+            Tài xế trong lúc giao gặp sự cố làm hỏng hàng. Chọn mặt hàng bị hỏng theo nguyên thùng/kiện để thu hồi và giao bù hoặc giảm trừ.
           </p>
 
           {error && (
@@ -1049,9 +1001,6 @@ function SupplierIncidentDialog({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {order.items.map((item) => {
                 const isSelected = selectedItems[item.productId] !== undefined;
-                const packInfo = parseItemPackaging(item.packaging);
-                const hasSubUnits = packInfo.multiplier > 1;
-                const looseState = looseItems[item.productId] || { isLoose: false, looseQty: 1 };
 
                 return (
                   <div
@@ -1076,9 +1025,9 @@ function SupplierIncidentDialog({
                         </span>
                       </label>
 
-                      {isSelected && !looseState.isLoose && (
+                      {isSelected && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '11px', color: '#64748b' }}>SL thùng hỏng:</span>
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>SL hỏng:</span>
                           <input
                             type="number"
                             min={1}
@@ -1100,53 +1049,6 @@ function SupplierIncidentDialog({
                         </div>
                       )}
                     </div>
-
-                    {/* Loose items selector if packaging contains sub-units (e.g. thùng 24 gói) */}
-                    {isSelected && hasSubUnits && (
-                      <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #fca5a5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', color: '#7f1d1d' }}>
-                          <input
-                            type="checkbox"
-                            checked={looseState.isLoose}
-                            onChange={() => toggleLooseMode(item.productId)}
-                          />
-                          <span>Chỉ hỏng lẻ {packInfo.unit} bên trong (không hỏng cả thùng nguyên)</span>
-                        </label>
-
-                        {looseState.isLoose && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <span style={{ fontSize: '11.5px', color: '#991b1b', fontWeight: 600 }}>SL {packInfo.unit} bị hư:</span>
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              placeholder="Nhập SL"
-                              value={looseState.looseQty === '' ? '' : looseState.looseQty}
-                              onChange={(e) =>
-                                handleLooseQtyChange(item.productId, e.target.value, packInfo.multiplier * item.quantity)
-                              }
-                              onBlur={() => {
-                                if (looseState.looseQty === '' || looseState.looseQty === 0) {
-                                  handleLooseQtyChange(item.productId, '1', packInfo.multiplier * item.quantity);
-                                }
-                              }}
-                              style={{
-                                width: '64px',
-                                padding: '4px 6px',
-                                textAlign: 'center',
-                                borderRadius: '4px',
-                                border: '1px solid #f87171',
-                                fontSize: '13px',
-                                fontWeight: 700,
-                                color: '#991b1b',
-                                backgroundColor: '#ffffff',
-                              }}
-                            />
-                            <span style={{ fontSize: '11.5px', color: '#64748b' }}>/ {packInfo.multiplier * item.quantity} {packInfo.unit}</span>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 );
               })}

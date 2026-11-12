@@ -9,7 +9,7 @@ const ORDER_FLOW = [
   { key: 'PENDING', label: 'Đặt đơn', defaultSub: 'Chờ duyệt' },
   { key: 'APPROVED', label: 'Duyệt đơn', defaultSub: 'Đã nhận đơn' },
   { key: 'PREPARING', label: 'Soạn hàng', defaultSub: 'Đang đóng gói' },
-  { key: 'SHIPPING', label: 'Đang giao', defaultSub: 'Vận chuyển' },
+  { key: 'SHIPPING', label: 'Bắt đầu giao', defaultSub: 'Vận chuyển' },
   { key: 'DELIVERED', label: 'Hàng đã đến', defaultSub: 'Đã nhận hàng' },
 ];
 
@@ -21,6 +21,10 @@ export default function OrderStepper({ order }: Props) {
   const isCancelled = status === 'CANCELLED';
   const isRejected = status === 'REJECTED';
   const isIssue = status === 'ISSUE_HANDLING';
+  const hasActiveIncident = Boolean(
+    (order.complaint && ['OPEN', 'IN_REVIEW', 'ESCALATED', 'REJECTED'].includes(order.complaint.status)) ||
+      driverInfo?.incidentReport?.damagedItems?.length,
+  );
 
   switch (status) {
     case 'PENDING':
@@ -36,8 +40,6 @@ export default function OrderStepper({ order }: Props) {
       activeIndex = 3;
       break;
     case 'ISSUE_HANDLING':
-      activeIndex = 3;
-      break;
     case 'DELIVERED':
     case 'COMPLETED':
       activeIndex = 4;
@@ -74,7 +76,6 @@ export default function OrderStepper({ order }: Props) {
       return 'Chờ soạn';
     }
     if (stepKey === 'SHIPPING') {
-      if (isIssue) return 'Sự cố vận chuyển';
       if (driverInfo?.driverName) {
         return driverInfo.driverName;
       }
@@ -83,6 +84,7 @@ export default function OrderStepper({ order }: Props) {
     }
     if (stepKey === 'DELIVERED') {
       if (status === 'COMPLETED') return 'Đã hoàn tất';
+      if (status === 'ISSUE_HANDLING') return hasActiveIncident ? 'Đang xử lý sự cố' : 'Đang kiểm hàng';
       if (deliveredAt) {
         try {
           return new Date(deliveredAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' +
@@ -109,7 +111,7 @@ export default function OrderStepper({ order }: Props) {
           } else if (idx < activeIndex) {
             stepClass = 'completed';
           } else if (idx === activeIndex) {
-            stepClass = isIssue ? 'special-alert' : 'current';
+            stepClass = isIssue && hasActiveIncident ? 'special-alert' : 'current';
           }
 
           return (
@@ -134,13 +136,6 @@ export default function OrderStepper({ order }: Props) {
       {isCancelled && (
         <div className="stepper-alert-bar danger">
           <strong>Đơn hàng đã bị hủy</strong>
-        </div>
-      )}
-
-      {isIssue && (
-        <div className="stepper-alert-bar warning">
-          <strong>Đang kiểm hàng / xử lý sự cố trên đường giao</strong>
-          <span>Cần đối soát hoặc xử lý hàng bù trước khi hoàn tất đơn</span>
         </div>
       )}
 

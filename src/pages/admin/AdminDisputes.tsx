@@ -82,7 +82,7 @@ const DEPOSIT_STATUS_LABELS: Record<string, string> = {
   NONE: 'Không có cọc',
   PENDING: 'Chờ nộp cọc',
   SUBMITTED: 'Chờ xác nhận cọc',
-  PAID: 'Đang tạm giữ Escrow',
+  PAID: 'Đang tạm giữ cọc',
   RELEASED: 'Đã giải ngân cho Vựa',
   REFUNDED: 'Đã hoàn về Ví Tiệm',
   REJECTED: 'Cọc bị từ chối',

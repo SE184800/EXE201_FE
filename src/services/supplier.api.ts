@@ -92,6 +92,7 @@ export type DriverInfo = {
   licensePlate?: string | null;
   estimatedDeliveryTime?: string | null;
   deliveryNotes?: string | null;
+  saveToDirectory?: boolean;
   assignedAt?: string;
   updatedAt?: string;
   packingChecklist?: number[];

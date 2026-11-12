@@ -17,7 +17,6 @@ import OrderList from '../components/OrderList';
 import StoreQuotes from './StoreQuotes';
 import SubscriptionPage from './SubscriptionPage';
 import WalletPage from './wallet/WalletPage';
-import NotificationBell from '../components/NotificationBell';
 import TopbarBalance from '../components/TopbarBalance';
 import Brand from '../components/Brand';
 import Icon from '../components/Icon';
@@ -670,7 +669,6 @@ export default function StoreInventory({
             <strong>{tabs.find((tab) => tab.id === activeTab)?.label}</strong>
           </div>
           <div className="topbar-right">
-            <NotificationBell onNavigateOrder={() => setActiveTab('orders')} />
             <TopbarBalance onNavigateWallet={() => setActiveTab('wallet')} />
             <span className="today-label">
               {new Date().toLocaleDateString('vi-VN', {
