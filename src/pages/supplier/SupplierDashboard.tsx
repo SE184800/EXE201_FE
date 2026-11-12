@@ -14,7 +14,6 @@ import { getApiError, getApiFieldErrors, isUnauthenticated } from '../../service
 import { logout } from '../../services/auth.api';
 import {
   getSupplierDashboard,
-  quickVerifySupplier,
   saveSupplierProfile,
   type SupplierDashboard as SupplierDashboardData,
   type SupplierProfileInput,
@@ -130,21 +129,6 @@ export default function SupplierDashboard({
     }
   }
 
-  async function handleQuickActivate() {
-    setBusy(true);
-    try {
-      const updated = await quickVerifySupplier();
-      setData((current) => (current ? { ...current, profile: updated } : current));
-      setNoticeError(false);
-      setNotice('Gian hàng đã được kích hoạt thành công! Tất cả sản phẩm đang mở bán hiện đã hiển thị trên Tìm nguồn sỉ.');
-    } catch (issue) {
-      setNoticeError(true);
-      setNotice(getApiError(issue));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function handleLogout() {
     setBusy(true);
     try {
@@ -229,7 +213,22 @@ export default function SupplierDashboard({
           onSignedSuccess={() => {
             setShowContractModal(false);
             setContractSigned(true);
-            setNotice('Đã ký kết hợp đồng điện tử thành công!');
+            setData((prev) =>
+              prev?.profile
+                ? {
+                    ...prev,
+                    profile: {
+                      ...prev.profile,
+                      verificationStatus:
+                        prev.profile.verificationStatus === 'DRAFT'
+                          ? 'PENDING'
+                          : prev.profile.verificationStatus,
+                    },
+                  }
+                : prev,
+            );
+            setNotice('Đã ký kết hợp đồng điện tử thành công! Hồ sơ đang chờ Admin phê duyệt.');
+            void load();
           }}
           user={user}
         />
@@ -245,82 +244,115 @@ export default function SupplierDashboard({
       businessName={data?.profile?.businessName}
     >
       <div>
-        {contractSigned === false && (
-          <div
-            style={{
-              margin: '0 0 16px 0',
-              padding: '12px 18px',
-              backgroundColor: '#fff7ed',
-              border: '1px solid #fed7aa',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px',
-            }}
-          >
-            <div style={{ fontSize: '13px', color: '#9a3412', lineHeight: 1.45 }}>
-              <strong>Thỏa thuận kết nối nền tảng:</strong> Bạn chưa hoàn tất ký số Hợp đồng điện tử và cam kết cơ chế ký quỹ Escrow 10% với SupplyMind.
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowContractModal(true)}
-              style={{
-                padding: '7px 16px',
-                backgroundColor: '#ea580c',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '12.5px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                boxShadow: '0 1px 2px rgba(234, 88, 12, 0.25)',
-              }}
-            >
-              Ký hợp đồng ngay
-            </button>
-          </div>
-        )}
-        {data?.profile && data.profile.verificationStatus !== 'APPROVED' && (
-          <div
-            style={{
-              margin: '0 0 16px 0',
-              padding: '12px 18px',
-              backgroundColor: '#fffbeb',
-              border: '1px solid #fef3c7',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px',
-              flexWrap: 'wrap',
-            }}
-          >
-            <div style={{ fontSize: '13px', color: '#92400e', lineHeight: 1.45 }}>
-              <strong>Gian hàng chưa kích hoạt mở bán:</strong> Các sản phẩm bạn đăng hiện đang ở chế độ chờ xác minh và chưa hiển thị với các chủ tiệm tạp hóa trên trang "Tìm nguồn sỉ".
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleQuickActivate()}
-              disabled={busy}
-              style={{
-                padding: '7px 16px',
-                backgroundColor: '#16a34a',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '12.5px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                boxShadow: '0 1px 2px rgba(22, 163, 74, 0.25)',
-              }}
-            >
-              Kích hoạt mở bán ngay
-            </button>
-          </div>
-        )}
+        {(() => {
+                    const rawVerificationStatus = data?.profile?.verificationStatus;
+          const verificationStatus =
+            rawVerificationStatus === 'APPROVED' ||
+            rawVerificationStatus === 'REJECTED' ||
+            rawVerificationStatus === 'PENDING'
+              ? rawVerificationStatus
+              : contractSigned
+                ? 'PENDING'
+                : 'DRAFT';
+          if (verificationStatus === 'REJECTED') {
+            return (
+              <div
+                style={{
+                  margin: '0 0 16px 0',
+                  padding: '14px 18px',
+                  backgroundColor: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ fontSize: '13.5px', color: '#991b1b', lineHeight: 1.45 }}>
+                  <strong style={{ marginRight: '6px' }}>CẦN ĐIỀU CHỈNH:</strong>
+                  Vui lòng cập nhật lại thông tin đăng ký
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPartnerEditModal(true)}
+                  style={{
+                    padding: '8px 18px',
+                    backgroundColor: '#dc2626',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '13px',
+                    fontWeight: 650,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Cập nhật
+                </button>
+              </div>
+            );
+          }
+          if (verificationStatus === 'PENDING') {
+            return (
+              <div
+                style={{
+                  margin: '0 0 16px 0',
+                  padding: '12px 18px',
+                  backgroundColor: '#eff6ff',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: '8px',
+                  fontSize: '13px',
+                  color: '#1e40af',
+                  lineHeight: 1.45,
+                }}
+              >
+                <strong>Đang chờ duyệt:</strong> Hồ sơ và thỏa thuận liên kết của bạn đã được tiếp nhận và đang chờ Admin phê duyệt.
+              </div>
+            );
+          }
+          if (verificationStatus === 'DRAFT') {
+            return (
+              <div
+                style={{
+                  margin: '0 0 16px 0',
+                  padding: '12px 18px',
+                  backgroundColor: '#fff7ed',
+                  border: '1px solid #fed7aa',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                }}
+              >
+                <div style={{ fontSize: '13px', color: '#9a3412', lineHeight: 1.45 }}>
+                  <strong>Chưa ký thỏa thuận:</strong> Bạn chưa hoàn tất ký số Hợp đồng điện tử và cam kết cơ chế ký quỹ Escrow 10% với SupplyMind.
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowContractModal(true)}
+                  style={{
+                    padding: '7px 16px',
+                    backgroundColor: '#ea580c',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '12.5px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    boxShadow: '0 1px 2px rgba(234, 88, 12, 0.25)',
+                  }}
+                >
+                  Ký hợp đồng ngay
+                </button>
+              </div>
+            );
+          }
+          return null;
+        })()}
         <div className="supplier-heading">
           <div>
             <p className="form-eyebrow">WHOLESALE SUPPLIER</p>
@@ -483,7 +515,22 @@ export default function SupplierDashboard({
         onSignedSuccess={() => {
           setShowContractModal(false);
           setContractSigned(true);
-          setNotice('Đã ký kết hợp đồng điện tử thành công!');
+          setData((prev) =>
+            prev?.profile
+              ? {
+                  ...prev,
+                  profile: {
+                    ...prev.profile,
+                    verificationStatus:
+                      prev.profile.verificationStatus === 'DRAFT'
+                        ? 'PENDING'
+                        : prev.profile.verificationStatus,
+                  },
+                }
+              : prev,
+          );
+          setNotice('Đã ký kết hợp đồng điện tử thành công! Hồ sơ đang chờ Admin phê duyệt.');
+          void load();
         }}
         user={user}
       />
@@ -493,8 +540,8 @@ export default function SupplierDashboard({
         role="SUPPLIER"
         supplierProfile={data?.profile}
         onSaved={(updated) => {
-          setData((prev) => prev ? { ...prev, profile: updated } : prev);
-          setNotice('Đã cập nhật thông tin thành công. Hồ sơ đã được chuyển sang trạng thái Đang chờ duyệt.');
+          setData((prev) => (prev ? { ...prev, profile: updated } : prev));
+          setNotice('Cập nhật thông tin thành công, vui lòng đợi Admin phê duyệt');
         }}
       />
     </SupplierLayout>

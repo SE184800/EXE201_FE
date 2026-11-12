@@ -1,7 +1,6 @@
 import { useRef, useState, type FormEvent } from 'react';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
 import type { SupplierProfile } from '../../services/supplier.api';
-import { quickVerifySupplier } from '../../services/supplier.api';
 
 export default function SupplierVerification({
   profile,
@@ -53,10 +52,10 @@ export default function SupplierVerification({
     }
   }
   const labels: Record<string, string> = {
-    DRAFT: 'Chưa gửi hồ sơ',
-    PENDING: 'Đang chờ quản trị viên kiểm duyệt',
-    APPROVED: 'Gian hàng đã được xác minh',
-    REJECTED: 'Hồ sơ cần bổ sung / quyền bán đã thu hồi',
+    DRAFT: 'Chưa ký thỏa thuận',
+    PENDING: 'Đang chờ duyệt',
+    APPROVED: 'Đã xác minh',
+    REJECTED: 'Cần điều chỉnh',
   };
   return (
     <section className="supplier-panel verification-panel">
@@ -66,8 +65,10 @@ export default function SupplierVerification({
       >
         {labels[profile.verificationStatus]}
       </p>
-      {profile.verificationNote && (
-        <p className="catalog-hint">Nhận xét: {profile.verificationNote}</p>
+      {profile.verificationStatus === 'REJECTED' && (
+        <p className="catalog-hint" style={{ color: '#b91c1c', fontWeight: 600 }}>
+          Vui lòng cập nhật lại thông tin đăng ký
+        </p>
       )}
       <p className="catalog-hint">
         Bạn có thể chuẩn bị danh mục hàng. Sản phẩm chỉ hiện với chủ tạp hóa khi hồ sơ được duyệt.
@@ -133,7 +134,7 @@ export default function SupplierVerification({
             </p>
           )}
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '12px', flexWrap: 'wrap' }}>
-            <button className="ghost-button" type="submit">
+            <button className="primary-button" type="submit">
               {busy
                 ? 'Đang gửi…'
                 : profile.verificationStatus === 'PENDING'
@@ -142,32 +143,6 @@ export default function SupplierVerification({
                     ? 'Cập nhật và gửi duyệt lại nếu thay đổi'
                     : 'Lưu và gửi hồ sơ xác minh'}
             </button>
-            {profile.verificationStatus !== 'APPROVED' && (
-              <button
-                type="button"
-                className="primary-button"
-                disabled={busy}
-                onClick={async () => {
-                  if (lock.current) return;
-                  lock.current = true;
-                  setBusy(true);
-                  setError('');
-                  try {
-                    const verified = await quickVerifySupplier();
-                    onSaved(verified);
-                  } catch (e) {
-                    setError(getApiError(e));
-                    if (isUnauthenticated(e)) onLogout();
-                  } finally {
-                    lock.current = false;
-                    setBusy(false);
-                  }
-                }}
-                style={{ backgroundColor: '#16a34a', borderColor: '#16a34a' }}
-              >
-                Kích hoạt mở bán ngay
-              </button>
-            )}
           </div>
         </fieldset>
       </form>

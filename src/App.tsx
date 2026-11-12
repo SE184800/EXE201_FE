@@ -13,6 +13,7 @@ import SupplierWallet from './pages/supplier/SupplierWallet';
 import AdminPage from './pages/admin/AdminPage';
 import SubscriptionPage from './pages/SubscriptionPage';
 import SupplierProfilePage from './pages/supplier/SupplierProfilePage';
+import ContractKeyPage from './pages/ContractKeyPage';
 import { getMe, logout } from './services/auth.api';
 import { ROLE_DETAILS, type AuthUser } from './types/auth';
 
@@ -193,6 +194,7 @@ export default function App() {
           path="/register"
           element={user ? <Navigate to={destination} replace /> : <RegisterPage />}
         />
+        <Route path="/contract-key" element={<ContractKeyPage />} />
         <Route
           path="/supplier/inventory"
           element={

@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import '../catalog.css';
 import SupplierLayout from '../../components/SupplierLayout';
 import OrderList from '../../components/OrderList';
+import DatePicker from '../../components/DatePicker';
 import { POPULAR_BANKS } from '../../constants/banks';
 import { validateQrCodeImage } from '../../utils/qrValidator';
 import { api } from '../../services/api';
 import { calculateDeliveryFee } from '../../utils/geo';
-import { getApiError, isUnauthenticated } from '../../services/api';
+import { getApiError, getApiFieldErrors, isUnauthenticated } from '../../services/api';
 import { logout } from '../../services/auth.api';
 import {
   updateSupplierOrderStatus,
@@ -702,13 +703,12 @@ function DispatchDriverDialog({
               <span style={{ fontSize: '12px', fontWeight: 650, color: '#334155', display: 'block', marginBottom: '5px' }}>
                 Chọn ngày giao:
               </span>
-              <input
-                type="date"
+              <DatePicker
                 min={minDeliveryDate}
                 value={deliveryDate}
-                onChange={(e) => handleDateChange(e.target.value)}
+                onChange={(val) => handleDateChange(val)}
                 disabled={busy}
-                style={{ width: '100%', padding: '8px 10px', borderRadius: '6px', border: '1px solid #94a3b8', fontSize: '13px', backgroundColor: '#ffffff', boxSizing: 'border-box' }}
+                required
               />
             </label>
 
@@ -1322,6 +1322,11 @@ function SupplierBankAccountDialog({
   const [saving, setSaving] = useState(false);
   const [uploadingQr, setUploadingQr] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<{
+    bankName?: string;
+    bankAccountNumber?: string;
+    bankAccountHolder?: string;
+  }>({});
   const [qrError, setQrError] = useState('');
 
   useEffect(() => {
@@ -1391,20 +1396,30 @@ function SupplierBankAccountDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
+
+    const nextFieldErrors: {
+      bankName?: string;
+      bankAccountNumber?: string;
+      bankAccountHolder?: string;
+    } = {};
 
     const finalBankName = bankName === 'Khác' ? customBankName.trim() : bankName;
     if (!finalBankName || finalBankName.length < 2) {
-      setError('Vui lòng chọn hoặc nhập tên ngân hàng hợp lệ.');
-      return;
+      nextFieldErrors.bankName = 'Vui lòng chọn hoặc nhập tên ngân hàng hợp lệ.';
     }
     const cleanAcc = bankAccountNumber.trim().replace(/\s+/g, '');
     if (!/^[A-Za-z0-9]{4,34}$/.test(cleanAcc)) {
-      setError('Số tài khoản ngân hàng cần từ 4 đến 34 chữ số hoặc chữ cái, không chứa khoảng trắng.');
-      return;
+      nextFieldErrors.bankAccountNumber =
+        'Số tài khoản ngân hàng cần từ 4 đến 34 chữ số hoặc chữ cái, không chứa khoảng trắng.';
     }
     const cleanHolder = bankAccountHolder.trim().toUpperCase();
     if (!cleanHolder || cleanHolder.length < 2) {
-      setError('Vui lòng nhập tên chủ tài khoản (in hoa không dấu).');
+      nextFieldErrors.bankAccountHolder = 'Vui lòng nhập tên chủ tài khoản (in hoa không dấu).';
+    }
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors);
       return;
     }
 
@@ -1418,7 +1433,20 @@ function SupplierBankAccountDialog({
       onSaved('Đã cập nhật thông tin tài khoản ngân hàng nhận tiền của vựa thành công.');
       onClose();
     } catch (err) {
-      setError(getApiError(err));
+      const mapped = getApiFieldErrors(err, [
+        'bankName',
+        'bankAccountNumber',
+        'bankAccountHolder',
+      ] as const);
+      const errValues = Object.values(mapped).filter(Boolean);
+      if (errValues.length > 0) {
+        setFieldErrors(mapped);
+        if (errValues.length > 1) {
+          setError('Vui lòng kiểm tra và sửa các thông tin chưa hợp lệ bên dưới.');
+        }
+      } else {
+        setError(getApiError(err));
+      }
     } finally {
       setSaving(false);
     }
@@ -1449,14 +1477,31 @@ function SupplierBankAccountDialog({
               <span>Ngân hàng nhận tiền: *</span>
               <select
                 value={bankName}
-                onChange={(e) => setBankName(e.target.value)}
+                onChange={(e) => {
+                  setBankName(e.target.value);
+                  if (fieldErrors.bankName) {
+                    setFieldErrors((prev) => ({ ...prev, bankName: undefined }));
+                  }
+                }}
                 disabled={saving}
-                style={{ width: '100%', padding: '9px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13.5px', backgroundColor: '#ffffff' }}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: '6px',
+                  border: fieldErrors.bankName ? '1px solid #dc2626' : '1px solid #cbd5e1',
+                  fontSize: '13.5px',
+                  backgroundColor: '#ffffff',
+                }}
               >
                 {POPULAR_BANKS.map((b) => (
                   <option key={b} value={b}>{b}</option>
                 ))}
               </select>
+              {bankName !== 'Khác' && fieldErrors.bankName && (
+                <small style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px', display: 'block', fontWeight: 500 }}>
+                  {fieldErrors.bankName}
+                </small>
+              )}
             </label>
 
             {bankName === 'Khác' && (
@@ -1467,10 +1512,21 @@ function SupplierBankAccountDialog({
                   required
                   placeholder="VD: Shinhan Bank, Woori Bank, PVcomBank..."
                   value={customBankName}
-                  onChange={(e) => setCustomBankName(e.target.value)}
+                  onChange={(e) => {
+                    setCustomBankName(e.target.value);
+                    if (fieldErrors.bankName) {
+                      setFieldErrors((prev) => ({ ...prev, bankName: undefined }));
+                    }
+                  }}
                   disabled={saving}
                   maxLength={100}
+                  style={fieldErrors.bankName ? { borderColor: '#dc2626', background: '#fef2f2' } : undefined}
                 />
+                {fieldErrors.bankName && (
+                  <small style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px', display: 'block', fontWeight: 500 }}>
+                    {fieldErrors.bankName}
+                  </small>
+                )}
               </label>
             )}
 
@@ -1480,12 +1536,27 @@ function SupplierBankAccountDialog({
                 type="text"
                 required
                 placeholder="VD: 0071001234567"
+                aria-invalid={Boolean(fieldErrors.bankAccountNumber)}
                 value={bankAccountNumber}
-                onChange={(e) => setBankAccountNumber(e.target.value.replace(/[^A-Za-z0-9]/g, ''))}
+                onChange={(e) => {
+                  setBankAccountNumber(e.target.value.replace(/[^A-Za-z0-9]/g, ''));
+                  if (fieldErrors.bankAccountNumber) {
+                    setFieldErrors((prev) => ({ ...prev, bankAccountNumber: undefined }));
+                  }
+                }}
                 disabled={saving}
                 maxLength={34}
-                style={{ fontFamily: 'monospace', letterSpacing: '0.04em' }}
+                style={{
+                  fontFamily: 'monospace',
+                  letterSpacing: '0.04em',
+                  ...(fieldErrors.bankAccountNumber ? { borderColor: '#dc2626', background: '#fef2f2' } : {}),
+                }}
               />
+              {fieldErrors.bankAccountNumber && (
+                <small role="alert" style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px', display: 'block', fontWeight: 500 }}>
+                  {fieldErrors.bankAccountNumber}
+                </small>
+              )}
               <small style={{ color: '#64748b', fontSize: '11.5px', marginTop: '2px', display: 'block' }}>
                 Từ 4 đến 34 chữ số hoặc chữ cái, không dấu và không khoảng trắng.
               </small>
@@ -1497,12 +1568,26 @@ function SupplierBankAccountDialog({
                 type="text"
                 required
                 placeholder="VD: NGUYEN VAN A"
+                aria-invalid={Boolean(fieldErrors.bankAccountHolder)}
                 value={bankAccountHolder}
-                onChange={(e) => setBankAccountHolder(e.target.value.toUpperCase())}
+                onChange={(e) => {
+                  setBankAccountHolder(e.target.value.toUpperCase());
+                  if (fieldErrors.bankAccountHolder) {
+                    setFieldErrors((prev) => ({ ...prev, bankAccountHolder: undefined }));
+                  }
+                }}
                 disabled={saving}
                 maxLength={100}
-                style={{ textTransform: 'uppercase' }}
+                style={{
+                  textTransform: 'uppercase',
+                  ...(fieldErrors.bankAccountHolder ? { borderColor: '#dc2626', background: '#fef2f2' } : {}),
+                }}
               />
+              {fieldErrors.bankAccountHolder && (
+                <small style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px', display: 'block', fontWeight: 500 }}>
+                  {fieldErrors.bankAccountHolder}
+                </small>
+              )}
             </label>
 
             <div style={{ margin: '14px 0', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>

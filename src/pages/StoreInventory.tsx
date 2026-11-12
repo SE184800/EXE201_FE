@@ -156,7 +156,7 @@ export default function StoreInventory({
     getContractStatus()
       .then((res) => setContractSigned(res.isSigned))
       .catch(() => { });
-  }, [revision]);
+  }, [revision, contractRefreshKey]);
 
   useEffect(() => {
     let active = true;
@@ -524,17 +524,7 @@ export default function StoreInventory({
         }}
       >
         <p>Đang chuẩn bị không gian cửa hàng…</p>
-        <PartnerProfileEditModal
-        isOpen={showPartnerEditModal}
-        onClose={() => setShowPartnerEditModal(false)}
-        role="STORE_OWNER"
-        storeProfile={storeProfile}
-        onSaved={(updated) => {
-          setStoreProfile(updated);
-          setNotice('Đã cập nhật thông tin thành công. Hồ sơ đã được chuyển sang trạng thái Đang chờ duyệt.');
-        }}
-      />
-    </main>
+      </main>
     );
   }
 
@@ -563,7 +553,14 @@ export default function StoreInventory({
           onSignedSuccess={() => {
             setShowContractModal(false);
             setContractSigned(true);
-            setNotice('Đã ký kết hợp đồng điện tử thành công!');
+            setStoreProfile((prev) => (prev ? { ...prev, verificationStatus: 'PENDING' } : prev));
+            api
+              .get<{ profile: Profile }>('/profile')
+              .then(({ data }) => {
+                if (data.profile.storeProfile) setStoreProfile(data.profile.storeProfile);
+              })
+              .catch(() => {});
+            setNotice('Đã ký kết hợp đồng điện tử thành công! Hồ sơ đang chờ Admin phê duyệt.');
             setContractRefreshKey((prev) => prev + 1);
             setActiveTab('profile');
           }}
@@ -838,43 +835,115 @@ export default function StoreInventory({
                   </button>
                 </div>
               )}
-              {contractSigned === false && (
-                <div
-                  style={{
-                    margin: '0 0 16px 0',
-                    padding: '12px 18px',
-                    backgroundColor: '#fff7ed',
-                    border: '1px solid #fed7aa',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '12px',
-                  }}
-                >
-                  <div style={{ fontSize: '13px', color: '#9a3412', lineHeight: 1.45 }}>
-                    <strong>Thỏa thuận kết nối nền tảng:</strong> Bạn chưa hoàn tất ký số Hợp đồng điện tử và thỏa thuận cơ chế ký quỹ 10% với SupplyMind.
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowContractModal(true)}
-                    style={{
-                      padding: '7px 16px',
-                      backgroundColor: '#ea580c',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '6px',
-                      fontSize: '12.5px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                      boxShadow: '0 1px 2px rgba(234, 88, 12, 0.25)',
-                    }}
-                  >
-                    Ký hợp đồng ngay
-                  </button>
-                </div>
-              )}
+              {(() => {
+                          const rawVerificationStatus = storeProfile?.verificationStatus;
+          const verificationStatus =
+            rawVerificationStatus === 'APPROVED' ||
+            rawVerificationStatus === 'REJECTED' ||
+            rawVerificationStatus === 'PENDING'
+              ? rawVerificationStatus
+              : contractSigned
+                ? 'PENDING'
+                : 'DRAFT';
+                if (verificationStatus === 'REJECTED') {
+                  return (
+                    <div
+                      style={{
+                        margin: '0 0 16px 0',
+                        padding: '14px 18px',
+                        backgroundColor: '#fef2f2',
+                        border: '1px solid #fecaca',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div style={{ fontSize: '13.5px', color: '#991b1b', lineHeight: 1.45 }}>
+                        <strong style={{ marginRight: '6px' }}>CẦN ĐIỀU CHỈNH:</strong>
+                        Vui lòng cập nhật lại thông tin đăng ký
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowPartnerEditModal(true)}
+                        style={{
+                          padding: '8px 18px',
+                          backgroundColor: '#dc2626',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          fontWeight: 650,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Cập nhật
+                      </button>
+                    </div>
+                  );
+                }
+                if (verificationStatus === 'PENDING') {
+                  return (
+                    <div
+                      style={{
+                        margin: '0 0 16px 0',
+                        padding: '12px 18px',
+                        backgroundColor: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                        color: '#1e40af',
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      <strong>Đang chờ duyệt:</strong> Hồ sơ và hợp đồng liên kết của bạn đã được gửi và đang chờ Admin phê duyệt.
+                    </div>
+                  );
+                }
+                if (verificationStatus === 'DRAFT') {
+                  return (
+                    <div
+                      style={{
+                        margin: '0 0 16px 0',
+                        padding: '12px 18px',
+                        backgroundColor: '#fff7ed',
+                        border: '1px solid #fed7aa',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                      }}
+                    >
+                      <div style={{ fontSize: '13px', color: '#9a3412', lineHeight: 1.45 }}>
+                        <strong>Chưa ký thỏa thuận:</strong> Bạn chưa hoàn tất ký số Hợp đồng điện tử và thỏa thuận cơ chế ký quỹ 10% với SupplyMind.
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowContractModal(true)}
+                        style={{
+                          padding: '7px 16px',
+                          backgroundColor: '#ea580c',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '12.5px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          boxShadow: '0 1px 2px rgba(234, 88, 12, 0.25)',
+                        }}
+                      >
+                        Ký hợp đồng ngay
+                      </button>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
               <section
                 hidden={
                   activeTab === 'profile' || activeTab === 'restock' || activeTab === 'calendar'
@@ -1392,6 +1461,19 @@ export default function StoreInventory({
           <div hidden={activeTab !== 'profile'}>
             <ProfilePage
               contractRefreshKey={contractRefreshKey}
+              onContractSigned={() => {
+                setContractSigned(true);
+                setContractRefreshKey((k) => k + 1);
+                setStoreProfile((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        verificationStatus:
+                          prev.verificationStatus === 'DRAFT' ? 'PENDING' : prev.verificationStatus,
+                      }
+                    : prev,
+                );
+              }}
               onSaved={(name) => {
                 setDisplayName(name);
                 api
@@ -1827,11 +1909,29 @@ export default function StoreInventory({
         onSignedSuccess={() => {
           setShowContractModal(false);
           setContractSigned(true);
-          setNotice('Đã ký kết hợp đồng điện tử thành công!');
+          setStoreProfile((prev) => (prev ? { ...prev, verificationStatus: 'PENDING' } : prev));
+          api
+            .get<{ profile: Profile }>('/profile')
+            .then(({ data }) => {
+              if (data.profile.storeProfile) setStoreProfile(data.profile.storeProfile);
+            })
+            .catch(() => {});
+          setNotice('Đã ký kết hợp đồng điện tử thành công! Hồ sơ đang chờ Admin phê duyệt.');
           setContractRefreshKey((prev) => prev + 1);
           setActiveTab('profile');
         }}
         user={user}
+      />
+      <PartnerProfileEditModal
+        isOpen={showPartnerEditModal}
+        onClose={() => setShowPartnerEditModal(false)}
+        role="STORE_OWNER"
+        storeProfile={storeProfile}
+        onSaved={(updated) => {
+          setStoreProfile(updated);
+          setContractRefreshKey((prev) => prev + 1);
+          setNotice('Cập nhật thông tin thành công, vui lòng đợi Admin phê duyệt');
+        }}
       />
     </main>
   );

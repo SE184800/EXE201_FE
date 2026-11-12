@@ -1,15 +1,18 @@
 import { useEffect, useRef, type ReactNode } from 'react';
+import DatePicker from '../../components/DatePicker';
 const labels: Record<string, string> = {
   ACTIVE: 'Hoạt động',
+  INACTIVE: 'Chưa hoạt động',
   TRIAL: 'Đang dùng thử',
   EXPIRED: 'Hết hạn',
   NOT_STARTED: 'Chưa bắt đầu',
   SUSPENDED: 'Khóa tạm',
   BANNED: 'Khóa vĩnh viễn',
-  DRAFT: 'Chưa gửi duyệt',
-  PENDING: 'Chờ duyệt',
+  DELETED: 'Đã xóa',
+  DRAFT: 'Chưa ký thỏa thuận',
+  PENDING: 'Đang chờ duyệt',
   APPROVED: 'Đã xác minh',
-  REJECTED: 'Cần bổ sung',
+  REJECTED: 'Cần điều chỉnh',
   PAID: 'Đã thu',
   UNPAID: 'Chưa thu',
   NO_FEE: 'Miễn phí',
@@ -23,7 +26,7 @@ const labels: Record<string, string> = {
 export function Badge({ status }: { status: string }) {
   return (
     <span
-      className={`admin-badge ${['ACTIVE', 'TRIAL', 'APPROVED', 'PAID', 'SUCCESS'].includes(status) ? 'good' : ['BANNED', 'EXPIRED', 'ERROR'].includes(status) ? 'bad' : ''}`}
+      className={`admin-badge ${['ACTIVE', 'TRIAL', 'APPROVED', 'PAID', 'SUCCESS'].includes(status) ? 'good' : ['BANNED', 'DELETED', 'EXPIRED', 'ERROR'].includes(status) ? 'bad' : ''}`}
     >
       {labels[status] || status}
     </span>
@@ -99,22 +102,20 @@ export function DateFields({
     <>
       <label>
         Từ ngày
-        <input
-          type="date"
+        <DatePicker
           required
           value={value.from}
           max={value.to}
-          onChange={(e) => onChange({ ...value, from: e.target.value })}
+          onChange={(val) => onChange({ ...value, from: val })}
         />
       </label>
       <label>
         Đến ngày
-        <input
-          type="date"
+        <DatePicker
           required
           min={value.from}
           value={value.to}
-          onChange={(e) => onChange({ ...value, to: e.target.value })}
+          onChange={(val) => onChange({ ...value, to: val })}
         />
       </label>
     </>

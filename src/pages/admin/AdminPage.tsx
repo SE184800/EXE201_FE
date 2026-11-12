@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type SetStateAction } from 'react';
 import { NavLink, Navigate, useParams } from 'react-router-dom';
 import Brand from '../../components/Brand';
+import DatePicker from '../../components/DatePicker';
 import Icon from '../../components/Icon';
 import NotificationBell from '../../components/NotificationBell';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
@@ -31,6 +32,7 @@ type Account = {
   status: string;
   lockReason: string | null;
   suspendedUntil: string | null;
+  deletedAt?: string | null;
   updatedAt: string;
   createdAt: string;
   subscription: AccountSubscription;
@@ -102,7 +104,7 @@ const navGroups: NavGroup[] = [
     items: [
       { path: 'users', label: 'Tài khoản & Đối tác', icon: 'user' },
       { path: 'verification', label: 'Xác minh chủ vựa', icon: 'shield' },
-      { path: 'disputes', label: 'Phân xử khiếu nại', icon: 'shield' },
+      { path: 'disputes', label: 'Lịch sử khiếu nại', icon: 'shield' },
     ],
   },
   {
@@ -500,26 +502,98 @@ function Overview({ onLogout }: Props) {
 }
 
 
+type UserDeletionCheck = {
+  userId: number;
+  username: string;
+  name: string;
+  role: string;
+  canDelete: boolean;
+  mode: 'HARD' | 'SOFT';
+  alreadyDeleted: boolean;
+  reasons: string[];
+  checks: {
+    ordersClear: boolean;
+    openOrdersCount: number;
+    openOrderIds: number[];
+    complaintsClear: boolean;
+    openComplaintsCount: number;
+    walletClear: boolean;
+    walletBalance: number;
+    walletHeldBalance: number;
+    pendingDepositsCount: number;
+    pendingWithdrawalsCount: number;
+  };
+  history: {
+    hasTransactionHistory: boolean;
+    totalOrdersCount: number;
+    totalComplaintsCount: number;
+    walletTxCount: number;
+    depositCount: number;
+    withdrawalCount: number;
+    paymentCount: number;
+    subPaymentCount: number;
+  };
+};
+
+type UserDeletionResult = {
+  success?: boolean;
+  mode?: 'HARD' | 'SOFT';
+  message?: string;
+};
+
 function DeleteUserDialog({
   user,
   onClose,
   onSuccess,
+  onSwitchToManage,
   onLogout,
 }: {
   user: Account;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (result: UserDeletionResult) => void;
+  onSwitchToManage?: () => void;
   onLogout?: () => void;
 }) {
+  const [check, setCheck] = useState<UserDeletionCheck | null>(null);
+  const [loadingCheck, setLoadingCheck] = useState(true);
+  const [checkError, setCheckError] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingCheck(true);
+    setCheckError('');
+    setCheck(null);
+    api
+      .get<UserDeletionCheck>(`/admin/users/${user.id}/deletion-check`)
+      .then((res) => {
+        if (!cancelled) {
+          setCheck(res.data);
+          setLoadingCheck(false);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (isUnauthenticated(err) && onLogout) {
+          onLogout();
+          return;
+        }
+        setCheckError(getApiError(err));
+        setLoadingCheck(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user.id, onLogout]);
+
   const handleDelete = async () => {
+    if (!check?.canDelete) return;
     setError('');
     setDeleting(true);
     try {
-      await api.delete(`/admin/users/${user.id}`);
-      onSuccess?.();
+      const res = await api.delete<UserDeletionResult>(`/admin/users/${user.id}`);
+      onSuccess?.(res.data);
     } catch (err) {
       if (isUnauthenticated(err) && onLogout) {
         onLogout();
@@ -529,6 +603,10 @@ function DeleteUserDialog({
       setDeleting(false);
     }
   };
+
+  const pendingMoneyRequests =
+    (check?.checks.pendingDepositsCount || 0) + (check?.checks.pendingWithdrawalsCount || 0);
+  const formatVnd = (amount: number) => `${amount.toLocaleString('vi-VN')} đ`;
 
   return (
     <div
@@ -553,7 +631,7 @@ function DeleteUserDialog({
         style={{
           backgroundColor: '#FFFFFF',
           borderRadius: '16px',
-          maxWidth: '540px',
+          maxWidth: '580px',
           width: '100%',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
           overflow: 'hidden',
@@ -567,55 +645,229 @@ function DeleteUserDialog({
             borderBottom: '1px solid #FFE4E6',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
             gap: '12px',
           }}
         >
-          <span
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span
+              style={{
+                backgroundColor: '#FFE4E6',
+                color: '#E11D48',
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '20px',
+                fontWeight: 700,
+                flexShrink: 0,
+              }}
+            >
+              !
+            </span>
+            <div>
+              <h3 style={{ margin: 0, color: '#9F1239', fontSize: '17px', fontWeight: 700 }}>
+                Kiểm tra điều kiện & xóa tài khoản
+              </h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#BE123C' }}>
+                Người dùng: <strong>{user.name}</strong> (@{user.username} · #{user.id})
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label="Đóng"
+            disabled={deleting}
+            onClick={onClose}
             style={{
-              backgroundColor: '#FFE4E6',
-              color: '#E11D48',
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              display: 'flex',
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              border: '1px solid #FECDD3',
+              backgroundColor: '#FFFFFF',
+              color: '#9F1239',
+              fontSize: '20px',
+              lineHeight: 1,
+              cursor: deleting ? 'not-allowed' : 'pointer',
+              display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '20px',
-              fontWeight: 700,
               flexShrink: 0,
             }}
           >
-            !
-          </span>
-          <div>
-            <h3 style={{ margin: 0, color: '#9F1239', fontSize: '17px', fontWeight: 700 }}>
-              Xóa tài khoản người dùng
-            </h3>
-            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#BE123C' }}>
-              Người dùng: <strong>{user.name}</strong> (@{user.username} · #{user.id})
-            </p>
-          </div>
+            ×
+          </button>
         </div>
 
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div
-            style={{
-              backgroundColor: '#FEF2F2',
-              border: '1px solid #FECACA',
-              borderRadius: '10px',
-              padding: '14px 16px',
-            }}
-          >
-            <p style={{ margin: 0, fontSize: '13.5px', color: '#991B1B', lineHeight: 1.6 }}>
-              Hành động này sẽ <strong>xóa vĩnh viễn</strong> tài khoản người dùng <strong>@{user.username}</strong> và toàn bộ dữ liệu kiểm thử liên quan (hồ sơ cửa hàng, kho hàng, hợp đồng, ví giả lập).
+          {loadingCheck ? (
+            <div
+              style={{
+                padding: '18px',
+                borderRadius: '10px',
+                backgroundColor: '#F8FAFC',
+                border: '1px solid #E2E8F0',
+                fontSize: '13.5px',
+                color: '#475569',
+              }}
+            >
+              Đang kiểm tra đơn hàng, khiếu nại và số dư ví của tài khoản...
+            </div>
+          ) : checkError ? (
+            <p
+              style={{
+                margin: 0,
+                color: '#DC2626',
+                fontSize: '13px',
+                backgroundColor: '#FEF2F2',
+                padding: '12px 14px',
+                borderRadius: '8px',
+                border: '1px solid #FECACA',
+              }}
+            >
+              {checkError}
             </p>
-            <p style={{ margin: '8px 0 0 0', fontSize: '12.5px', color: '#B91C1C', lineHeight: 1.5 }}>
-              Sau khi xóa, tên đăng nhập và số điện thoại/email này có thể được sử dụng để <strong>đăng ký lại tài khoản mới</strong> phục vụ mục đích kiểm thử hệ thống.
-            </p>
-          </div>
+          ) : (
+            check && (
+              <>
+                <div
+                  style={{
+                    border: '1px solid #E2E8F0',
+                    borderRadius: '10px',
+                    padding: '14px 16px',
+                    backgroundColor: '#F8FAFC',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                  }}
+                >
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A' }}>
+                    3 điều kiện bắt buộc trước khi xóa
+                  </div>
+
+                  {[
+                    {
+                      label: 'Đơn hàng đang xử lý',
+                      ok: check.checks.ordersClear,
+                      detail: check.checks.ordersClear
+                        ? 'Đạt · 0 đơn mở'
+                        : `Chưa đạt · Còn ${check.checks.openOrdersCount} đơn chưa hoàn tất/hủy`,
+                    },
+                    {
+                      label: 'Khiếu nại / Tranh chấp',
+                      ok: check.checks.complaintsClear,
+                      detail: check.checks.complaintsClear
+                        ? 'Đạt · 0 khiếu nại mở'
+                        : `Chưa đạt · Còn ${check.checks.openComplaintsCount} khiếu nại đang xử lý`,
+                    },
+                    {
+                      label: 'Số dư ví & yêu cầu nạp/rút',
+                      ok: check.checks.walletClear,
+                      detail: check.checks.walletClear
+                        ? 'Đạt · Số dư 0 đ, không có lệnh nạp/rút chờ xử lý'
+                        : `Chưa đạt · Số dư ${formatVnd(check.checks.walletBalance)}` +
+                          (check.checks.walletHeldBalance !== 0
+                            ? ` (tạm giữ ${formatVnd(check.checks.walletHeldBalance)})`
+                            : '') +
+                          (pendingMoneyRequests > 0
+                            ? ` · ${pendingMoneyRequests} lệnh nạp/rút chờ xử lý`
+                            : ''),
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        backgroundColor: item.ok ? '#ECFDF5' : '#FEF2F2',
+                        border: `1px solid ${item.ok ? '#A7F3D0' : '#FECACA'}`,
+                      }}
+                    >
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B' }}>
+                        {item.label}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '12.5px',
+                          fontWeight: 600,
+                          color: item.ok ? '#047857' : '#B91C1C',
+                          textAlign: 'right',
+                        }}
+                      >
+                        {item.detail}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {check.mode === 'SOFT' ? (
+                  <div
+                    style={{
+                      backgroundColor: '#FFFBEB',
+                      border: '1px solid #FDE68A',
+                      borderRadius: '10px',
+                      padding: '12px 14px',
+                    }}
+                  >
+                    <p style={{ margin: 0, fontSize: '13px', color: '#92400E', lineHeight: 1.55 }}>
+                      <strong>Xóa mềm (giữ lịch sử):</strong> Tài khoản bị khóa đăng nhập vĩnh viễn;
+                      đơn hàng và sổ cái ví vẫn được giữ lại để đối soát.
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      backgroundColor: '#FEF2F2',
+                      border: '1px solid #FECACA',
+                      borderRadius: '10px',
+                      padding: '12px 14px',
+                    }}
+                  >
+                    <p style={{ margin: 0, fontSize: '13px', color: '#991B1B', lineHeight: 1.55 }}>
+                      <strong>Xóa vĩnh viễn:</strong> Tài khoản chưa có giao dịch, dữ liệu sẽ bị xóa hoàn toàn
+                      và có thể dùng lại tên đăng nhập, email, SĐT để đăng ký mới.
+                    </p>
+                  </div>
+                )}
+
+                {!check.canDelete && (
+                  <div
+                    style={{
+                      backgroundColor: '#FFF7ED',
+                      border: '1px solid #FED7AA',
+                      borderRadius: '10px',
+                      padding: '12px 14px',
+                      fontSize: '13px',
+                      color: '#9A3412',
+                      lineHeight: 1.55,
+                    }}
+                  >
+                    <strong>Chưa thể xóa:</strong> Cần xử lý hết đơn mở, khiếu nại và đưa ví về 0 đ trước,
+                    hoặc bấm <strong>Chuyển sang quản lý</strong> để khóa tài khoản.
+                  </div>
+                )}
+              </>
+            )
+          )}
 
           {error && (
-            <p style={{ margin: 0, color: '#DC2626', fontSize: '13px', backgroundColor: '#FEF2F2', padding: '10px 14px', borderRadius: '8px', border: '1px solid #FECACA' }}>
+            <p
+              style={{
+                margin: 0,
+                color: '#DC2626',
+                fontSize: '13px',
+                backgroundColor: '#FEF2F2',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                border: '1px solid #FECACA',
+              }}
+            >
               {error}
             </p>
           )}
@@ -627,30 +879,34 @@ function DeleteUserDialog({
             backgroundColor: '#F8FAFC',
             display: 'flex',
             justifyContent: 'flex-end',
-            gap: '12px',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '10px',
             borderTop: '1px solid #E2E8F0',
           }}
         >
+          {!loadingCheck && check && onSwitchToManage && (
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={onSwitchToManage}
+              style={{
+                padding: '8px 18px',
+                borderRadius: '8px',
+                border: '1px solid #D97706',
+                backgroundColor: '#FFFBEB',
+                color: '#B45309',
+                fontWeight: 600,
+                fontSize: '14px',
+                cursor: deleting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Chuyển sang quản lý
+            </button>
+          )}
           <button
             type="button"
-            disabled={deleting}
-            onClick={onClose}
-            style={{
-              padding: '8px 20px',
-              borderRadius: '8px',
-              border: '1px solid #CBD5E1',
-              backgroundColor: '#FFFFFF',
-              color: '#334155',
-              fontWeight: 600,
-              fontSize: '14px',
-              cursor: deleting ? 'not-allowed' : 'pointer',
-            }}
-          >
-            Hủy bỏ
-          </button>
-          <button
-            type="button"
-            disabled={deleting}
+            disabled={loadingCheck || Boolean(checkError) || !check?.canDelete || deleting}
             onClick={handleDelete}
             style={{
               padding: '8px 20px',
@@ -660,13 +916,21 @@ function DeleteUserDialog({
               color: '#FFFFFF',
               fontWeight: 600,
               fontSize: '14px',
-              cursor: deleting ? 'not-allowed' : 'pointer',
+              opacity: loadingCheck || Boolean(checkError) || !check?.canDelete || deleting ? 0.5 : 1,
+              cursor:
+                loadingCheck || Boolean(checkError) || !check?.canDelete || deleting
+                  ? 'not-allowed'
+                  : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
             }}
           >
-            {deleting ? 'Đang xóa...' : 'Xác nhận xóa vĩnh viễn'}
+            {deleting
+              ? 'Đang xóa...'
+              : check?.mode === 'SOFT'
+                ? 'Xác nhận xóa mềm'
+                : 'Xác nhận xóa vĩnh viễn'}
           </button>
         </div>
       </div>
@@ -743,8 +1007,10 @@ function Users({ onLogout }: Props) {
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Tất cả trạng thái</option>
             <option value="ACTIVE">Hoạt động</option>
+            <option value="INACTIVE">Chưa hoạt động</option>
             <option value="SUSPENDED">Khóa tạm thời</option>
             <option value="BANNED">Khóa vĩnh viễn</option>
+            <option value="DELETED">Đã xóa</option>
           </select>
         </label>
         <button className="admin-primary">Tìm kiếm</button>
@@ -794,29 +1060,35 @@ function Users({ onLogout }: Props) {
                         )}
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <button onClick={() => setSelected(user)}>Quản lý</button>
-                          <button
-                            type="button"
-                            style={{
-                              padding: '6px 10px',
-                              backgroundColor: '#FFF1F2',
-                              color: '#E11D48',
-                              border: '1px solid #FECDD3',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              fontSize: '13px',
-                              fontWeight: 500,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                            onClick={() => setDeleteTarget(user)}
-                            title="Xóa vĩnh viễn tài khoản người dùng"
-                          >
-                            Xóa
-                          </button>
-                        </div>
+                        {user.status === 'DELETED' ? (
+                          <small style={{ color: '#64748B' }}>
+                            {user.deletedAt ? `Đã xóa · ${dateTime(user.deletedAt)}` : 'Đã xóa · Lưu trữ sổ cái'}
+                          </small>
+                        ) : (
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button onClick={() => setSelected(user)}>Quản lý</button>
+                            <button
+                              type="button"
+                              style={{
+                                padding: '6px 10px',
+                                backgroundColor: '#FFF1F2',
+                                color: '#E11D48',
+                                border: '1px solid #FECDD3',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                                fontWeight: 500,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                              onClick={() => setDeleteTarget(user)}
+                              title="Kiểm tra điều kiện & xóa tài khoản"
+                            >
+                              Xóa
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -845,12 +1117,17 @@ function Users({ onLogout }: Props) {
         <DeleteUserDialog
           user={deleteTarget}
           onClose={() => setDeleteTarget(null)}
-          onSuccess={() => {
+          onSwitchToManage={() => {
+            const target = deleteTarget;
+            setDeleteTarget(null);
+            setSelected(target);
+          }}
+          onSuccess={(result) => {
             const deletedName = deleteTarget.name;
             setDeleteTarget(null);
             setRevision((n) => n + 1);
-            setUserToast(`Đã xóa vĩnh viễn tài khoản "${deletedName}" thành công.`);
-            setTimeout(() => setUserToast(''), 4000);
+            setUserToast(result?.message || `Đã xóa tài khoản "${deletedName}" thành công.`);
+            setTimeout(() => setUserToast(''), 5000);
           }}
           onLogout={onLogout}
         />
@@ -858,16 +1135,25 @@ function Users({ onLogout }: Props) {
     </>
   );
 }
+function toDateTimeLocalInput(value?: string | null) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function AccountDialog({
   user,
   onClose,
   onSaved,
   onLogout,
 }: Props & { user: Account; onClose: () => void; onSaved: () => void }) {
-  const [status, setStatus] = useState(user.status),
+  const [status, setStatus] = useState(user.status === 'INACTIVE' ? 'ACTIVE' : user.status),
     [reason, setReason] = useState(''),
-    [until, setUntil] = useState('');
-  const [showDeleteNotice, setShowDeleteNotice] = useState(false);
+    [until, setUntil] = useState(() =>
+      user.status === 'SUSPENDED' ? toDateTimeLocalInput(user.suspendedUntil) : '',
+    );
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   const lock = useRef(false);
@@ -880,7 +1166,7 @@ function AccountDialog({
     try {
       await api.patch(`/admin/users/${user.id}/status`, {
         status,
-        reason,
+        reason: reason.trim() || 'Giải quyết vấn đề phát sinh',
         suspendedUntil: until ? new Date(until).toISOString() : null,
         expectedUpdatedAt: user.updatedAt,
       });
@@ -895,10 +1181,6 @@ function AccountDialog({
   }
   async function unlockSubscription() {
     if (lock.current) return;
-    if (reason.trim().length < 3) {
-      setError('Nhập lý do mở khóa từ 3 ký tự.');
-      return;
-    }
     if (
       !window.confirm(
         'Cấp miễn phí thêm 1 tháng sử dụng cho tài khoản này? Thao tác không tạo giao dịch thanh toán.',
@@ -909,7 +1191,9 @@ function AccountDialog({
     setBusy(true);
     setError('');
     try {
-      await api.post(`/admin/users/${user.id}/subscription/unlock`, { reason });
+      await api.post(`/admin/users/${user.id}/subscription/unlock`, {
+        reason: reason.trim() || 'Giải quyết vấn đề phát sinh',
+      });
       onSaved();
     } catch (e) {
       setError(getApiError(e));
@@ -925,6 +1209,11 @@ function AccountDialog({
         <p>
           {user.name} · <Badge status={user.status} />
         </p>
+        {user.status === 'INACTIVE' && (
+          <p className="admin-note">
+            Tài khoản chưa xác minh nên đang Chưa hoạt động. Duyệt tại Xác minh đối tác để kích hoạt.
+          </p>
+        )}
         {user.lockReason && <p className="admin-note">Lý do gần nhất: {user.lockReason}</p>}
         <div className="admin-subscription-box">
           <div>
@@ -968,15 +1257,13 @@ function AccountDialog({
             </label>
           )}
           <label>
-            Lý do quản trị
+            Lý do quản trị (không bắt buộc)
             <textarea
-              required
-              minLength={3}
               maxLength={500}
               rows={3}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Ví dụ: Cho phép tài khoản tiếp tục demo với giáo viên"
+              placeholder="Mặc định: Giải quyết vấn đề phát sinh"
             />
           </label>
           <p className="admin-note">
@@ -988,42 +1275,7 @@ function AccountDialog({
               {error}
             </p>
           )}
-          <div
-          style={{
-            marginTop: '20px',
-            paddingTop: '16px',
-            borderTop: '1px dashed #E2E8F0',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <div>
-            <span style={{ fontSize: '13px', color: '#64748B', display: 'block' }}>
-              Xóa tài khoản khỏi hệ thống
-            </span>
-            <small style={{ fontSize: '11px', color: '#94A3B8' }}>
-              Luồng cần giải quyết theo lộ trình (Roadmap)
-            </small>
-          </div>
-          <button
-            type="button"
-            style={{
-              padding: '6px 12px',
-              backgroundColor: '#FFF1F2',
-              color: '#E11D48',
-              border: '1px solid #FECDD3',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              fontWeight: 600,
-            }}
-            onClick={() => setShowDeleteNotice(true)}
-          >
-            Xóa người dùng
-          </button>
-        </div>
-        <div className="admin-dialog-actions">
+          <div className="admin-dialog-actions">
             <button type="button" onClick={onClose}>
               Hủy
             </button>
@@ -1033,25 +1285,14 @@ function AccountDialog({
           </div>
         </fieldset>
       </form>
-      {showDeleteNotice && (
-        <DeleteUserDialog
-          user={user}
-          onClose={() => setShowDeleteNotice(false)}
-          onSuccess={() => {
-            setShowDeleteNotice(false);
-            onSaved();
-          }}
-          onLogout={onLogout}
-        />
-      )}
     </AdminDialog>
   );
 }
 
 function Verifications({ onLogout }: Props) {
-  const [status, setStatus] = useState('PENDING'),
+  const [status, setStatus] = useState(''),
     [q, setQ] = useState('');
-  const [query, setQuery] = useState({ status: 'PENDING', q: '', page: 1 }),
+  const [query, setQuery] = useState({ status: '', q: '', page: 1 }),
     [revision, setRevision] = useState(0),
     [selected, setSelected] = useState<Verification | null>(null);
 
@@ -1076,11 +1317,11 @@ function Verifications({ onLogout }: Props) {
     try {
       await api.patch('/admin/verifications/' + item.id, {
         status: 'APPROVED',
-        note: 'Hồ sơ hợp lệ, đã xác minh và phê duyệt.',
+        note: '',
         version: item.verificationVersion,
         role: item.role,
       });
-      setActionNotice('Đã phê duyệt hồ sơ "' + item.businessName + '". Hệ thống đã gửi email thông báo.');
+      setActionNotice('Đã xác minh hồ sơ "' + item.businessName + '". Hệ thống đã gửi email thông báo.');
       setRevision((n) => n + 1);
       if (selected && selected.id === item.id) setSelected(null);
     } catch (err) {
@@ -1107,7 +1348,7 @@ function Verifications({ onLogout }: Props) {
         version: rejecting.verificationVersion,
         role: rejecting.role,
       });
-      setActionNotice('Đã chuyển trạng thái hồ sơ "' + rejecting.businessName + '" thành Cần bổ sung và gửi email thông báo.');
+      setActionNotice('Đã chuyển trạng thái hồ sơ "' + rejecting.businessName + '" thành Cần điều chỉnh và gửi email thông báo.');
       setRejecting(null);
       setRejectReasonSelect('Mã số thuế không trùng khớp');
       setRejectCustomReason('');
@@ -1149,10 +1390,10 @@ function Verifications({ onLogout }: Props) {
           Trạng thái hồ sơ
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Tất cả hồ sơ</option>
-            <option value="PENDING">Chờ duyệt</option>
-            <option value="DRAFT">Chưa gửi duyệt</option>
+            <option value="PENDING">Đang chờ duyệt</option>
+            <option value="DRAFT">Chưa ký thỏa thuận</option>
             <option value="APPROVED">Đã xác minh</option>
-            <option value="REJECTED">Cần bổ sung / đã thu hồi</option>
+            <option value="REJECTED">Cần điều chỉnh</option>
           </select>
         </label>
         <button className="admin-primary">Lọc hồ sơ</button>
@@ -1220,7 +1461,7 @@ function Verifications({ onLogout }: Props) {
                       {p.warehouseAddress || 'Chưa cập nhật địa chỉ'}
                     </p>
 
-                    {p.verificationNote && (
+                    {p.verificationStatus === 'REJECTED' && p.verificationNote && (
                       <div
                         style={{
                           padding: '6px 10px',
@@ -1232,7 +1473,7 @@ function Verifications({ onLogout }: Props) {
                           marginBottom: '10px',
                         }}
                       >
-                        <strong>Ghi chú:</strong> {p.verificationNote}
+                        <strong>Lý do:</strong> {p.verificationNote}
                       </div>
                     )}
 
@@ -1264,69 +1505,6 @@ function Verifications({ onLogout }: Props) {
                       >
                         Xem chi tiết
                       </button>
-
-                      {p.verificationStatus === 'PENDING' && (
-                        <>
-                          <button
-                            type="button"
-                            disabled={actionBusy}
-                            onClick={() => handleQuickApprove(p)}
-                            style={{
-                              padding: '7px 12px',
-                              backgroundColor: '#16a34a',
-                              color: '#ffffff',
-                              border: 'none',
-                              borderRadius: '6px',
-                              fontSize: '12.5px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Xác nhận
-                          </button>
-                          <button
-                            type="button"
-                            disabled={actionBusy}
-                            onClick={() => {
-                              setRejecting(p);
-                              setRejectReasonSelect('Mã số thuế không trùng khớp');
-                              setRejectCustomReason('');
-                            }}
-                            style={{
-                              padding: '7px 12px',
-                              backgroundColor: '#dc2626',
-                              color: '#ffffff',
-                              border: 'none',
-                              borderRadius: '6px',
-                              fontSize: '12.5px',
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                            }}
-                          >
-                            Từ chối
-                          </button>
-                        </>
-                      )}
-
-                      {p.verificationStatus === 'REJECTED' && (
-                        <button
-                          type="button"
-                          disabled={actionBusy}
-                          onClick={() => handleQuickApprove(p)}
-                          style={{
-                            padding: '7px 12px',
-                            backgroundColor: '#16a34a',
-                            color: '#ffffff',
-                            border: 'none',
-                            borderRadius: '6px',
-                            fontSize: '12.5px',
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                          }}
-                        >
-                          Xác nhận lại
-                        </button>
-                      )}
                     </div>
                   </article>
                 );
@@ -1370,7 +1548,7 @@ function Verifications({ onLogout }: Props) {
               <div style={{ marginBottom: '16px' }}>
                 <p style={{ margin: '0 0 12px 0', fontSize: '13.5px', color: '#475569', lineHeight: 1.5 }}>
                   Vui lòng chọn lý do từ chối hồ sơ của <strong>{rejecting.businessName}</strong> ({rejecting.role === 'SUPPLIER' ? 'Chủ vựa' : 'Chủ tạp hóa'}).
-                  Hệ thống sẽ chuyển trạng thái đơn sang <strong>Cần bổ sung</strong> và gửi email thông báo chi tiết đến đối tác.
+                  Hệ thống sẽ chuyển trạng thái đơn sang <strong>Cần điều chỉnh</strong> và gửi email thông báo chi tiết đến đối tác.
                 </p>
 
                 <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '6px', color: '#334155' }}>
@@ -1607,49 +1785,50 @@ function VerificationDialog({
         )}
       </dl>
 
-      {p.verificationNote && (
+      {p.verificationStatus === 'REJECTED' && p.verificationNote && (
         <div style={{ marginTop: '14px', padding: '10px 14px', backgroundColor: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '6px', fontSize: '13px', color: '#991b1b' }}>
-          <strong>Lý do / Ghi chú gần nhất từ Quản trị viên:</strong> {p.verificationNote}
+          <strong>Lý do:</strong> {p.verificationNote}
         </div>
       )}
 
-      {/* Action buttons: ALWAYS show "Từ chối" and "Xác nhận duyệt" side-by-side; No "Đóng" button (closed via X icon in header) */}
-      <div className="admin-dialog-actions" style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-        <button
-          type="button"
-          onClick={onReject}
-          style={{
-            padding: '10px 20px',
-            borderRadius: '8px',
-            border: 'none',
-            backgroundColor: '#dc2626',
-            color: '#ffffff',
-            fontWeight: 650,
-            fontSize: '14px',
-            cursor: 'pointer',
-            boxShadow: '0 1px 3px rgba(220, 38, 38, 0.25)',
-          }}
-        >
-          Từ chối (Cần bổ sung)
-        </button>
-        <button
-          type="button"
-          onClick={onApprove}
-          style={{
-            padding: '10px 22px',
-            borderRadius: '8px',
-            border: 'none',
-            backgroundColor: '#16a34a',
-            color: '#ffffff',
-            fontWeight: 650,
-            fontSize: '14px',
-            cursor: 'pointer',
-            boxShadow: '0 1px 3px rgba(22, 163, 74, 0.25)',
-          }}
-        >
-          Xác nhận phê duyệt
-        </button>
-      </div>
+      {p.verificationStatus === 'PENDING' && (
+        <div className="admin-dialog-actions" style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          <button
+            type="button"
+            onClick={onReject}
+            style={{
+              padding: '10px 20px',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: '#dc2626',
+              color: '#ffffff',
+              fontWeight: 650,
+              fontSize: '14px',
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(220, 38, 38, 0.25)',
+            }}
+          >
+            Từ chối
+          </button>
+          <button
+            type="button"
+            onClick={onApprove}
+            style={{
+              padding: '10px 22px',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: '#16a34a',
+              color: '#ffffff',
+              fontWeight: 650,
+              fontSize: '14px',
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(22, 163, 74, 0.25)',
+            }}
+          >
+            Xác nhận
+          </button>
+        </div>
+      )}
     </AdminDialog>
   );
 }
@@ -2251,22 +2430,20 @@ function HolidayDialog({
           <div className="admin-holiday-dates">
             <label>
               Từ ngày
-              <input
+              <DatePicker
                 required
-                type="date"
                 value={form.startDate}
                 max={form.endDate}
-                onChange={(event) => setForm({ ...form, startDate: event.target.value })}
+                onChange={(val) => setForm({ ...form, startDate: val })}
               />
             </label>
             <label>
               Đến ngày
-              <input
+              <DatePicker
                 required
-                type="date"
                 min={form.startDate}
                 value={form.endDate}
-                onChange={(event) => setForm({ ...form, endDate: event.target.value })}
+                onChange={(val) => setForm({ ...form, endDate: val })}
               />
             </label>
           </div>

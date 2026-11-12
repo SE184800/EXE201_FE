@@ -105,6 +105,34 @@ export type DriverInfo = {
   } | null;
 };
 
+export type ComplaintWorkflowEntry = {
+  at: string;
+  actorRole: 'STORE_OWNER' | 'SUPPLIER' | 'SYSTEM' | 'ADMIN' | string;
+  actorName: string;
+  round: number;
+  action: string;
+  label: string;
+  note?: string | null;
+};
+
+export type ComplaintWorkflow = {
+  complaintId: number;
+  orderId: number;
+  round: number;
+  maxRounds: number | null;
+  pendingParty: 'SUPPLIER' | 'STORE_OWNER' | null;
+  deadlineAt: string | null;
+  proposedAction: string | null;
+  proposedDeductAmount: number | null;
+  agreedDeductAmount: number | null;
+  proposedNote: string | null;
+  finalOutcome: string | null;
+  finalSummary: string | null;
+  closedReason: string | null;
+  resolvedAt: string | null;
+  history: ComplaintWorkflowEntry[];
+};
+
 export type SupplierOrder = {
   deliveredAt?: string | null;
   inventoryImportedAt?: string | null;
@@ -155,6 +183,7 @@ export type SupplierOrder = {
     imageUrl?: string | null;
     status: string;
     response: string | null;
+    workflow?: ComplaintWorkflow | null;
   } | null;
   createdAt: string;
   updatedAt: string;
@@ -203,6 +232,7 @@ export type SupplierProfileInput = Pick<
 > & {
   taxCode?: string | null;
   phone?: string | null;
+  resubmit?: boolean;
 };
 export type SupplierProductInput = Pick<
   SupplierProduct,

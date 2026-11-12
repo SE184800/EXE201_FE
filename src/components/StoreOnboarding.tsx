@@ -7,7 +7,7 @@ import type { StoreProfile } from '../pages/ProfilePage';
 import { normalizePhone } from '../validation/registration';
 import { POPULAR_BANKS } from '../constants/banks';
 import { validateQrCodeImage } from '../utils/qrValidator';
-import { resolveAddressCoordinates } from '../utils/geo';
+import { verifyAddressWithBackend } from '../services/address.api';
 
 type StoreOnboardingProps = {
   user: AuthUser;
@@ -22,6 +22,9 @@ type StoreOnboardingErrors = {
   storeAddress?: string;
   storePhone?: string;
   taxCode?: string;
+  bankName?: string;
+  bankAccountNumber?: string;
+  bankAccountHolder?: string;
 };
 
 export default function StoreOnboarding({
@@ -43,6 +46,7 @@ export default function StoreOnboarding({
   const [isAddressVerified, setIsAddressVerified] = useState(false);
   const [verifyingMap, setVerifyingMap] = useState(false);
   const [mapVerifiedAddress, setMapVerifiedAddress] = useState<string | null>(null);
+  const [mapVerifyMessage, setMapVerifyMessage] = useState<string | null>(null);
   const [mapStatus, setMapStatus] = useState<'idle' | 'success' | 'not_found' | 'error'>('idle');
 
   const [fieldErrors, setFieldErrors] = useState<StoreOnboardingErrors>({});
@@ -71,52 +75,35 @@ export default function StoreOnboarding({
     }
     setVerifyingMap(true);
     setMapStatus('idle');
+    setMapVerifyMessage(null);
 
-    // 1. Try Nominatim with a short timeout (1500ms)
-    let fetched = false;
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&countrycodes=vn&limit=1&q=${encodeURIComponent(
-          trimmed
-        )}`,
-        { headers: { 'Accept-Language': 'vi' }, signal: controller.signal }
-      );
-      clearTimeout(timeoutId);
-      const results = await response.json();
-      if (Array.isArray(results) && results.length > 0) {
-        const first = results[0];
-        const lat = parseFloat(first.lat);
-        const lon = parseFloat(first.lon);
-        setLatitude(lat);
-        setLongitude(lon);
+      const result = await verifyAddressWithBackend(trimmed);
+      if (result.verified && result.lat !== null && result.lon !== null) {
+        setLatitude(result.lat);
+        setLongitude(result.lon);
         setIsAddressVerified(true);
-        setMapVerifiedAddress(first.display_name || trimmed);
-        setMapStatus('success');
-        setFieldErrors((prev) => ({ ...prev, storeAddress: undefined }));
-        fetched = true;
-      }
-    } catch {
-      // Offline / network failure -> fallback to local geocoder
-    }
-
-    if (!fetched) {
-      const fallback = resolveAddressCoordinates(trimmed);
-      if (fallback) {
-        setLatitude(fallback.lat);
-        setLongitude(fallback.lon);
-        setIsAddressVerified(true);
-        setMapVerifiedAddress(fallback.displayName || trimmed);
+        setMapVerifiedAddress(result.displayName || trimmed);
         setMapStatus('success');
         setFieldErrors((prev) => ({ ...prev, storeAddress: undefined }));
       } else {
-        setMapStatus('not_found');
+        setLatitude(null);
+        setLongitude(null);
         setIsAddressVerified(false);
+        setMapVerifiedAddress(null);
+        setMapVerifyMessage(result.message || null);
+        setMapStatus(result.status === 'error' ? 'error' : 'not_found');
       }
+    } catch {
+      setLatitude(null);
+      setLongitude(null);
+      setIsAddressVerified(false);
+      setMapVerifiedAddress(null);
+      setMapVerifyMessage('Không thể kết nối dịch vụ bản đồ số lúc này. Vui lòng thử lại sau.');
+      setMapStatus('error');
+    } finally {
+      setVerifyingMap(false);
     }
-
-    setVerifyingMap(false);
   }
 
   function validate(): StoreOnboardingErrors {
@@ -229,21 +216,24 @@ export default function StoreOnboarding({
     setFieldErrors({});
 
     const cleanAccount = bankAccountNumber.trim().replace(/[\s.-]/g, '');
-    if (!bankName) {
-      setBankingError('Vui lòng chọn ngân hàng thụ hưởng.');
-      return;
+    const effectiveBankName =
+      bankName === 'Khác' ? customBankName.trim() : bankName;
+    const bankErrors: StoreOnboardingErrors = {};
+    if (!effectiveBankName) {
+      bankErrors.bankName = 'Vui lòng chọn hoặc nhập tên ngân hàng thụ hưởng.';
     }
     if (!cleanAccount) {
-      setBankingError('Vui lòng nhập số tài khoản ngân hàng để phục vụ đối soát và thanh toán.');
-      return;
-    }
-    if (!/^[A-Za-z0-9]{4,34}$/.test(cleanAccount)) {
-      setBankingError('Số tài khoản ngân hàng không hợp lệ (4–34 ký tự, chỉ gồm chữ cái và số).');
-      return;
+      bankErrors.bankAccountNumber = 'Vui lòng nhập số tài khoản ngân hàng để phục vụ đối soát và thanh toán.';
+    } else if (!/^[A-Za-z0-9]{4,34}$/.test(cleanAccount)) {
+      bankErrors.bankAccountNumber = 'Số tài khoản ngân hàng không hợp lệ (4–34 ký tự, chỉ gồm chữ cái và số).';
     }
     const cleanHolder = bankAccountHolder.trim().replace(/\s+/g, ' ');
     if (!cleanHolder || cleanHolder.length < 2) {
-      setBankingError('Vui lòng nhập tên chủ tài khoản thụ hưởng.');
+      bankErrors.bankAccountHolder = 'Vui lòng nhập tên chủ tài khoản thụ hưởng.';
+    }
+    if (Object.keys(bankErrors).length > 0) {
+      setFieldErrors(bankErrors);
+      setBankingError('');
       return;
     }
 
@@ -255,9 +245,6 @@ export default function StoreOnboarding({
               alleyNote.trim() ? ` · ${alleyNote.trim()}` : ''
             }`
           : null;
-
-      const effectiveBankName =
-        bankName === 'Khác' ? customBankName.trim() || 'Khác' : bankName;
 
       const payload = {
         storeName: storeName.trim().replace(/\s+/g, ' '),
@@ -288,12 +275,25 @@ export default function StoreOnboarding({
         'storeAddress',
         'storePhone',
         'taxCode',
+        'bankName',
+        'bankAccountNumber',
+        'bankAccountHolder',
       ]);
+      const hasStep1Error = Boolean(
+        apiErrors.storeName || apiErrors.storeAddress || apiErrors.storePhone || apiErrors.taxCode
+      );
       if (Object.keys(apiErrors).length > 0) {
         setFieldErrors(apiErrors);
-        setStep(1);
+        if (hasStep1Error) {
+          setStep(1);
+          setError(getApiError(issue));
+        } else {
+          setError('');
+          setBankingError('');
+        }
+      } else {
+        setError(getApiError(issue));
       }
-      setError(getApiError(issue));
       if (isUnauthenticated(issue)) {
         onSignOut();
       }
@@ -826,7 +826,9 @@ export default function StoreOnboarding({
                       color: '#92400e',
                     }}
                   >
-                    <strong>Chưa tìm thấy vị trí chính xác trên bản đồ.</strong> Vui lòng ghi rõ: <em>Số nhà, Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố</em> (ví dụ: 123 Đường Số 4, Phường Bình Trị Đông B, Quận Bình Tân, TP. Hồ Chí Minh).
+                    <strong>Chưa xác minh được địa chỉ trên bản đồ số.</strong>{' '}
+                    {mapVerifyMessage ||
+                      'Vui lòng ghi rõ: Số nhà, Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố đầy đủ (ví dụ: 221 Đường Trịnh Đình Trọng, Tân Phú, TP. Hồ Chí Minh).'}
                   </div>
                 )}
 
@@ -842,7 +844,7 @@ export default function StoreOnboarding({
                       color: '#64748b',
                     }}
                   >
-                    Lưu ý: Tạm thời không kết nối được dịch vụ bản đồ số, hệ thống sẽ lưu địa chỉ và xác thực qua cấu trúc hành chính.
+                    {mapVerifyMessage || 'Tạm thời không kết nối được dịch vụ bản đồ số. Vui lòng thử lại sau.'}
                   </div>
                 )}
 
@@ -901,7 +903,7 @@ export default function StoreOnboarding({
                       boxShadow: '0 2px 4px rgba(33, 78, 57, 0.2)',
                     }}
                   >
-                    Tiếp tục: Thiết lập tài khoản ngân hàng →
+                    Thiết lập tài khoản ngân hàng →
                   </button>
                 </div>
               </div>
@@ -958,11 +960,14 @@ export default function StoreOnboarding({
                     id="onboarding-bankName"
                     value={bankName}
                     disabled={saving}
-                    onChange={(e) => setBankName(e.target.value)}
+                    onChange={(e) => {
+                      setBankName(e.target.value);
+                      if (fieldErrors.bankName) setFieldErrors((prev) => ({ ...prev, bankName: undefined }));
+                    }}
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      border: '1px solid #cbd5e1',
+                      border: `1px solid ${fieldErrors.bankName ? '#dc2626' : '#cbd5e1'}`,
                       borderRadius: '8px',
                       fontSize: '14px',
                       backgroundColor: '#ffffff',
@@ -994,19 +999,27 @@ export default function StoreOnboarding({
                         type="text"
                         disabled={saving}
                         value={customBankName}
-                        onChange={(e) => setCustomBankName(e.target.value)}
+                        onChange={(e) => {
+                          setCustomBankName(e.target.value);
+                          if (fieldErrors.bankName) setFieldErrors((prev) => ({ ...prev, bankName: undefined }));
+                        }}
                         placeholder="Ví dụ: Shinhan Bank, Woori Bank, PVcomBank..."
                         maxLength={100}
                         style={{
                           width: '100%',
                           padding: '10px 14px',
-                          border: '1px solid #cbd5e1',
+                          border: `1px solid ${fieldErrors.bankName ? '#dc2626' : '#cbd5e1'}`,
                           borderRadius: '8px',
                           fontSize: '14px',
                           boxSizing: 'border-box',
                         }}
                       />
                     </div>
+                  )}
+                  {fieldErrors.bankName && (
+                    <small style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                      {fieldErrors.bankName}
+                    </small>
                   )}
                 </div>
 
@@ -1029,25 +1042,36 @@ export default function StoreOnboarding({
                     type="text"
                     disabled={saving}
                     value={bankAccountNumber}
+                    aria-invalid={Boolean(fieldErrors.bankAccountNumber)}
                     onChange={(e) => {
                       setBankingError('');
+                      setError('');
                       setBankAccountNumber(e.target.value.replace(/[^A-Za-z0-9]/g, ''));
+                      if (fieldErrors.bankAccountNumber) {
+                        setFieldErrors((prev) => ({ ...prev, bankAccountNumber: undefined }));
+                      }
                     }}
                     placeholder="Ví dụ: 0071001234567"
                     maxLength={34}
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      border: '1px solid #cbd5e1',
+                      border: `1px solid ${fieldErrors.bankAccountNumber ? '#dc2626' : '#cbd5e1'}`,
                       borderRadius: '8px',
                       fontSize: '14px',
                       fontFamily: 'monospace',
                       letterSpacing: '0.04em',
                     }}
                   />
-                  <small style={{ color: '#64748b', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                    Chỉ gồm chữ số và chữ cái (từ 4 đến 34 ký tự), không dấu và không khoảng trắng.
-                  </small>
+                  {fieldErrors.bankAccountNumber ? (
+                    <small role="alert" style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px', display: 'block', fontWeight: 500 }}>
+                      {fieldErrors.bankAccountNumber}
+                    </small>
+                  ) : (
+                    <small style={{ color: '#64748b', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                      Chỉ gồm chữ số và chữ cái (từ 4 đến 34 ký tự), không dấu và không khoảng trắng.
+                    </small>
+                  )}
                 </div>
 
                 {/* Tên chủ tài khoản */}
@@ -1069,18 +1093,29 @@ export default function StoreOnboarding({
                     type="text"
                     disabled={saving}
                     value={bankAccountHolder}
-                    onChange={(e) => setBankAccountHolder(e.target.value.toUpperCase())}
+                    aria-invalid={Boolean(fieldErrors.bankAccountHolder)}
+                    onChange={(e) => {
+                      setBankAccountHolder(e.target.value.toUpperCase());
+                      if (fieldErrors.bankAccountHolder) {
+                        setFieldErrors((prev) => ({ ...prev, bankAccountHolder: undefined }));
+                      }
+                    }}
                     placeholder="Ví dụ: NGUYEN VAN A"
                     maxLength={100}
                     style={{
                       width: '100%',
                       padding: '10px 14px',
-                      border: '1px solid #cbd5e1',
+                      border: `1px solid ${fieldErrors.bankAccountHolder ? '#dc2626' : '#cbd5e1'}`,
                       borderRadius: '8px',
                       fontSize: '14px',
                       textTransform: 'uppercase',
                     }}
                   />
+                  {fieldErrors.bankAccountHolder && (
+                    <small style={{ color: '#dc2626', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                      {fieldErrors.bankAccountHolder}
+                    </small>
+                  )}
                 </div>
 
                 {/* Tải ảnh mã QR */}
@@ -1142,13 +1177,31 @@ export default function StoreOnboarding({
                     </div>
                   ) : (
                     <div>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        disabled={uploadingQr || saving}
-                        onChange={(e) => void handleQrUpload(e)}
-                        style={{ fontSize: '13px' }}
-                      />
+                      <label
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          padding: '9px 16px',
+                          borderRadius: '8px',
+                          border: '1px solid #cbd5e1',
+                          background: uploadingQr || saving ? '#f1f5f9' : '#ffffff',
+                          color: '#0f172a',
+                          fontSize: '13.5px',
+                          fontWeight: 600,
+                          cursor: uploadingQr || saving ? 'not-allowed' : 'pointer',
+                          boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+                        }}
+                      >
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp"
+                          disabled={uploadingQr || saving}
+                          onChange={(e) => void handleQrUpload(e)}
+                          style={{ display: 'none' }}
+                        />
+                        <span>{uploadingQr ? 'Đang tải ảnh lên...' : bankQrImageUrl ? 'Đổi ảnh QR' : 'Thêm ảnh'}</span>
+                      </label>
                       {uploadingQr && (
                         <span style={{ marginLeft: '8px', fontSize: '12px', color: '#2563eb' }}>
                           Đang tải ảnh lên…

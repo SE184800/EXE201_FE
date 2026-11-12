@@ -39,13 +39,15 @@ const statuses = {
 };
 
 const COMPLAINT_STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  OPEN: { label: 'Chờ chủ vựa xem', color: '#c2410c', bg: '#fff7ed' },
-  IN_REVIEW: { label: 'Chủ vựa đang xử lý', color: '#1d4ed8', bg: '#eff6ff' },
-  RESOLVED: { label: 'Đã giải quyết', color: '#15803d', bg: '#f0fdf4' },
-  REJECTED: { label: 'Chủ vựa từ chối', color: '#b91c1c', bg: '#fef2f2' },
-  ESCALATED: { label: 'Chờ Admin phân xử', color: '#7c3aed', bg: '#f5f3ff' },
-  ADMIN_RESOLVED_BUYER: { label: 'Admin xử Tiệm thắng (Đã hoàn tiền)', color: '#15803d', bg: '#f0fdf4' },
-  ADMIN_RESOLVED_SUPPLIER: { label: 'Admin xử Vựa thắng', color: '#475569', bg: '#f1f5f9' },
+  OPEN: { label: 'Mới tạo · Chờ chủ vựa phản hồi', color: '#c2410c', bg: '#fff7ed' },
+  IN_REVIEW: { label: 'Đang xử lý · Hai bên đang trao đổi', color: '#1d4ed8', bg: '#eff6ff' },
+  RESOLVED: { label: 'Hoàn thành · Đã thống nhất kết quả', color: '#15803d', bg: '#f0fdf4' },
+  CLOSED_TIMEOUT: { label: 'Đã đóng (Lịch sử cũ)', color: '#7c2d12', bg: '#ffedd5' },
+  CLOSED_UNRESOLVED: { label: 'Đã đóng (Lịch sử cũ)', color: '#475569', bg: '#f1f5f9' },
+  REJECTED: { label: 'Chủ vựa từ chối đề xuất', color: '#b91c1c', bg: '#fef2f2' },
+  ESCALATED: { label: 'Đang xử lý (Hồ sơ cũ)', color: '#6d28d9', bg: '#f5f3ff' },
+  ADMIN_RESOLVED_BUYER: { label: 'Hoàn thành (Hồ sơ cũ)', color: '#15803d', bg: '#f0fdf4' },
+  ADMIN_RESOLVED_SUPPLIER: { label: 'Hoàn thành (Hồ sơ cũ)', color: '#475569', bg: '#f1f5f9' },
 };
 
 const COMPLAINT_REASONS: { code: string; label: string }[] = [
@@ -78,12 +80,11 @@ const DESIRED_RESOLUTIONS: { code: string; label: string }[] = [
 ];
 
 const SUPPLIER_RESOLUTIONS: { code: string; label: string }[] = [
-  { code: 'AGREE_REPLACE_0VND', label: 'Đồng ý giao bù hàng mới (Tự động tạo đơn 0đ)' },
-  { code: 'AGREE_REFUND', label: 'Đồng ý hoàn tiền / Trừ cọc' },
-  { code: 'AGREE_REPLACE', label: 'Đồng ý giao bù hàng mới chuyến sau' },
-  { code: 'AGREE_RETURN', label: 'Đồng ý thu hồi đổi trả hàng' },
-  { code: 'DISCUSS', label: 'Đang liên hệ trao đổi phương án với cửa hàng' },
-  { code: 'REJECT', label: 'Từ chối (Hàng giao đúng và đảm bảo tiêu chuẩn)' },
+  { code: 'AGREE_REPLACE_0VND', label: 'Giao bù hàng mới (Tự động tạo đơn 0đ khi Tiệm đồng ý)' },
+  { code: 'DEDUCT_COD', label: 'Giảm trừ tiền hàng hỏng trực tiếp vào COD' },
+  { code: 'RETURN_REFUND', label: 'Nhận lại hàng & Hoàn 100% cọc / tiền ví khi Tiệm đồng ý' },
+  { code: 'DISCUSS', label: 'Trao đổi thêm phương án khác với cửa hàng' },
+  { code: 'REJECT', label: 'Từ chối bồi thường (Hàng giao đúng quy chuẩn)' },
 ];
 
 async function compressImageFile(file: File): Promise<string> {
@@ -251,6 +252,27 @@ function computeOrderLossAmount(order: SupplierOrder): number {
   return Math.round(totalLoss);
 }
 
+function getOrderTotalDeduction(order: SupplierOrder): number {
+  const incidentDeduct = order.driverInfo?.incidentReport?.action === 'DEDUCT_COD'
+    ? computeOrderLossAmount(order)
+    : 0;
+  const complaintDeduct = Number(order.complaint?.workflow?.agreedDeductAmount || 0);
+  return incidentDeduct + (Number.isFinite(complaintDeduct) && complaintDeduct > 0 ? complaintDeduct : 0);
+}
+
+function formatComplaintTime(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
 const RESCHEDULE_HOURS = ['08', '09', '10', '11', '12', '13', '14', '15', '16', '17'];
 const RESCHEDULE_MINUTES = ['00', '15', '30', '45'];
 
@@ -336,7 +358,8 @@ export default function OrderList({
   const [complaintLooseItems, setComplaintLooseItems] = useState<Record<number, { isLoose: boolean; looseQty: number | string }>>({});
   const [complaintResolution, setComplaintResolution] = useState<string>('REFUND');
   const [complaintImages, setComplaintImages] = useState<string[]>([]);
-  const [supplierPlan, setSupplierPlan] = useState<string>('AGREE_REFUND');
+  const [supplierPlan, setSupplierPlan] = useState<string>('AGREE_REPLACE_0VND');
+  const [supplierDeductAmount, setSupplierDeductAmount] = useState<string>('');
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [depositBusy, setDepositBusy] = useState<number | null>(null);
   const [depositDraft, setDepositDraft] = useState<{ orderId: number; reference: string } | null>(
@@ -662,23 +685,34 @@ export default function OrderList({
     }
   }
 
-  async function updateComplaint(status: string) {
+  async function submitSupplierProposal() {
     if (!complaintOrder?.complaint || complaintActionBusy) return;
-    setComplaintActionBusy(true);
+    const trimmedNote = complaintResponse.trim();
+    if (trimmedNote.length < 3) {
+      setComplaintMessage('Lỗi: Vui lòng nhập phản hồi chi tiết (tối thiểu 3 ký tự).');
+      return;
+    }
+    let parsedDeduct: number | undefined;
+    if (supplierPlan === 'DEDUCT_COD') {
+      parsedDeduct = Math.round(Number(supplierDeductAmount));
+      if (!Number.isFinite(parsedDeduct) || parsedDeduct <= 0) {
+        setComplaintMessage('Lỗi: Vui lòng nhập số tiền đề xuất giảm trừ vào COD lớn hơn 0.');
+        return;
+      }
+    }
 
-    const planLabel =
-      SUPPLIER_RESOLUTIONS.find((p) => p.code === supplierPlan)?.label || supplierPlan;
-    const finalResponse = complaintResponse.trim()
-      ? `[Phương án: ${planLabel}] ${complaintResponse.trim()}`
-      : `[Phương án: ${planLabel}]`;
+    setComplaintActionBusy(true);
+    setComplaintMessage('');
 
     try {
-      await api.patch(`/complaints/${complaintOrder.complaint.id}`, {
-        status,
-        response: finalResponse,
+      await api.post(`/complaints/${complaintOrder.complaint.id}/respond`, {
+        action: supplierPlan,
+        deductAmount: parsedDeduct,
+        note: trimmedNote,
       });
       setComplaintOrder(null);
       setComplaintResponse('');
+      setSupplierDeductAmount('');
       setReload((n) => n + 1);
     } catch (issue) {
       setComplaintMessage(getApiError(issue));
@@ -794,31 +828,58 @@ export default function OrderList({
     }
   };
 
-  const handleEscalateComplaint = async (complaintId: number) => {
-    const reason = window.prompt(
-      'Chủ vựa đã từ chối khiếu nại. Bạn có muốn yêu cầu Quản trị viên hệ thống can thiệp giải quyết không?\nNhập nội dung kháng cáo (nếu có):',
-      'Chủ vựa từ chối không thỏa đáng, đề nghị Quản trị viên kiểm tra hình ảnh bằng chứng và hoàn tiền.'
-    );
-    if (reason === null) return;
+  const handleBuyerDecision = async (
+    complaintId: number,
+    decision: 'ACCEPT' | 'COUNTER' | 'WITHDRAW',
+  ) => {
+    let note: string | undefined;
+    if (decision === 'COUNTER') {
+      const entered = window.prompt(
+        'Đề xuất lại phương án cho Chủ vựa.\nNhập lý do chưa đồng ý hoặc phương án bạn mong muốn (tối thiểu 3 ký tự):',
+        '',
+      );
+      if (entered === null) return;
+      if (entered.trim().length < 3) {
+        window.alert('Vui lòng nhập nội dung đề xuất lại tối thiểu 3 ký tự.');
+        return;
+      }
+      note = entered.trim();
+    } else if (decision === 'ACCEPT') {
+      if (
+        !window.confirm(
+          'Xác nhận ĐỒNG Ý với phương án Chủ vựa đã đưa ra và ghi nhận kết quả Hoàn thành cho khiếu nại này?',
+        )
+      ) {
+        return;
+      }
+    } else if (decision === 'WITHDRAW') {
+      if (!window.confirm('Bạn muốn chủ động rút khiếu nại cho đơn hàng này?')) return;
+    }
+
     try {
-      const res = await fetch(`/api/complaints/${complaintId}/escalate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: reason.trim() }),
-      });
-      const resData = await res.json();
-      if (!res.ok) throw new Error(resData.message || 'Không thể gửi kháng cáo.');
-      window.alert(resData.message || 'Đã gửi yêu cầu kháng cáo lên Admin thành công.');
+      const res = await api.post<{ success: boolean; message?: string }>(
+        `/complaints/${complaintId}/buyer-decision`,
+        { decision, ...(note ? { note } : {}) },
+      );
+      window.alert(res.data?.message || 'Đã cập nhật kết quả thương lượng.');
       setReload((n) => n + 1);
-    } catch (err: any) {
-      window.alert(err.message || 'Lỗi khi gửi kháng cáo.');
+    } catch (issue) {
+      if (isUnauthenticated(issue)) onLogout();
+      else window.alert(getApiError(issue) || 'Không thể xử lý phản hồi khiếu nại.');
     }
   };
 
   const openSupplierComplaint = (order: SupplierOrder) => {
     setComplaintOrder(order);
-    setComplaintResponse(order.complaint?.response || '');
-    setSupplierPlan(SUPPLIER_RESOLUTIONS[0].code);
+    setComplaintResponse('');
+    const proposed = order.complaint?.workflow?.proposedAction;
+    const isValidPlan = SUPPLIER_RESOLUTIONS.some((p) => p.code === proposed);
+    setSupplierPlan(isValidPlan && proposed ? proposed : SUPPLIER_RESOLUTIONS[0].code);
+    setSupplierDeductAmount(
+      order.complaint?.workflow?.proposedDeductAmount
+        ? String(Math.round(order.complaint.workflow.proposedDeductAmount))
+        : '',
+    );
     setComplaintMessage('');
   };
 
@@ -1731,21 +1792,23 @@ export default function OrderList({
                       <Icon name="shield" /> Báo sự cố:{' '}
                       {REASON_LABELS[order.complaint.reason] || order.complaint.reason}
                     </strong>
-                    <span
-                      style={{
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        padding: '3px 10px',
-                        borderRadius: '12px',
-                        color: COMPLAINT_STATUS_MAP[order.complaint.status]?.color || '#c2410c',
-                        backgroundColor:
-                          COMPLAINT_STATUS_MAP[order.complaint.status]?.bg || '#fff7ed',
-                        border: `1px solid ${COMPLAINT_STATUS_MAP[order.complaint.status]?.color || '#c2410c'}40`,
-                      }}
-                    >
-                      {COMPLAINT_STATUS_MAP[order.complaint.status]?.label ||
-                        order.complaint.status}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          padding: '3px 10px',
+                          borderRadius: '12px',
+                          color: COMPLAINT_STATUS_MAP[order.complaint.status]?.color || '#c2410c',
+                          backgroundColor:
+                            COMPLAINT_STATUS_MAP[order.complaint.status]?.bg || '#fff7ed',
+                          border: `1px solid ${COMPLAINT_STATUS_MAP[order.complaint.status]?.color || '#c2410c'}40`,
+                        }}
+                      >
+                        {COMPLAINT_STATUS_MAP[order.complaint.status]?.label ||
+                          order.complaint.status}
+                      </span>
+                    </div>
                   </div>
 
                   {(() => {
@@ -1860,87 +1923,223 @@ export default function OrderList({
                     );
                   })()}
 
-                  {order.complaint.response ? (
-                    <div
-                      style={{
-                        marginTop: '10px',
-                        padding: '10px 12px',
-                        borderRadius: '6px',
-                        backgroundColor: '#f0fdf4',
-                        border: '1px solid #bbf7d0',
-                        color: '#166534',
-                      }}
-                    >
-                      <strong style={{ display: 'block', marginBottom: '3px' }}>
-                        Chủ vựa trả lời:
-                      </strong>
-                      <span>{order.complaint.response}</span>
-                    </div>
-                  ) : (
-                    <small
-                      style={{
-                        color: '#9a3412',
-                        fontStyle: 'italic',
-                        display: 'block',
-                        marginTop: '6px',
-                      }}
-                    >
-                      {kind === 'store'
-                        ? 'Đang chờ nhà cung cấp tiếp nhận và phản hồi.'
-                        : 'Chưa có phản hồi cho cửa hàng.'}
-                    </small>
-                  )}
+                  {(() => {
+                    const wf = order.complaint?.workflow || null;
+                    const st = order.complaint?.status || 'OPEN';
+                    const isOpenComplaint = ['OPEN', 'IN_REVIEW', 'REJECTED', 'ESCALATED'].includes(st);
+                    const pendingParty = wf?.pendingParty || (st === 'OPEN' ? 'SUPPLIER' : isOpenComplaint ? 'STORE_OWNER' : null);
+                    const history = Array.isArray(wf?.history) ? wf.history : [];
 
-                  {kind === 'store' && order.complaint && order.complaint.status === 'REJECTED' && (
-                    <div
-                      style={{
-                        marginTop: '10px',
-                        display: 'flex',
-                        justifyContent: 'flex-end',
-                      }}
-                    >
-                      <button
-                        className="table-button"
-                        type="button"
-                        style={{ background: '#7c3aed', color: '#fff', borderColor: '#6d28d9', fontWeight: 600 }}
-                        disabled={busy}
-                        onClick={() => handleEscalateComplaint(order.complaint!.id)}
-                      >
-                        Kháng cáo lên Admin
-                      </button>
-                    </div>
-                  )}
+                    return (
+                      <>
+                        {wf && wf.proposedAction && (
+                          <div
+                            style={{
+                              marginTop: '10px',
+                              padding: '10px 12px',
+                              borderRadius: '6px',
+                              backgroundColor: '#f0fdf4',
+                              border: '1px solid #bbf7d0',
+                              color: '#166534',
+                            }}
+                          >
+                            <strong style={{ display: 'block', marginBottom: '3px' }}>
+                              Đề xuất gần nhất của Chủ vựa:
+                            </strong>
+                            <div>
+                              {SUPPLIER_RESOLUTIONS.find((p) => p.code === wf.proposedAction)?.label ||
+                                wf.proposedAction}
+                              {wf.proposedAction === 'DEDUCT_COD' &&
+                                Number(wf.proposedDeductAmount || 0) > 0 && (
+                                  <strong style={{ marginLeft: '6px', color: '#dc2626' }}>
+                                    (-{money(Number(wf.proposedDeductAmount))})
+                                  </strong>
+                                )}
+                            </div>
+                            {wf.proposedNote && (
+                              <div style={{ marginTop: '3px', fontSize: '12.5px', color: '#14532d' }}>
+                                {wf.proposedNote}
+                              </div>
+                            )}
+                          </div>
+                        )}
 
-                  {kind === 'supplier' && (
-                    <div
-                      style={{
-                        marginTop: '10px',
-                        display: 'flex',
-                        justifyContent: 'flex-end',
-                        alignItems: 'center',
-                        gap: '8px',
-                      }}
-                    >
-                      {['OPEN', 'IN_REVIEW'].includes(order.complaint?.status || '') ? (
-                        <button
-                          className="table-button"
-                          type="button"
-                          disabled={busy}
-                          onClick={() => openSupplierComplaint(order)}
-                        >
-                          Xử lý khiếu nại
-                        </button>
-                      ) : order.complaint?.status === 'ESCALATED' ? (
-                        <span style={{ fontSize: '12px', color: '#7c3aed', fontWeight: 600, background: '#f5f3ff', padding: '4px 10px', borderRadius: '4px', border: '1px solid #ddd6fe' }}>
-                          Khiếu nại đã chuyển lên Admin phân xử. Vui lòng chờ quyết định từ sàn.
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: '12px', color: '#15803d', fontWeight: 600, background: '#f0fdf4', padding: '4px 10px', borderRadius: '4px', border: '1px solid #bbf7d0' }}>
-                          Khiếu nại đã được phân xử / giải quyết dứt điểm.
-                        </span>
-                      )}
-                    </div>
-                  )}
+                        {!wf?.proposedAction && order.complaint?.response && (
+                          <div
+                            style={{
+                              marginTop: '10px',
+                              padding: '10px 12px',
+                              borderRadius: '6px',
+                              backgroundColor: '#f0fdf4',
+                              border: '1px solid #bbf7d0',
+                              color: '#166534',
+                            }}
+                          >
+                            <strong style={{ display: 'block', marginBottom: '3px' }}>
+                              Chủ vựa trả lời:
+                            </strong>
+                            <span>{order.complaint.response}</span>
+                          </div>
+                        )}
+
+                        {history.length > 0 && (
+                          <div
+                            style={{
+                              marginTop: '8px',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              backgroundColor: '#f8fafc',
+                              border: '1px solid #e2e8f0',
+                              fontSize: '12px',
+                            }}
+                          >
+                            <strong style={{ display: 'block', color: '#334155', marginBottom: '4px' }}>
+                              Lịch sử thương lượng ({history.length} bước):
+                            </strong>
+                            <div style={{ display: 'grid', gap: '4px' }}>
+                              {history.map((h, i) => (
+                                <div key={`${order.complaint!.id}-h-${i}`} style={{ color: '#475569' }}>
+                                  <span style={{ fontWeight: 600, color: '#0f172a' }}>{h.label}:</span>{' '}
+                                  {h.note}{' '}
+                                  <span style={{ color: '#94a3b8' }}>({formatComplaintTime(h.at)})</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {!isOpenComplaint && (wf?.finalSummary || order.complaint?.response) && (
+                          <div
+                            style={{
+                              marginTop: '8px',
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              backgroundColor: ['CLOSED_TIMEOUT', 'CLOSED_UNRESOLVED'].includes(st)
+                                ? '#fff7ed'
+                                : '#f0fdf4',
+                              border: `1px solid ${['CLOSED_TIMEOUT', 'CLOSED_UNRESOLVED'].includes(st) ? '#fdba74' : '#86efac'}`,
+                              fontSize: '12.5px',
+                              color: '#0f172a',
+                            }}
+                          >
+                            <strong>Kết quả thống nhất cuối cùng:</strong> {wf?.finalSummary || order.complaint?.response}
+                            {wf?.closedReason && (
+                              <div style={{ marginTop: '2px', color: '#475569', fontSize: '12px' }}>
+                                {wf.closedReason}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {kind === 'store' && order.complaint && isOpenComplaint && (
+                          <div
+                            style={{
+                              marginTop: '10px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: '8px',
+                              flexWrap: 'wrap',
+                              paddingTop: '8px',
+                              borderTop: '1px dashed #fed7aa',
+                            }}
+                          >
+                            <span style={{ fontSize: '12px', color: '#9a3412' }}>
+                              {pendingParty === 'STORE_OWNER'
+                                ? 'Chủ vựa đã gửi phương án. Vui lòng xác nhận đồng ý hoặc đề xuất lại phương án khác.'
+                                : 'Đang chờ Chủ vựa kiểm tra và phản hồi phương án xử lý.'}
+                            </span>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                              {pendingParty === 'STORE_OWNER' && (
+                                <>
+                                  <button
+                                    className="table-button"
+                                    type="button"
+                                    style={{ background: '#16a34a', color: '#fff', borderColor: '#15803d', fontWeight: 600 }}
+                                    disabled={busy}
+                                    onClick={() => void handleBuyerDecision(order.complaint!.id, 'ACCEPT')}
+                                  >
+                                    {wf?.proposedAction && !['REJECT', 'DISCUSS'].includes(wf.proposedAction)
+                                      ? 'Đồng ý phương án & Hoàn thành'
+                                      : 'Chấp nhận giải trình & Hoàn thành'}
+                                  </button>
+                                  <button
+                                    className="table-button"
+                                    type="button"
+                                    style={{ background: '#d97706', color: '#fff', borderColor: '#b45309', fontWeight: 600 }}
+                                    disabled={busy}
+                                    onClick={() => void handleBuyerDecision(order.complaint!.id, 'COUNTER')}
+                                  >
+                                    Chưa đồng ý · Đề xuất lại
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                className="table-button"
+                                type="button"
+                                disabled={busy}
+                                onClick={() => void handleBuyerDecision(order.complaint!.id, 'WITHDRAW')}
+                              >
+                                Rút khiếu nại
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {kind === 'supplier' && (
+                          <div
+                            style={{
+                              marginTop: '10px',
+                              display: 'flex',
+                              justifyContent: 'flex-end',
+                              alignItems: 'center',
+                              gap: '8px',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            {isOpenComplaint && pendingParty !== 'STORE_OWNER' ? (
+                              <button
+                                className="table-button"
+                                type="button"
+                                disabled={busy}
+                                onClick={() => openSupplierComplaint(order)}
+                              >
+                                Đề xuất phương án xử lý
+                              </button>
+                            ) : isOpenComplaint && pendingParty === 'STORE_OWNER' ? (
+                              <span
+                                style={{
+                                  fontSize: '12px',
+                                  color: '#1d4ed8',
+                                  fontWeight: 600,
+                                  background: '#eff6ff',
+                                  padding: '4px 10px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #bfdbfe',
+                                }}
+                              >
+                                Đã gửi phương án · Chờ Tiệm tạp hóa xác nhận kết quả.
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: '12px',
+                                  color: '#15803d',
+                                  fontWeight: 600,
+                                  background: '#f0fdf4',
+                                  padding: '4px 10px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #bbf7d0',
+                                }}
+                              >
+                                Khiếu nại đã hoàn thành và ghi nhận kết quả.
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -2219,11 +2418,11 @@ export default function OrderList({
               )}
 
               {(() => {
-                const loss = order.driverInfo?.incidentReport?.action === 'DEDUCT_COD' ? computeOrderLossAmount(order) : 0;
+                const loss = getOrderTotalDeduction(order);
                 const adjustedSubtotal = Math.max(0, order.subtotal - loss);
                 const depositPaid = order.depositStatus === 'PAID' ? order.depositAmount : 0;
 
-                return loss > 0 && order.driverInfo?.incidentReport?.action === 'DEDUCT_COD' ? (
+                return loss > 0 ? (
                   <div style={{ margin: '8px 0', fontSize: '12.5px', color: '#475569' }}>
                     <div>
                       Tiền hàng gốc: <strong>{money(order.subtotal)}</strong>
@@ -2252,8 +2451,8 @@ export default function OrderList({
                   :{' '}
                   {money(
                     orderPaymentSummary(order).paid || ['COMPLETED', 'REJECTED'].includes(order.status)
-                      ? orderPaymentSummary(order, order.driverInfo?.incidentReport?.action === 'DEDUCT_COD' ? computeOrderLossAmount(order) : 0).total
-                      : orderPaymentSummary(order, order.driverInfo?.incidentReport?.action === 'DEDUCT_COD' ? computeOrderLossAmount(order) : 0).remaining,
+                      ? orderPaymentSummary(order, getOrderTotalDeduction(order)).total
+                      : orderPaymentSummary(order, getOrderTotalDeduction(order)).remaining,
                   )}
                 </strong>
                 {kind === 'supplier' && (
@@ -2512,7 +2711,7 @@ export default function OrderList({
                   ? submitComplaint
                   : (e) => {
                     e.preventDefault();
-                    void updateComplaint('RESOLVED');
+                    void submitSupplierProposal();
                   }
               }
             >
@@ -2995,7 +3194,7 @@ export default function OrderList({
 
                     <div className="complaint-field">
                       <label className="complaint-label">
-                        <span>Phương án giải quyết (Chủ vựa xác nhận)</span>
+                        <span>Phương án đề xuất gửi Tiệm tạp hóa</span>
                       </label>
                       <select
                         className="complaint-select"
@@ -3010,6 +3209,36 @@ export default function OrderList({
                       </select>
                     </div>
 
+                    {supplierPlan === 'DEDUCT_COD' && (
+                      <div className="complaint-field">
+                        <label className="complaint-label">
+                          <span>Số tiền đề xuất giảm trừ vào COD (VNĐ)</span>
+                        </label>
+                        <input
+                          type="number"
+                          min={1000}
+                          step={1000}
+                          className="complaint-select"
+                          value={supplierDeductAmount}
+                          onChange={(e) => setSupplierDeductAmount(e.target.value)}
+                          placeholder="Ví dụ: 150000"
+                        />
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        fontSize: '12.5px',
+                        color: '#1e3a8a',
+                      }}
+                    >
+                      Phương án bạn gửi sẽ chuyển tới Tiệm tạp hóa để xác nhận đồng ý trước khi hoàn thành và ghi nhận kết quả.
+                    </div>
+
                     <div className="complaint-field">
                       <label className="complaint-label">
                         <span>Phản hồi chi tiết gửi đến cửa hàng</span>
@@ -3022,7 +3251,7 @@ export default function OrderList({
                         rows={3}
                         value={complaintResponse}
                         onChange={(e) => setComplaintResponse(e.target.value)}
-                        placeholder="Ghi rõ phương án giải quyết, thời gian hoàn cọc hoặc lịch giao bù..."
+                        placeholder="Ghi rõ phương án giải quyết, số lượng bù, số tiền giảm hoặc thời gian xử lý..."
                       />
                     </div>
                   </div>
@@ -3031,7 +3260,7 @@ export default function OrderList({
                 {complaintMessage && (
                   <p
                     className={
-                      complaintMessage.includes('Lỗi') || complaintMessage.includes('không')
+                      complaintMessage.includes('Lỗi') || complaintMessage.includes('không') || complaintMessage.includes('Vui lòng')
                         ? 'error-notice'
                         : 'supplier-success'
                     }
@@ -3047,7 +3276,7 @@ export default function OrderList({
                   className="complaint-btn-ghost"
                   onClick={() => setComplaintOrder(null)}
                 >
-                  Hủy bỏ
+                  Đóng
                 </button>
                 {kind === 'store' ? (
                   <button
@@ -3059,36 +3288,23 @@ export default function OrderList({
                   </button>
                 ) : (
                   <>
-                    {['OPEN', 'IN_REVIEW'].includes(complaintOrder?.complaint?.status || '') ? (
-                      <>
-                        <button
-                          type="button"
-                          className="complaint-btn-danger"
-                          disabled={complaintActionBusy}
-                          onClick={() => void updateComplaint('REJECTED')}
-                        >
-                          Từ chối
-                        </button>
-                        <button
-                          type="button"
-                          className="complaint-btn-ghost"
-                          disabled={complaintActionBusy}
-                          onClick={() => void updateComplaint('IN_REVIEW')}
-                        >
-                          Đang kiểm hàng
-                        </button>
-                        <button
-                          type="button"
-                          className="complaint-btn-primary"
-                          disabled={complaintActionBusy}
-                          onClick={() => void updateComplaint('RESOLVED')}
-                        >
-                          Xác nhận giải quyết
-                        </button>
-                      </>
+                    {['OPEN', 'IN_REVIEW', 'REJECTED', 'ESCALATED'].includes(
+                      complaintOrder?.complaint?.status || '',
+                    ) && complaintOrder?.complaint?.workflow?.pendingParty !== 'STORE_OWNER' ? (
+                      <button
+                        type="submit"
+                        className="complaint-btn-primary"
+                        disabled={complaintActionBusy}
+                      >
+                        {complaintActionBusy
+                          ? 'Đang gửi…'
+                          : 'Gửi phương án cho Tiệm xác nhận'}
+                      </button>
                     ) : (
                       <span style={{ fontSize: '13px', color: '#64748b', fontStyle: 'italic', padding: '6px 12px' }}>
-                        Khiếu nại đang ở trạng thái {COMPLAINT_STATUS_MAP[complaintOrder?.complaint?.status || '']?.label || complaintOrder?.complaint?.status}, không thể cập nhật thêm.
+                        {complaintOrder?.complaint?.workflow?.pendingParty === 'STORE_OWNER'
+                          ? 'Đang chờ Tiệm tạp hóa xác nhận hoặc đề xuất lại.'
+                          : `Khiếu nại đang ở trạng thái ${COMPLAINT_STATUS_MAP[complaintOrder?.complaint?.status || '']?.label || complaintOrder?.complaint?.status}, không thể cập nhật thêm.`}
                       </span>
                     )}
                   </>
@@ -3398,9 +3614,7 @@ function PaymentDialog({
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [loadingWallet, setLoadingWallet] = useState(true);
 
-  const lossAmount = order.driverInfo?.incidentReport?.action === 'DEDUCT_COD'
-    ? computeOrderLossAmount(order)
-    : 0;
+  const lossAmount = getOrderTotalDeduction(order);
   const depositPaid = order.depositStatus === 'PAID' ? order.depositAmount : 0;
   const remainingAmount = orderPaymentSummary(order, lossAmount).remaining;
 

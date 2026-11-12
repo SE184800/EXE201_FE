@@ -9,7 +9,6 @@ import {
   createSupplierProduct,
   createSupplierProductsBatch,
   getSupplierDashboard,
-  quickVerifySupplier,
   updateSupplierProduct,
   uploadSupplierProductImage,
   type SupplierProduct,
@@ -344,24 +343,6 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
       ]);
     } catch (issue) {
       setBatchError(getApiError(issue));
-      if (isUnauthenticated(issue)) onLogout();
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
-  }
-
-  async function handleQuickActivate() {
-    if (lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setError('');
-    try {
-      const updatedProfile = await quickVerifySupplier();
-      setProfile(updatedProfile);
-      setNotice('Gian hàng đã được kích hoạt thành công! Tất cả sản phẩm đang mở bán hiện đã hiển thị trên Tìm nguồn sỉ.');
-    } catch (issue) {
-      setError(getApiError(issue));
       if (isUnauthenticated(issue)) onLogout();
     } finally {
       lock.current = false;
@@ -789,8 +770,8 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
                   style={{
                     margin: '0 0 16px 0',
                     padding: '14px 18px',
-                    backgroundColor: '#fffbeb',
-                    border: '1px solid #fef3c7',
+                    backgroundColor: profile.verificationStatus === 'REJECTED' ? '#fef2f2' : '#fffbeb',
+                    border: profile.verificationStatus === 'REJECTED' ? '1px solid #fecaca' : '1px solid #fef3c7',
                     borderRadius: '8px',
                     display: 'flex',
                     alignItems: 'center',
@@ -799,28 +780,42 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
                     flexWrap: 'wrap',
                   }}
                 >
-                  <div style={{ fontSize: '13px', color: '#92400e', lineHeight: 1.5 }}>
-                    <strong>Gian hàng chưa kích hoạt mở bán:</strong> Các sản phẩm bạn đăng hiện chỉ lưu nội bộ và đang ẩn với các chủ tiệm tạp hóa trên trang "Tìm nguồn sỉ".
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleQuickActivate()}
-                    disabled={busy}
+                  <div
                     style={{
-                      padding: '7px 16px',
-                      backgroundColor: '#16a34a',
+                      fontSize: '13px',
+                      color: profile.verificationStatus === 'REJECTED' ? '#991b1b' : '#92400e',
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {profile.verificationStatus === 'REJECTED' ? (
+                      <>
+                        <strong>Cần điều chỉnh:</strong> Vui lòng cập nhật lại thông tin đăng ký để Admin xem xét phê duyệt trước khi mở bán công khai.
+                      </>
+                    ) : profile.verificationStatus === 'PENDING' ? (
+                      <>
+                        <strong>Đang chờ duyệt:</strong> Hồ sơ và hợp đồng của bạn đã gửi Admin phê duyệt. Sản phẩm đăng tải hiện chỉ lưu nội bộ cho đến khi được xác minh.
+                      </>
+                    ) : (
+                      <>
+                        <strong>Chưa ký thỏa thuận:</strong> Bạn chưa hoàn tất ký số hợp đồng điện tử. Vui lòng hoàn tất ký hợp đồng tại trang Tổng quan để Admin phê duyệt mở bán.
+                      </>
+                    )}
+                  </div>
+                  <Link
+                    to="/supplier"
+                    style={{
+                      padding: '7px 14px',
+                      backgroundColor: profile.verificationStatus === 'REJECTED' ? '#dc2626' : '#d97706',
                       color: '#ffffff',
-                      border: 'none',
                       borderRadius: '6px',
                       fontSize: '12.5px',
                       fontWeight: 600,
-                      cursor: 'pointer',
+                      textDecoration: 'none',
                       whiteSpace: 'nowrap',
-                      boxShadow: '0 1px 2px rgba(22, 163, 74, 0.25)',
                     }}
                   >
-                    Kích hoạt mở bán ngay
-                  </button>
+                    {profile.verificationStatus === 'REJECTED' ? 'Cập nhật hồ sơ' : 'Xem trạng thái hồ sơ'}
+                  </Link>
                 </div>
               )}
               <div className="publish-layout">

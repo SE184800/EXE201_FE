@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
+import type { ComplaintWorkflow } from '../../services/supplier.api';
+import { AdminDialog, Empty, LoadState, Metric } from './admin.shared';
 
 type DisputeComplaint = {
   id: number;
@@ -13,15 +15,32 @@ type DisputeComplaint = {
   response: string | null;
   createdAt: string;
   updatedAt: string;
+  workflow?: ComplaintWorkflow | null;
+  driverPaymentInfo?: {
+    method?: string;
+    amount?: number;
+    status?: string;
+    storePaidAt?: string | null;
+    confirmedAt?: string | null;
+  } | null;
   order: {
     id: number;
     subtotal: number;
+    deliveryFee?: number;
     total: number;
     depositAmount: number;
     depositStatus: string;
     status: string;
+    inventoryImportedAt?: string | null;
     recipientName: string;
     recipientPhone: string;
+    orderPayment?: {
+      id: number;
+      status: string;
+      amount: number;
+      paidAt: string | null;
+      refund?: { id: number } | null;
+    } | null;
     items: Array<{
       id: number;
       productName: string;
@@ -49,23 +68,114 @@ type DisputeComplaint = {
   };
 };
 
-const STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  ESCALATED: { label: 'Chờ Admin phân xử', color: '#7c3aed', bg: '#f5f3ff' },
-  OPEN: { label: 'Chờ vựa xem', color: '#c2410c', bg: '#fff7ed' },
-  IN_REVIEW: { label: 'Đang kiểm hàng', color: '#1d4ed8', bg: '#eff6ff' },
-  REJECTED: { label: 'Vựa từ chối', color: '#b91c1c', bg: '#fef2f2' },
-  RESOLVED: { label: 'Đã giải quyết', color: '#15803d', bg: '#f0fdf4' },
-  ADMIN_RESOLVED_BUYER: { label: 'Admin xử Tiệm thắng (Đã hoàn tiền)', color: '#15803d', bg: '#f0fdf4' },
-  ADMIN_RESOLVED_SUPPLIER: { label: 'Admin xử Vựa thắng', color: '#475569', bg: '#f1f5f9' },
+const REASON_LABELS: Record<string, string> = {
+  DAMAGED: 'Hàng bể vỡ / hư hỏng',
+  SHORTAGE: 'Giao thiếu số lượng',
+  WRONG_ITEM: 'Giao sai sản phẩm',
+  EXPIRED: 'Cận hạn / hết hạn sử dụng',
+  QUALITY: 'Lỗi chất lượng sản phẩm',
+  LATE: 'Giao trễ / sai hẹn',
+  OTHER: 'Lý do khác',
 };
+
+const DEPOSIT_STATUS_LABELS: Record<string, string> = {
+  NONE: 'Không có cọc',
+  PENDING: 'Chờ nộp cọc',
+  SUBMITTED: 'Chờ xác nhận cọc',
+  PAID: 'Đang tạm giữ Escrow',
+  RELEASED: 'Đã giải ngân cho Vựa',
+  REFUNDED: 'Đã hoàn về Ví Tiệm',
+  REJECTED: 'Cọc bị từ chối',
+};
+
+const STATUS_STAGE_MAP: Record<string, { label: string; tone: '' | 'good' | 'bad' }> = {
+  OPEN: { label: 'Mới tạo', tone: '' },
+  IN_REVIEW: { label: 'Đang xử lý', tone: '' },
+  REJECTED: { label: 'Đang xử lý', tone: 'bad' },
+  ESCALATED: { label: 'Đang xử lý', tone: '' },
+  RESOLVED: { label: 'Hoàn thành', tone: 'good' },
+  CLOSED_TIMEOUT: { label: 'Đã đóng', tone: '' },
+  CLOSED_UNRESOLVED: { label: 'Đã đóng', tone: '' },
+  ADMIN_RESOLVED_BUYER: { label: 'Hoàn thành', tone: 'good' },
+  ADMIN_RESOLVED_SUPPLIER: { label: 'Hoàn thành', tone: 'good' },
+};
+
+const money = (v: number) => `${Math.round(Number(v || 0)).toLocaleString('vi-VN')} đ`;
+
+const formatDateTime = (iso?: string | null) => {
+  if (!iso) return '---';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '---';
+  return d.toLocaleString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+};
+
+function parseEvidenceImages(imageUrl?: string | null): string[] {
+  if (!imageUrl) return [];
+  const parts = imageUrl.includes('|||') ? imageUrl.split('|||') : imageUrl.split(',');
+  return parts.map((s) => s.trim()).filter(Boolean);
+}
+
+function parseDescriptionSummary(raw: string): { metaLine: string; details: string } {
+  const match = String(raw || '').match(/^\[([^\]]+)\]\s*\n?([\s\S]*)$/);
+  if (match) {
+    return {
+      metaLine: match[1].trim(),
+      details: (match[2] || '').trim(),
+    };
+  }
+  return { metaLine: '', details: String(raw || '').trim() };
+}
+
+function getPaidSummary(c: DisputeComplaint): { amount: number; label: string } {
+  if (c.order.orderPayment && c.order.orderPayment.status === 'PAID') {
+    const refunded = Boolean(c.order.orderPayment.refund);
+    return {
+      amount: Number(c.order.orderPayment.amount || 0),
+      label: refunded ? 'Ví hệ thống (Đã hoàn)' : 'Ví hệ thống',
+    };
+  }
+  if (c.driverPaymentInfo?.status === 'CONFIRMED') {
+    return {
+      amount: Number(c.driverPaymentInfo.amount || 0),
+      label: `Đã nhận (${c.driverPaymentInfo.method || 'COD/QR'})`,
+    };
+  }
+  if (c.driverPaymentInfo?.storePaidAt) {
+    return {
+      amount: Number(c.driverPaymentInfo.amount || 0),
+      label: `Tiệm báo đã trả (${c.driverPaymentInfo.method || 'COD/QR'})`,
+    };
+  }
+  return { amount: 0, label: 'Chưa thanh toán phần còn lại' };
+}
+
+function getOutcomeText(c: DisputeComplaint): string {
+  const wf = c.workflow;
+  if (wf?.finalSummary) return wf.finalSummary;
+  if (c.status === 'RESOLVED') return c.response || 'Hai bên đã thống nhất kết quả';
+  if (c.status === 'OPEN') return 'Chờ Chủ vựa kiểm tra và đề xuất phương án';
+  if (['IN_REVIEW', 'REJECTED', 'ESCALATED'].includes(c.status)) {
+    if (wf?.pendingParty === 'STORE_OWNER') return 'Chủ vựa đã gửi phương án · Chờ Tiệm xác nhận';
+    if (wf?.pendingParty === 'SUPPLIER') return 'Tiệm đã phản hồi · Chờ Chủ vựa đề xuất lại';
+    return 'Hai bên đang trao đổi phương án';
+  }
+  return c.response || 'Đã ghi nhận kết thúc';
+}
 
 export default function AdminDisputes({ onLogout }: { onLogout: () => void }) {
   const [complaints, setComplaints] = useState<DisputeComplaint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState<'ALL' | 'ESCALATED' | 'RESOLVED'>('ESCALATED');
-  const [busyId, setBusyId] = useState<number | null>(null);
-  const [viewingImage, setViewingImage] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'ALL' | 'OPEN' | 'IN_PROGRESS' | 'RESOLVED'>('ALL');
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<DisputeComplaint | null>(null);
+  const [zoomImage, setZoomImage] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -85,263 +195,457 @@ export default function AdminDisputes({ onLogout }: { onLogout: () => void }) {
     void loadData();
   }, []);
 
-  const handleResolve = async (complaintId: number, decision: 'FAVOR_BUYER' | 'FAVOR_SUPPLIER') => {
-    const isBuyer = decision === 'FAVOR_BUYER';
-    const note = window.prompt(
-      `Xác nhận phân xử: ${isBuyer ? 'XỬ CỬA HÀNG THẮNG (Hoàn 100% tiền cọc và tiền hàng)' : 'XỬ CHỦ VỰA THẮNG (Giải ngân cọc cho Vựa)'}?\nNhập ghi chú căn cứ phân xử:`,
-      isBuyer
-        ? 'Quản trị viên đã kiểm tra biên bản và hình ảnh thiệt hại. Chấp thuận khiếu nại của tiệm và hoàn tiền.'
-        : 'Cửa hàng không cung cấp đủ căn cứ chứng minh sự cố hoặc từ chối nhận hàng vô cớ. Giải ngân cọc cho vựa.'
-    );
-    if (note === null) return;
+  const inProgressStatuses = ['OPEN', 'IN_REVIEW', 'REJECTED', 'ESCALATED'];
+  const completedStatuses = [
+    'RESOLVED',
+    'ADMIN_RESOLVED_BUYER',
+    'ADMIN_RESOLVED_SUPPLIER',
+    'CLOSED_TIMEOUT',
+    'CLOSED_UNRESOLVED',
+  ];
 
-    setBusyId(complaintId);
-    try {
-      const res = await api.post<{ message: string }>(`/admin/complaints/${complaintId}/resolve`, {
-        decision,
-        note: note.trim(),
-      });
-      window.alert(res.data.message || 'Đã phân xử thành công.');
-      await loadData();
-    } catch (e) {
-      window.alert(getApiError(e) || 'Lỗi khi xử lý phân xử.');
-    } finally {
-      setBusyId(null);
-    }
-  };
+  const activeCount = complaints.filter((c) => inProgressStatuses.includes(c.status)).length;
+  const completedCount = complaints.filter((c) => completedStatuses.includes(c.status)).length;
 
+  const q = search.trim().toLowerCase();
   const filtered = complaints.filter((c) => {
-    if (filter === 'ESCALATED') return c.status === 'ESCALATED';
-    if (filter === 'RESOLVED') return ['ADMIN_RESOLVED_BUYER', 'ADMIN_RESOLVED_SUPPLIER', 'RESOLVED'].includes(c.status);
-    return true;
+    if (filter === 'OPEN' && c.status !== 'OPEN') return false;
+    if (filter === 'IN_PROGRESS' && !['IN_REVIEW', 'REJECTED', 'ESCALATED'].includes(c.status)) {
+      return false;
+    }
+    if (filter === 'RESOLVED' && !completedStatuses.includes(c.status)) return false;
+    if (!q) return true;
+    const reasonText = (REASON_LABELS[c.reason] || c.reason || '').toLowerCase();
+    return (
+      String(c.id).includes(q) ||
+      String(c.orderId).includes(q) ||
+      (c.buyer.name || '').toLowerCase().includes(q) ||
+      (c.supplier.businessName || '').toLowerCase().includes(q) ||
+      reasonText.includes(q) ||
+      (c.description || '').toLowerCase().includes(q)
+    );
   });
 
-  const escalatedCount = complaints.filter((c) => c.status === 'ESCALATED').length;
+  const selectedPaid = selected ? getPaidSummary(selected) : null;
+  const selectedImages = selected ? parseEvidenceImages(selected.imageUrl) : [];
+  const selectedDesc = selected ? parseDescriptionSummary(selected.description) : { metaLine: '', details: '' };
 
   return (
-    <div className="admin-content-inner">
-      <header className="admin-header">
+    <>
+      <header className="admin-heading">
         <div>
-          <h1>Phân xử khiếu nại & Tranh chấp đơn hàng</h1>
-          <p className="admin-subtitle">
-            Giải quyết các trường hợp Cửa hàng kháng cáo do Chủ vựa bác bỏ sự cố giao nhận
-          </p>
+          <p>GHI NHẬN KHIẾU NẠI</p>
+          <h1>Lịch sử khiếu nại đơn hàng</h1>
+          <span>
+            Ghi nhận thông tin khiếu nại, bên gửi/bên nhận, số tiền giao dịch (đã trả + tiền cọc) và
+            kết quả thống nhất cuối cùng giữa Tiệm tạp hóa và Chủ vựa.
+          </span>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => void loadData()}
-            disabled={loading}
-          >
-            Làm mới
-          </button>
-        </div>
+        <button type="button" onClick={() => void loadData()} disabled={loading}>
+          {loading ? 'Đang tải...' : 'Làm mới'}
+        </button>
       </header>
 
-      {/* Metrics */}
-      <div className="admin-metrics-grid" style={{ marginBottom: '20px' }}>
-        <article className="admin-metric">
-          <span>CẦN PHÂN XỬ GẤP</span>
-          <strong style={{ color: escalatedCount > 0 ? '#b91c1c' : '#15803d' }}>
-            {escalatedCount} vụ
-          </strong>
-          <small>Cửa hàng kháng cáo lên Admin</small>
-        </article>
-        <article className="admin-metric">
-          <span>TỔNG SỐ KHIẾU NẠI</span>
-          <strong>{complaints.length}</strong>
-          <small>Ghi nhận trên toàn hệ thống</small>
-        </article>
-        <article className="admin-metric">
-          <span>ĐÃ XỬ XONG</span>
-          <strong style={{ color: '#15803d' }}>
-            {complaints.filter((c) => ['ADMIN_RESOLVED_BUYER', 'ADMIN_RESOLVED_SUPPLIER'].includes(c.status)).length}
-          </strong>
-          <small>Đã có quyết định phân xử</small>
-        </article>
+      <div className="admin-metrics three">
+        <Metric
+          label="Đang xử lý"
+          value={`${activeCount} vụ`}
+          note="Mới tạo và hai bên đang trao đổi"
+        />
+        <Metric
+          label="Hoàn thành"
+          value={`${completedCount} vụ`}
+          note="Đã thống nhất phương án cuối cùng"
+        />
+        <Metric
+          label="Tổng số khiếu nại"
+          value={complaints.length}
+          note="Lịch sử ghi nhận toàn hệ thống"
+        />
       </div>
 
-      {/* Filter Tabs */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-        <button
-          type="button"
-          className={`table-button ${filter === 'ESCALATED' ? 'primary-small' : ''}`}
-          style={filter === 'ESCALATED' ? { background: '#7c3aed', color: '#fff' } : {}}
-          onClick={() => setFilter('ESCALATED')}
-        >
-          Chờ Admin phân xử ({escalatedCount})
-        </button>
-        <button
-          type="button"
-          className={`table-button ${filter === 'RESOLVED' ? 'primary-small' : ''}`}
-          onClick={() => setFilter('RESOLVED')}
-        >
-          Đã phân xử xong
-        </button>
-        <button
-          type="button"
-          className={`table-button ${filter === 'ALL' ? 'primary-small' : ''}`}
-          onClick={() => setFilter('ALL')}
-        >
-          Tất cả ({complaints.length})
-        </button>
-      </div>
+      <form
+        className="admin-filters"
+        onSubmit={(e) => {
+          e.preventDefault();
+        }}
+      >
+        <label style={{ flex: 2, minWidth: '240px' }}>
+          Tìm kiếm hồ sơ
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Mã khiếu nại, mã đơn, tiệm tạp hóa, chủ vựa, nguyên nhân..."
+          />
+        </label>
+        <label style={{ maxWidth: '240px' }}>
+          Trạng thái
+          <select
+            value={filter}
+            onChange={(e) =>
+              setFilter(e.target.value as 'ALL' | 'OPEN' | 'IN_PROGRESS' | 'RESOLVED')
+            }
+          >
+            <option value="ALL">Tất cả ({complaints.length})</option>
+            <option value="OPEN">Mới tạo (Bắt đầu)</option>
+            <option value="IN_PROGRESS">Đang xử lý</option>
+            <option value="RESOLVED">Hoàn thành ({completedCount})</option>
+          </select>
+        </label>
+      </form>
 
-      {error && <div className="admin-error-banner" style={{ marginBottom: '16px' }}>{error}</div>}
+      <LoadState loading={loading && complaints.length === 0} error={error} />
 
-      {loading ? (
-        <p style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>Đang tải danh sách khiếu nại...</p>
-      ) : filtered.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '48px', background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
-          <p style={{ margin: 0, color: '#64748b', fontSize: '15px' }}>
-            {filter === 'ESCALATED' ? 'Hiện không có vụ việc nào đang chờ Admin phân xử.' : 'Không có khiếu nại nào.'}
+      <section className="admin-panel">
+        <div className="admin-panel-heading">
+          <h2>Danh sách ghi nhận khiếu nại</h2>
+          <p>
+            Hiển thị {filtered.length} / {complaints.length} hồ sơ · Bấm "Xem chi tiết" để xem ảnh
+            bằng chứng và nhật ký trao đổi đầy đủ.
           </p>
         </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {filtered.map((c) => {
-            const statusConfig = STATUS_MAP[c.status] || { label: c.status, color: '#64748b', bg: '#f1f5f9' };
-            const isEscalated = c.status === 'ESCALATED';
 
-            return (
-              <div
-                key={c.id}
+        {filtered.length === 0 ? (
+          <Empty>Chưa có hồ sơ khiếu nại nào phù hợp với bộ lọc hiện tại.</Empty>
+        ) : (
+          <div className="admin-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Hồ sơ / Đơn</th>
+                  <th>Người khiếu nại → Bị khiếu nại</th>
+                  <th>Nguyên nhân</th>
+                  <th>Số tiền (Đã trả + Cọc)</th>
+                  <th>Trạng thái</th>
+                  <th>Kết quả thống nhất</th>
+                  <th>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((c) => {
+                  const stage = STATUS_STAGE_MAP[c.status] || { label: c.status, tone: '' as const };
+                  const paid = getPaidSummary(c);
+                  const depositAmt = Number(c.order.depositAmount || 0);
+                  const deducted = Number(c.workflow?.agreedDeductAmount || 0);
+                  const parsed = parseDescriptionSummary(c.description);
+                  const shortText = parsed.details || parsed.metaLine || '---';
+
+                  return (
+                    <tr key={c.id}>
+                      <td>
+                        <strong>
+                          #KN-{c.id} · Đơn #{c.orderId}
+                        </strong>
+                        <small>{formatDateTime(c.createdAt)}</small>
+                      </td>
+                      <td>
+                        <strong>{c.buyer.name}</strong>
+                        <small>Vựa: {c.supplier.businessName}</small>
+                      </td>
+                      <td style={{ maxWidth: '240px' }}>
+                        <strong>{REASON_LABELS[c.reason] || c.reason}</strong>
+                        <small
+                          style={{
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap',
+                            maxWidth: '220px',
+                          }}
+                          title={shortText}
+                        >
+                          {shortText}
+                        </small>
+                      </td>
+                      <td className="admin-money">
+                        <strong>
+                          Trả: {money(paid.amount)} · Cọc: {money(depositAmt)}
+                        </strong>
+                        <small>
+                          Tổng đơn: {money(c.order.total)}
+                          {deducted > 0 ? ` · Giảm COD: -${money(deducted)}` : ''}
+                        </small>
+                      </td>
+                      <td>
+                        <span className={`admin-badge ${stage.tone}`}>{stage.label}</span>
+                        <small>{formatDateTime(c.updatedAt)}</small>
+                      </td>
+                      <td style={{ maxWidth: '260px' }}>
+                        <strong style={{ fontWeight: 500 }}>{getOutcomeText(c)}</strong>
+                        <small>
+                          {c.order.inventoryImportedAt ? 'Đã nhập kho' : 'Chưa nhập kho'} ·{' '}
+                          {DEPOSIT_STATUS_LABELS[c.order.depositStatus] || c.order.depositStatus}
+                        </small>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setZoomImage(null);
+                            setSelected(c);
+                          }}
+                        >
+                          Xem chi tiết
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {selected && (
+        <AdminDialog
+          title={`Hồ sơ khiếu nại #${selected.id} · Đơn #${selected.orderId}`}
+          busy={false}
+          onClose={() => {
+            setZoomImage(null);
+            setSelected(null);
+          }}
+        >
+          {zoomImage ? (
+            <div style={{ display: 'grid', gap: '12px' }}>
+              <img
+                src={zoomImage}
+                alt="Bằng chứng phóng to"
                 style={{
-                  background: '#ffffff',
-                  borderRadius: '12px',
-                  border: isEscalated ? '2px solid #c084fc' : '1px solid #e2e8f0',
-                  padding: '18px 20px',
-                  boxShadow: isEscalated ? '0 4px 12px rgba(124, 58, 237, 0.08)' : 'none',
+                  width: '100%',
+                  maxHeight: '62vh',
+                  objectFit: 'contain',
+                  borderRadius: '10px',
+                  border: '1px solid #dce3d5',
+                  background: '#f8fafc',
+                }}
+              />
+              <div className="admin-dialog-actions">
+                <button type="button" onClick={() => setZoomImage(null)}>
+                  ← Quay lại thông tin khiếu nại
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: '14px' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                  padding: '10px 12px',
+                  borderRadius: '9px',
+                  background: '#f7f9f3',
+                  border: '1px solid #e2e8da',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontWeight: 700, fontSize: '16px', color: '#0f172a' }}>
-                      Khiếu nại #{c.id} · Đơn sỉ #{c.orderId}
-                    </span>
-                    <span
-                      style={{
-                        padding: '3px 10px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        fontWeight: 600,
-                        color: statusConfig.color,
-                        background: statusConfig.bg,
-                        border: `1px solid ${statusConfig.color}40`,
-                      }}
-                    >
-                      {statusConfig.label}
-                    </span>
-                  </div>
-                  <span style={{ fontSize: '13px', color: '#64748b' }}>
-                    Cập nhật: {new Date(c.updatedAt).toLocaleString('vi-VN')}
-                  </span>
-                </div>
+                <span
+                  className={`admin-badge ${(STATUS_STAGE_MAP[selected.status]?.tone || '') as string}`}
+                >
+                  Trạng thái: {STATUS_STAGE_MAP[selected.status]?.label || selected.status}
+                </span>
+                <span style={{ fontSize: '12px', color: '#53644f' }}>
+                  Tạo: {formatDateTime(selected.createdAt)} · Cập nhật:{' '}
+                  {formatDateTime(selected.updatedAt)}
+                </span>
+              </div>
 
-                {/* Buyer and Supplier Info */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '12px', background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', marginBottom: '14px', fontSize: '13px' }}>
-                  <div>
-                    <strong style={{ color: '#0f172a' }}>Bên mua (Cửa hàng):</strong>
-                    <div style={{ color: '#334155', marginTop: '2px' }}>{c.buyer.name} ({c.buyer.phone || c.buyer.email || 'N/A'})</div>
-                  </div>
-                  <div>
-                    <strong style={{ color: '#0f172a' }}>Bên bán (Chủ vựa):</strong>
-                    <div style={{ color: '#334155', marginTop: '2px' }}>{c.supplier.businessName} ({c.supplier.user?.phone || c.supplier.user?.email || 'N/A'})</div>
-                  </div>
-                  <div>
-                    <strong style={{ color: '#0f172a' }}>Giá trị đơn:</strong>
-                    <div style={{ color: '#0284c7', fontWeight: 600, marginTop: '2px' }}>
-                      Tổng: {Number(c.order.total).toLocaleString('vi-VN')} ₫ · Cọc: {Number(c.order.depositAmount).toLocaleString('vi-VN')} ₫ ({c.order.depositStatus})
-                    </div>
-                  </div>
+              <dl className="admin-detail-list" style={{ marginBottom: 0 }}>
+                <div>
+                  <dt>Người khiếu nại</dt>
+                  <dd>
+                    <strong>{selected.buyer.name}</strong> (Tiệm tạp hóa)
+                    <br />
+                    <small style={{ color: '#64748b' }}>
+                      SĐT: {selected.buyer.phone || 'Chưa có'} · Email:{' '}
+                      {selected.buyer.email || 'Chưa có'}
+                    </small>
+                  </dd>
                 </div>
-
-                {/* Complaint Details */}
-                <div style={{ marginBottom: '14px', fontSize: '14px', lineHeight: 1.6 }}>
-                  <div style={{ marginBottom: '6px' }}>
-                    <strong style={{ color: '#b91c1c' }}>Lý do khiếu nại:</strong> {c.reason}
-                  </div>
-                  <div style={{ color: '#334155', whiteSpace: 'pre-wrap' }}>
-                    <strong>Nội dung & Kháng cáo:</strong> {c.description}
-                  </div>
-                  {c.response && (
-                    <div style={{ marginTop: '8px', padding: '10px 12px', background: '#fffbeb', border: '1px solid #fef08a', borderRadius: '6px', color: '#854d0e' }}>
-                      <strong>Phản hồi / Bác bỏ của Chủ vựa:</strong> {c.response}
-                    </div>
-                  )}
+                <div>
+                  <dt>Bên bị khiếu nại</dt>
+                  <dd>
+                    <strong>{selected.supplier.businessName}</strong> (Chủ vựa)
+                    <br />
+                    <small style={{ color: '#64748b' }}>
+                      Đại diện: {selected.supplier.user?.name || '---'} · SĐT:{' '}
+                      {selected.supplier.user?.phone || 'Chưa có'}
+                    </small>
+                  </dd>
                 </div>
-
-                {/* Images */}
-                {c.imageUrl && (
-                  <div style={{ marginBottom: '14px' }}>
-                    <strong style={{ fontSize: '13px', color: '#475569', display: 'block', marginBottom: '6px' }}>Hình ảnh bằng chứng:</strong>
-                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                      {c.imageUrl.split(',').map((url, idx) => (
-                        <img
-                          key={idx}
-                          src={url.trim()}
-                          alt="Bằng chứng"
-                          style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #cbd5e1', cursor: 'pointer' }}
-                          onClick={() => setViewingImage(url.trim())}
-                          title="Bấm để xem ảnh phóng to"
-                        />
-                      ))}
+                <div>
+                  <dt>Số tiền giao dịch</dt>
+                  <dd>
+                    <div>
+                      Tổng giá trị đơn: <strong>{money(selected.order.total)}</strong>
+                      {Number(selected.workflow?.agreedDeductAmount || 0) > 0 && (
+                        <span style={{ color: '#15803d', fontWeight: 600 }}>
+                          {' '}
+                          (Giảm trừ COD: -{money(Number(selected.workflow?.agreedDeductAmount || 0))})
+                        </span>
+                      )}
                     </div>
+                    <div>
+                      Tiền đã trả: <strong>{money(selectedPaid?.amount || 0)}</strong>{' '}
+                      <span style={{ color: '#64748b' }}>({selectedPaid?.label})</span>
+                    </div>
+                    <div>
+                      Tiền cọc ký quỹ: <strong>{money(selected.order.depositAmount)}</strong>{' '}
+                      <span style={{ color: '#64748b' }}>
+                        (
+                        {DEPOSIT_STATUS_LABELS[selected.order.depositStatus] ||
+                          selected.order.depositStatus}
+                        )
+                      </span>
+                    </div>
+                  </dd>
+                </div>
+                <div>
+                  <dt>Nguyên nhân</dt>
+                  <dd>
+                    <strong>{REASON_LABELS[selected.reason] || selected.reason}</strong>
+                    {selectedDesc.metaLine && (
+                      <div style={{ color: '#475569', marginTop: '2px' }}>
+                        {selectedDesc.metaLine}
+                      </div>
+                    )}
+                    {selectedDesc.details && (
+                      <div style={{ marginTop: '4px', whiteSpace: 'pre-line' }}>
+                        {selectedDesc.details}
+                      </div>
+                    )}
+                  </dd>
+                </div>
+                {selected.order.items?.length > 0 && (
+                  <div>
+                    <dt>Mặt hàng đơn</dt>
+                    <dd>
+                      {selected.order.items
+                        .map((item) => `${item.productName} (${item.quantity} ${item.packaging})`)
+                        .join(' · ')}
+                    </dd>
                   </div>
                 )}
+                {selectedImages.length > 0 && (
+                  <div>
+                    <dt>Ảnh bằng chứng</dt>
+                    <dd>
+                      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        {selectedImages.map((src, idx) => (
+                          <button
+                            key={`${selected.id}-img-${idx}`}
+                            type="button"
+                            onClick={() => setZoomImage(src)}
+                            style={{ padding: 0, overflow: 'hidden', borderRadius: '6px' }}
+                            title="Bấm để phóng to"
+                          >
+                            <img
+                              src={src}
+                              alt={`Bằng chứng ${idx + 1}`}
+                              style={{
+                                width: '64px',
+                                height: '64px',
+                                objectFit: 'cover',
+                                display: 'block',
+                              }}
+                            />
+                          </button>
+                        ))}
+                      </div>
+                    </dd>
+                  </div>
+                )}
+              </dl>
 
-                {/* Action Buttons for Escalated Disputes */}
-                {isEscalated && (
-                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '12px', borderTop: '1px dashed #cbd5e1', flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      className="table-button danger"
-                      style={{ background: '#16a34a', borderColor: '#15803d', color: '#ffffff', fontWeight: 600, padding: '8px 16px' }}
-                      disabled={busyId === c.id}
-                      onClick={() => handleResolve(c.id, 'FAVOR_BUYER')}
-                    >
-                      Xử Cửa Hàng Thắng (Hoàn 100% Tiền)
-                    </button>
-                    <button
-                      type="button"
-                      className="table-button"
-                      style={{ background: '#475569', color: '#ffffff', borderColor: '#334155', fontWeight: 600, padding: '8px 16px' }}
-                      disabled={busyId === c.id}
-                      onClick={() => handleResolve(c.id, 'FAVOR_SUPPLIER')}
-                    >
-                      Xử Chủ Vựa Thắng (Giải Ngân Cọc)
-                    </button>
+              <div
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8da',
+                  borderRadius: '10px',
+                  padding: '12px 14px',
+                }}
+              >
+                <div style={{ fontSize: '12px', fontWeight: 700, color: '#37583f', marginBottom: '6px' }}>
+                  Diễn biến trao đổi giữa hai bên
+                </div>
+                {selected.workflow?.history?.length ? (
+                  <div style={{ display: 'grid', gap: '6px', fontSize: '12.5px' }}>
+                    {selected.workflow.history.map((h, i) => (
+                      <div
+                        key={`${selected.id}-hist-${i}`}
+                        style={{
+                          padding: '6px 9px',
+                          background: '#ffffff',
+                          borderRadius: '6px',
+                          borderLeft: `3px solid ${
+                            h.actorRole === 'SUPPLIER'
+                              ? '#0284c7'
+                              : h.actorRole === 'STORE_OWNER'
+                                ? '#16a34a'
+                                : '#64748b'
+                          }`,
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '8px' }}>
+                          <strong>
+                            {h.label} ({h.actorName})
+                          </strong>
+                          <span style={{ color: '#64748b', fontSize: '11px' }}>
+                            {formatDateTime(h.at)}
+                          </span>
+                        </div>
+                        {h.note && <div style={{ color: '#334155', marginTop: '2px' }}>{h.note}</div>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '12.5px', color: '#64748b' }}>
+                    {selected.response || 'Chưa có phản hồi từ Chủ vựa.'}
                   </div>
                 )}
               </div>
-            );
-          })}
-        </div>
-      )}
 
-      {/* Lightbox Image Preview */}
-      {viewingImage && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.75)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '20px',
-          }}
-          onClick={() => setViewingImage(null)}
-        >
-          <img
-            src={viewingImage}
-            alt="Bằng chứng phóng to"
-            style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: '8px', background: '#fff' }}
-          />
-        </div>
+              <div
+                style={{
+                  padding: '12px 14px',
+                  borderRadius: '10px',
+                  background: completedStatuses.includes(selected.status) ? '#eaf3e2' : '#f4f6f2',
+                  border: `1px solid ${completedStatuses.includes(selected.status) ? '#b9d391' : '#dce3d5'}`,
+                  fontSize: '13px',
+                }}
+              >
+                <div style={{ fontWeight: 700, color: '#223c33' }}>
+                  Kết quả ghi nhận: {getOutcomeText(selected)}
+                </div>
+                {selected.workflow?.closedReason && (
+                  <div style={{ marginTop: '4px', fontSize: '12px', color: '#475569' }}>
+                    Ghi chú: {selected.workflow.closedReason}
+                  </div>
+                )}
+                {selected.workflow?.resolvedAt && (
+                  <div style={{ marginTop: '2px', fontSize: '11.5px', color: '#64748b' }}>
+                    Thời điểm hoàn thành: {formatDateTime(selected.workflow.resolvedAt)}
+                  </div>
+                )}
+              </div>
+
+              <div className="admin-dialog-actions">
+                <button
+                  type="button"
+                  className="admin-primary"
+                  onClick={() => {
+                    setZoomImage(null);
+                    setSelected(null);
+                  }}
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          )}
+        </AdminDialog>
       )}
-    </div>
+    </>
   );
 }
