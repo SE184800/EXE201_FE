@@ -2,10 +2,10 @@ import { useState, type FormEvent } from 'react';
 import Brand from './Brand';
 import Icon from './Icon';
 import { getApiError, getApiFieldErrors, isUnauthenticated } from '../services/api';
-import { quickVerifySupplier, saveSupplierProfile, type SupplierProfile } from '../services/supplier.api';
+import { saveSupplierProfile, type SupplierProfile } from '../services/supplier.api';
 import type { AuthUser } from '../types/auth';
 import { normalizePhone } from '../validation/registration';
-import { resolveAddressCoordinates } from '../utils/geo';
+import { verifyAddressWithBackend } from '../services/address.api';
 import { lookupTaxCode, type TaxBusinessInfo } from '../services/tax.api';
 
 type SupplierOnboardingProps = {
@@ -40,6 +40,7 @@ export default function SupplierOnboarding({
   const [isAddressVerified, setIsAddressVerified] = useState(false);
   const [verifyingMap, setVerifyingMap] = useState(false);
   const [mapVerifiedAddress, setMapVerifiedAddress] = useState<string | null>(null);
+  const [mapVerifyMessage, setMapVerifyMessage] = useState<string | null>(null);
   const [mapStatus, setMapStatus] = useState<'idle' | 'success' | 'not_found' | 'error'>('idle');
 
   const [fieldErrors, setFieldErrors] = useState<SupplierOnboardingErrors>({});
@@ -96,51 +97,35 @@ export default function SupplierOnboarding({
     }
     setVerifyingMap(true);
     setMapStatus('idle');
+    setMapVerifyMessage(null);
 
-    let fetched = false;
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&countrycodes=vn&limit=1&q=${encodeURIComponent(
-          trimmed
-        )}`,
-        { headers: { 'Accept-Language': 'vi' }, signal: controller.signal }
-      );
-      clearTimeout(timeoutId);
-      const results = await response.json();
-      if (Array.isArray(results) && results.length > 0) {
-        const first = results[0];
-        const lat = parseFloat(first.lat);
-        const lon = parseFloat(first.lon);
-        setLatitude(lat);
-        setLongitude(lon);
+      const result = await verifyAddressWithBackend(trimmed);
+      if (result.verified && result.lat !== null && result.lon !== null) {
+        setLatitude(result.lat);
+        setLongitude(result.lon);
         setIsAddressVerified(true);
-        setMapVerifiedAddress(first.display_name || trimmed);
-        setMapStatus('success');
-        setFieldErrors((prev) => ({ ...prev, warehouseAddress: undefined }));
-        fetched = true;
-      }
-    } catch {
-      // Fall through to local resolver
-    }
-
-    if (!fetched) {
-      const fallback = resolveAddressCoordinates(trimmed);
-      if (fallback) {
-        setLatitude(fallback.lat);
-        setLongitude(fallback.lon);
-        setIsAddressVerified(true);
-        setMapVerifiedAddress(fallback.displayName || trimmed);
+        setMapVerifiedAddress(result.displayName || trimmed);
         setMapStatus('success');
         setFieldErrors((prev) => ({ ...prev, warehouseAddress: undefined }));
       } else {
-        setMapStatus('not_found');
+        setLatitude(null);
+        setLongitude(null);
         setIsAddressVerified(false);
+        setMapVerifiedAddress(null);
+        setMapVerifyMessage(result.message || null);
+        setMapStatus(result.status === 'error' ? 'error' : 'not_found');
       }
+    } catch {
+      setLatitude(null);
+      setLongitude(null);
+      setIsAddressVerified(false);
+      setMapVerifiedAddress(null);
+      setMapVerifyMessage('Không thể kết nối dịch vụ bản đồ số lúc này. Vui lòng thử lại sau.');
+      setMapStatus('error');
+    } finally {
+      setVerifyingMap(false);
     }
-
-    setVerifyingMap(false);
   }
 
   function validate(): SupplierOnboardingErrors {
@@ -210,13 +195,6 @@ export default function SupplierOnboarding({
       };
 
       const saved = await saveSupplierProfile(payload);
-      try {
-        const verified = await quickVerifySupplier();
-        onCompleted(verified);
-        return;
-      } catch {
-        // Fallback to saved profile if quick verify is unavailable
-      }
       onCompleted(saved);
     } catch (issue) {
       const apiErrors = getApiFieldErrors<keyof SupplierOnboardingErrors>(issue, [
@@ -483,22 +461,6 @@ export default function SupplierOnboarding({
                   >
                     Mã số thuế / Mã số ĐKKD <span style={{ color: '#dc2626' }}>*</span>
                   </label>
-                  <a
-                    href="https://masothue.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontSize: '12px',
-                      color: '#2563eb',
-                      textDecoration: 'underline',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    Tra cứu mã số thuế (masothue.com)
-                  </a>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <input
@@ -793,7 +755,9 @@ export default function SupplierOnboarding({
                       color: '#92400e',
                     }}
                   >
-                    <strong>Chưa tìm thấy vị trí chính xác trên bản đồ.</strong> Vui lòng ghi rõ: <em>Số nhà, Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố</em> (ví dụ: 456 Quốc Lộ 1A, Phường An Lạc, Quận Bình Tân, TP. Hồ Chí Minh).
+                    <strong>Chưa xác minh được địa chỉ trên bản đồ số.</strong>{' '}
+                    {mapVerifyMessage ||
+                      'Vui lòng ghi rõ: Số nhà, Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố đầy đủ (ví dụ: 456 Quốc Lộ 1A, Phường An Lạc, Quận Bình Tân, TP. Hồ Chí Minh).'}
                   </div>
                 )}
 
@@ -809,7 +773,7 @@ export default function SupplierOnboarding({
                       color: '#64748b',
                     }}
                   >
-                    Lưu ý: Tạm thời không kết nối được dịch vụ bản đồ số, hệ thống sẽ lưu địa chỉ và xác thực qua cấu trúc hành chính.
+                    {mapVerifyMessage || 'Tạm thời không kết nối được dịch vụ bản đồ số. Vui lòng thử lại sau.'}
                   </div>
                 )}
 

@@ -53,6 +53,14 @@ export interface ContractStatusResponse {
   signedAt: string | null;
 }
 
+export interface RevealContractKeyResponse {
+  success: boolean;
+  contractNumber: string;
+  maskedPrivateKey: string;
+  rawPrivateKey: string;
+  isSigned: boolean;
+}
+
 export interface SignContractPayload {
   method?: 'PRIVATE_KEY';
   privateKey?: string;
@@ -77,5 +85,12 @@ export async function signContract(payload: SignContractPayload): Promise<SignCo
 
 export async function getContractStatus(): Promise<ContractStatusResponse> {
   const res = await api.get<ContractStatusResponse>('/contracts/status');
+  return res.data;
+}
+
+export async function revealContractKey(token: string): Promise<RevealContractKeyResponse> {
+  const res = await api.get<RevealContractKeyResponse>('/contracts/reveal-key', {
+    params: { token },
+  });
   return res.data;
 }

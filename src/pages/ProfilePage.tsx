@@ -7,9 +7,10 @@ import { getMyContract, type UserContract } from '../services/contract.api';
 import type { SupplierProfile } from '../services/supplier.api';
 import ContractSigningModal from '../components/ContractSigningModal';
 import ContractViewModal from '../components/ContractViewModal';
+import PartnerProfileEditModal from '../components/PartnerProfileEditModal';
 import { POPULAR_BANKS } from '../constants/banks';
 import { validateQrCodeImage } from '../utils/qrValidator';
-import { resolveAddressCoordinates } from '../utils/geo';
+import { verifyAddressWithBackend } from '../services/address.api';
 
 export type StoreProfile = {
   userId: number;
@@ -28,6 +29,11 @@ export type StoreProfile = {
   bankAccountNumber?: string | null;
   bankAccountHolder?: string | null;
   bankQrImageUrl?: string | null;
+  verificationStatus?: 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED';
+  verificationNote?: string | null;
+  verificationVersion?: number;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
 };
 
 export type Profile = {
@@ -54,7 +60,10 @@ export type ProfileFieldErrors = Partial<
     | 'storePhone'
     | 'taxCode'
     | 'businessName'
-    | 'warehouseAddress',
+    | 'warehouseAddress'
+    | 'bankName'
+    | 'bankAccountNumber'
+    | 'bankAccountHolder',
     string
   >
 >;
@@ -70,6 +79,9 @@ const profileFields: (keyof ProfileFieldErrors)[] = [
   'taxCode',
   'businessName',
   'warehouseAddress',
+  'bankName',
+  'bankAccountNumber',
+  'bankAccountHolder',
 ];
 
 function validateProfileForm(
@@ -84,6 +96,8 @@ function validateProfileForm(
     taxCode: string;
     businessName?: string;
     warehouseAddress?: string;
+    bankName?: string;
+    bankAccountNumber?: string;
   },
   isStoreOwner: boolean,
   isSupplier: boolean = false
@@ -197,6 +211,16 @@ function validateProfileForm(
     if (taxCode && !/^[A-Za-z0-9-]{5,30}$/.test(taxCode)) {
       errors.taxCode = 'Mã số thuế / ĐKKD gồm 5–30 ký tự (chữ, số hoặc gạch ngang).';
     }
+
+    const bankAcc = (values.bankAccountNumber || '').trim();
+    if (bankAcc) {
+      if (!/^[A-Za-z0-9]{4,34}$/.test(bankAcc)) {
+        errors.bankAccountNumber = 'Số tài khoản gồm 4–34 ký tự (chữ và số, không khoảng trắng hoặc ký tự đặc biệt).';
+      }
+      if (!values.bankName?.trim()) {
+        errors.bankName = 'Vui lòng chọn ngân hàng thụ hưởng.';
+      }
+    }
   }
 
   return errors;
@@ -206,16 +230,19 @@ export default function ProfilePage({
   onSaved,
   onLogout,
   contractRefreshKey,
+  onContractSigned,
 }: {
   onSaved: (name: string) => void;
   onLogout: () => void;
   contractRefreshKey?: number;
+  onContractSigned?: () => void;
 }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [contract, setContract] = useState<UserContract | null>(null);
   const [canonicalText, setCanonicalText] = useState('');
   const [showSigningModal, setShowSigningModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [form, setForm] = useState({
     name: '',
     email: '',
@@ -245,6 +272,7 @@ export default function ProfilePage({
 
   const [verifyingMap, setVerifyingMap] = useState(false);
   const [mapVerifiedAddress, setMapVerifiedAddress] = useState<string | null>(null);
+  const [mapVerifyMessage, setMapVerifyMessage] = useState<string | null>(null);
   const [mapStatus, setMapStatus] = useState<'idle' | 'success' | 'not_found' | 'error'>('idle');
   const [customBankName, setCustomBankName] = useState('');
 
@@ -330,7 +358,7 @@ export default function ProfilePage({
     return () => {
       active = false;
     };
-  }, [retry, onLogout]);
+  }, [retry, contractRefreshKey, onLogout]);
 
   useEffect(() => {
     let active = true;
@@ -363,57 +391,44 @@ export default function ProfilePage({
     }
     setVerifyingMap(true);
     setMapStatus('idle');
+    setMapVerifyMessage(null);
 
-    let fetched = false;
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1500);
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&countrycodes=vn&limit=1&q=${encodeURIComponent(
-          trimmed
-        )}`,
-        { headers: { 'Accept-Language': 'vi' }, signal: controller.signal }
-      );
-      clearTimeout(timeoutId);
-      const results = await response.json();
-      if (Array.isArray(results) && results.length > 0) {
-        const first = results[0];
-        const lat = parseFloat(first.lat);
-        const lon = parseFloat(first.lon);
+      const result = await verifyAddressWithBackend(trimmed);
+      if (result.verified && result.lat !== null && result.lon !== null) {
         setForm((prev) => ({
           ...prev,
-          latitude: lat,
-          longitude: lon,
+          latitude: result.lat,
+          longitude: result.lon,
           isAddressVerified: true,
         }));
-        setMapVerifiedAddress(first.display_name || trimmed);
-        setMapStatus('success');
-        setFieldErrors((prev) => ({ ...prev, [fieldKey]: undefined }));
-        fetched = true;
-      }
-    } catch {
-      // Offline / network failure -> fallback to local geocoder
-    }
-
-    if (!fetched) {
-      const fallback = resolveAddressCoordinates(trimmed);
-      if (fallback) {
-        setForm((prev) => ({
-          ...prev,
-          latitude: fallback.lat,
-          longitude: fallback.lon,
-          isAddressVerified: true,
-        }));
-        setMapVerifiedAddress(fallback.displayName || trimmed);
+        setMapVerifiedAddress(result.displayName || trimmed);
         setMapStatus('success');
         setFieldErrors((prev) => ({ ...prev, [fieldKey]: undefined }));
       } else {
-        setMapStatus('not_found');
-        setForm((prev) => ({ ...prev, isAddressVerified: false }));
+        setForm((prev) => ({
+          ...prev,
+          latitude: null,
+          longitude: null,
+          isAddressVerified: false,
+        }));
+        setMapVerifiedAddress(null);
+        setMapVerifyMessage(result.message || null);
+        setMapStatus(result.status === 'error' ? 'error' : 'not_found');
       }
+    } catch {
+      setForm((prev) => ({
+        ...prev,
+        latitude: null,
+        longitude: null,
+        isAddressVerified: false,
+      }));
+      setMapVerifiedAddress(null);
+      setMapVerifyMessage('Không thể kết nối dịch vụ bản đồ số lúc này. Vui lòng thử lại sau.');
+      setMapStatus('error');
+    } finally {
+      setVerifyingMap(false);
     }
-
-    setVerifyingMap(false);
   }
 
   async function handleQrUploadInProfile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -526,10 +541,17 @@ export default function ProfilePage({
       setNotice(data.message || 'Đã lưu thông tin cá nhân và cơ sở kinh doanh thành công.');
     } catch (issue) {
       const apiErrors = getApiFieldErrors(issue, profileFields);
-      if (Object.keys(apiErrors).length > 0) {
+      const errValues = Object.values(apiErrors).filter(Boolean);
+      if (errValues.length > 0) {
         setFieldErrors(apiErrors);
+        setError(
+          errValues.length === 1
+            ? errValues[0]
+            : 'Vui lòng kiểm tra và sửa các thông tin chưa hợp lệ bên dưới.',
+        );
+      } else {
+        setError(getApiError(issue));
       }
-      setError(getApiError(issue));
       if (isUnauthenticated(issue)) onLogout();
     } finally {
       setBusy(false);
@@ -562,100 +584,177 @@ export default function ProfilePage({
         <small>Tham gia {new Date(profile.createdAt).toLocaleDateString('vi-VN')}</small>
 
         {/* Platform Electronic Agreement / Contract Card */}
-        <div
-          style={{
-            marginTop: '16px',
-            padding: '14px',
-            background: '#ffffff',
-            borderRadius: '10px',
-            border: `1px solid ${contract?.isSigned ? '#bbf7d0' : '#fed7aa'}`,
-            textAlign: 'left',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: contract?.isSigned ? '#166534' : '#c2410c', textTransform: 'uppercase' }}>
-              HỢP ĐỒNG LIÊN KẾT
-            </span>
-            <span
+        {(() => {
+          const rawPartnerStatus = isStoreOwner
+            ? profile.storeProfile?.verificationStatus
+            : isSupplier
+              ? (profile.supplierProfile?.verificationStatus as 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED' | undefined)
+              : undefined;
+          const partnerStatus: 'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED' = isStoreOwner || isSupplier
+            ? (rawPartnerStatus === 'APPROVED' || rawPartnerStatus === 'REJECTED' || rawPartnerStatus === 'PENDING'
+                ? rawPartnerStatus
+                : contract?.isSigned
+                  ? 'PENDING'
+                  : 'DRAFT')
+            : (contract?.isSigned ? 'APPROVED' : 'DRAFT');
+
+          const statusStyles: Record<
+            'DRAFT' | 'PENDING' | 'APPROVED' | 'REJECTED',
+            { label: string; border: string; titleColor: string; badgeBg: string; badgeColor: string }
+          > = {
+            APPROVED: {
+              label: 'ĐÃ XÁC MINH',
+              border: '#bbf7d0',
+              titleColor: '#166534',
+              badgeBg: '#dcfce7',
+              badgeColor: '#15803d',
+            },
+            PENDING: {
+              label: 'ĐANG CHỜ DUYỆT',
+              border: '#fde68a',
+              titleColor: '#92400e',
+              badgeBg: '#fef3c7',
+              badgeColor: '#b45309',
+            },
+            REJECTED: {
+              label: 'CẦN ĐIỀU CHỈNH',
+              border: '#fecaca',
+              titleColor: '#b91c1c',
+              badgeBg: '#fee2e2',
+              badgeColor: '#b91c1c',
+            },
+            DRAFT: {
+              label: 'CHƯA KÝ THỎA THUẬN',
+              border: '#fed7aa',
+              titleColor: '#c2410c',
+              badgeBg: '#ffedd5',
+              badgeColor: '#c2410c',
+            },
+          };
+
+          const st = statusStyles[partnerStatus] || statusStyles.DRAFT;
+
+          return (
+            <div
               style={{
-                fontSize: '11px',
-                padding: '2px 8px',
-                borderRadius: '9999px',
-                backgroundColor: contract?.isSigned ? '#dcfce7' : '#ffedd5',
-                color: contract?.isSigned ? '#15803d' : '#c2410c',
-                fontWeight: 600,
+                marginTop: '16px',
+                padding: '14px',
+                background: '#ffffff',
+                borderRadius: '10px',
+                border: `1px solid ${st.border}`,
+                textAlign: 'left',
               }}
             >
-              {contract?.isSigned ? 'ĐÃ KÝ KẾT' : 'CHƯA KÝ'}
-            </span>
-          </div>
-
-          <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
-            Thỏa thuận dịch vụ SupplyMind
-          </div>
-          <p style={{ margin: 0, fontSize: '12px', color: '#64748b', lineHeight: 1.4 }}>
-            {contract?.isSigned
-              ? `Hợp đồng số ${contract.contractNumber} đã được ký số điện tử ngày ${new Date(contract.signedAt || '').toLocaleDateString('vi-VN')}.`
-              : 'Chưa hoàn tất ký số hợp đồng liên kết và thỏa thuận luồng tiền ký quỹ 10%.'}
-          </p>
-
-          <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {contract?.isSigned ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setShowViewModal(true)}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', gap: '8px' }}>
+                <span style={{ fontSize: '11px', fontWeight: 700, color: st.titleColor, textTransform: 'uppercase' }}>
+                  HỢP ĐỒNG LIÊN KẾT
+                </span>
+                <span
                   style={{
-                    padding: '6px 12px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
-                    backgroundColor: '#ffffff',
-                    color: '#334155',
-                    cursor: 'pointer',
+                    fontSize: '11px',
+                    padding: '2px 8px',
+                    borderRadius: '9999px',
+                    backgroundColor: st.badgeBg,
+                    color: st.badgeColor,
+                    fontWeight: 700,
                   }}
                 >
-                  Xem nội dung hợp đồng
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowViewModal(true)}
-                  style={{
-                    padding: '6px 12px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    borderRadius: '6px',
-                    border: '1px solid #16a34a',
-                    backgroundColor: '#f0fdf4',
-                    color: '#166534',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Tải file PDF & In hợp đồng
-                </button>
-              </>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowSigningModal(true)}
-                style={{
-                  padding: '7px 12px',
-                  fontSize: '12.5px',
-                  fontWeight: 600,
-                  borderRadius: '6px',
-                  border: 'none',
-                  backgroundColor: '#ea580c',
-                  color: '#ffffff',
-                  cursor: 'pointer',
-                  boxShadow: '0 1px 2px rgba(234, 88, 12, 0.3)',
-                }}
-              >
-                Ký hợp đồng điện tử ngay
-              </button>
-            )}
-          </div>
-        </div>
+                  {st.label}
+                </span>
+              </div>
+
+              <div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
+                Thỏa thuận dịch vụ SupplyMind
+              </div>
+              <p style={{ margin: 0, fontSize: '12px', color: partnerStatus === 'REJECTED' ? '#b91c1c' : '#64748b', lineHeight: 1.45, fontWeight: partnerStatus === 'REJECTED' ? 600 : 400 }}>
+                {partnerStatus === 'REJECTED'
+                  ? 'Vui lòng cập nhật lại thông tin đăng ký'
+                  : partnerStatus === 'PENDING'
+                    ? `Hợp đồng${contract?.contractNumber ? ` số ${contract.contractNumber}` : ''} và hồ sơ đăng ký đang ở trạng thái Đang chờ duyệt. Vui lòng đợi Admin phê duyệt.`
+                    : partnerStatus === 'APPROVED'
+                      ? `Hợp đồng số ${contract?.contractNumber || ''} đã được ký kết${contract?.signedAt ? ` ngày ${new Date(contract.signedAt).toLocaleDateString('vi-VN')}` : ''} và đã được Admin xác minh.`
+                      : 'Chưa hoàn tất ký số hợp đồng liên kết và thỏa thuận luồng tiền ký quỹ 10%.'}
+              </p>
+
+              <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {partnerStatus === 'REJECTED' && (
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(true)}
+                    style={{
+                      padding: '8px 12px',
+                      fontSize: '12.5px',
+                      fontWeight: 650,
+                      borderRadius: '6px',
+                      border: 'none',
+                      backgroundColor: '#dc2626',
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cập nhật
+                  </button>
+                )}
+                {partnerStatus === 'DRAFT' || !contract?.isSigned ? (
+                  partnerStatus !== 'REJECTED' && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSigningModal(true)}
+                      style={{
+                        padding: '7px 12px',
+                        fontSize: '12.5px',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        border: 'none',
+                        backgroundColor: '#ea580c',
+                        color: '#ffffff',
+                        cursor: 'pointer',
+                        boxShadow: '0 1px 2px rgba(234, 88, 12, 0.3)',
+                      }}
+                    >
+                      Ký hợp đồng điện tử ngay
+                    </button>
+                  )
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowViewModal(true)}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        backgroundColor: '#ffffff',
+                        color: '#334155',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Xem nội dung hợp đồng
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowViewModal(true)}
+                      style={{
+                        padding: '6px 12px',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        border: '1px solid #16a34a',
+                        backgroundColor: '#f0fdf4',
+                        color: '#166534',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Tải file PDF & In hợp đồng
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Store Owner identity card */}
         {isStoreOwner && (
@@ -1056,27 +1155,9 @@ export default function ProfilePage({
 
               {/* Tax Code */}
               <div style={{ marginBottom: '14px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                  <label htmlFor="taxCode" style={{ margin: 0, fontWeight: 500, fontSize: '14px', color: '#1e293b' }}>
-                    Mã số thuế (Hộ kinh doanh / Doanh nghiệp)
-                  </label>
-                  <a
-                    href="https://masothue.com"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      fontSize: '12px',
-                      color: '#2563eb',
-                      textDecoration: 'underline',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      fontWeight: 500,
-                    }}
-                  >
-                    Tra cứu mã số thuế (masothue.com)
-                  </a>
-                </div>
+                <label htmlFor="taxCode" style={{ display: 'block', marginBottom: '6px', fontWeight: 500, fontSize: '14px', color: '#1e293b' }}>
+                  Mã số thuế (Hộ kinh doanh / Doanh nghiệp)
+                </label>
                 <input
                   id="taxCode"
                   maxLength={14}
@@ -1090,7 +1171,7 @@ export default function ProfilePage({
                   style={{ width: '100%', boxSizing: 'border-box' }}
                 />
                 <small style={{ color: '#64748b', display: 'block', marginTop: '4px' }}>
-                  Có thể tra cứu trực tiếp bằng tên tiệm hoặc họ tên chủ tiệm trên masothue.com.
+                  Mã số thuế gồm 10 đến 14 ký tự của cơ sở kinh doanh đã đăng ký.
                 </small>
                 {fieldErrors.taxCode && (
                   <span
@@ -1180,7 +1261,9 @@ export default function ProfilePage({
                       color: '#92400e',
                     }}
                   >
-                    <strong>Chưa tìm thấy vị trí chính xác trên bản đồ.</strong> Vui lòng ghi rõ: <em>Số nhà, Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố</em> (ví dụ: 123 Đường Số 4, Phường Bình Trị Đông B, Quận Bình Tân, TP. Hồ Chí Minh).
+                    <strong>Chưa xác minh được địa chỉ trên bản đồ số.</strong>{' '}
+                    {mapVerifyMessage ||
+                      'Vui lòng ghi rõ: Số nhà, Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố đầy đủ (ví dụ: 221 Đường Trịnh Đình Trọng, Tân Phú, TP. Hồ Chí Minh).'}
                   </div>
                 )}
 
@@ -1196,7 +1279,7 @@ export default function ProfilePage({
                       color: '#64748b',
                     }}
                   >
-                    Lưu ý: Tạm thời không kết nối được dịch vụ bản đồ số, hệ thống sẽ lưu địa chỉ và xác thực qua cấu trúc hành chính.
+                    {mapVerifyMessage || 'Tạm thời không kết nối được dịch vụ bản đồ số. Vui lòng thử lại sau.'}
                   </div>
                 )}
 
@@ -1280,19 +1363,9 @@ export default function ProfilePage({
                 </label>
 
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                    <label htmlFor="supplierTaxCode" style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b', margin: 0 }}>
-                      Mã số thuế / Mã số ĐKKD
-                    </label>
-                    <a
-                      href="https://masothue.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ fontSize: '12px', color: '#2563eb', textDecoration: 'underline', fontWeight: 600 }}
-                    >
-                      Tra cứu (masothue.com)
-                    </a>
-                  </div>
+                  <label htmlFor="supplierTaxCode" style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#1e293b', marginBottom: '6px' }}>
+                    Mã số thuế / Mã số ĐKKD
+                  </label>
                   <input
                     id="supplierTaxCode"
                     type="text"
@@ -1418,12 +1491,17 @@ export default function ProfilePage({
                 <select
                   disabled={busy}
                   value={form.bankName}
-                  onChange={(e) => setForm({ ...form, bankName: e.target.value })}
+                  onChange={(e) => {
+                    setForm({ ...form, bankName: e.target.value });
+                    if (fieldErrors.bankName) {
+                      setFieldErrors((prev) => ({ ...prev, bankName: undefined }));
+                    }
+                  }}
                   style={{
                     width: '100%',
                     padding: '8px 12px',
                     borderRadius: '6px',
-                    border: '1px solid #cbd5e1',
+                    border: fieldErrors.bankName ? '1px solid #dc2626' : '1px solid #cbd5e1',
                     background: '#ffffff',
                     fontSize: '14px',
                   }}
@@ -1444,12 +1522,22 @@ export default function ProfilePage({
                       disabled={busy}
                       placeholder="Ví dụ: Shinhan Bank, Woori Bank, PVcomBank..."
                       value={customBankName}
-                      onChange={(e) => setCustomBankName(e.target.value)}
+                      onChange={(e) => {
+                        setCustomBankName(e.target.value);
+                        if (fieldErrors.bankName) {
+                          setFieldErrors((prev) => ({ ...prev, bankName: undefined }));
+                        }
+                      }}
                       maxLength={100}
-                      style={{ width: '100%', boxSizing: 'border-box' }}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        ...(fieldErrors.bankName ? { borderColor: '#dc2626' } : {}),
+                      }}
                     />
                   </div>
                 )}
+                {fieldErrors.bankName && <span className="field-error">{fieldErrors.bankName}</span>}
               </label>
 
               <label>
@@ -1459,15 +1547,25 @@ export default function ProfilePage({
                   disabled={busy}
                   placeholder="Ví dụ: 0071001234567"
                   maxLength={34}
+                  aria-invalid={Boolean(fieldErrors.bankAccountNumber)}
                   value={form.bankAccountNumber}
-                  onChange={(e) =>
+                  onChange={(e) => {
                     setForm({
                       ...form,
                       bankAccountNumber: e.target.value.replace(/[^A-Za-z0-9]/g, ''),
-                    })
-                  }
-                  style={{ fontFamily: 'monospace' }}
+                    });
+                    if (fieldErrors.bankAccountNumber) {
+                      setFieldErrors((prev) => ({ ...prev, bankAccountNumber: undefined }));
+                    }
+                  }}
+                  style={{
+                    fontFamily: 'monospace',
+                    ...(fieldErrors.bankAccountNumber ? { borderColor: '#dc2626', background: '#fef2f2' } : {}),
+                  }}
                 />
+                {fieldErrors.bankAccountNumber && (
+                  <span className="field-error">{fieldErrors.bankAccountNumber}</span>
+                )}
               </label>
 
               <label>
@@ -1477,12 +1575,22 @@ export default function ProfilePage({
                   disabled={busy}
                   placeholder="Ví dụ: NGUYEN VAN A"
                   maxLength={100}
+                  aria-invalid={Boolean(fieldErrors.bankAccountHolder)}
                   value={form.bankAccountHolder}
-                  onChange={(e) =>
-                    setForm({ ...form, bankAccountHolder: e.target.value.toUpperCase() })
-                  }
-                  style={{ textTransform: 'uppercase' }}
+                  onChange={(e) => {
+                    setForm({ ...form, bankAccountHolder: e.target.value.toUpperCase() });
+                    if (fieldErrors.bankAccountHolder) {
+                      setFieldErrors((prev) => ({ ...prev, bankAccountHolder: undefined }));
+                    }
+                  }}
+                  style={{
+                    textTransform: 'uppercase',
+                    ...(fieldErrors.bankAccountHolder ? { borderColor: '#dc2626', background: '#fef2f2' } : {}),
+                  }}
                 />
+                {fieldErrors.bankAccountHolder && (
+                  <span className="field-error">{fieldErrors.bankAccountHolder}</span>
+                )}
               </label>
             </div>
 
@@ -1539,13 +1647,30 @@ export default function ProfilePage({
                 </div>
               ) : (
                 <div>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    disabled={uploadingQr || busy}
-                    onChange={(e) => void handleQrUploadInProfile(e)}
-                    style={{ fontSize: '13px' }}
-                  />
+                  <label
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      border: '1px solid #cbd5e1',
+                      background: uploadingQr || busy ? '#f1f5f9' : '#ffffff',
+                      color: '#0f172a',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: uploadingQr || busy ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      disabled={uploadingQr || busy}
+                      onChange={(e) => void handleQrUploadInProfile(e)}
+                      style={{ display: 'none' }}
+                    />
+                    <span>{uploadingQr ? 'Đang tải ảnh lên...' : form.bankQrImageUrl ? 'Đổi ảnh QR' : 'Thêm ảnh'}</span>
+                  </label>
                   {uploadingQr && (
                     <span style={{ marginLeft: '8px', fontSize: '12px', color: '#2563eb' }}>
                       Đang tải ảnh lên…
@@ -1600,9 +1725,25 @@ export default function ProfilePage({
             isOpen={showSigningModal}
             onClose={() => setShowSigningModal(false)}
             onSignedSuccess={(updated) => {
-              setContract((prev) => (prev ? { ...prev, ...updated, isSigned: true } : null));
+              setContract((prev) =>
+                prev
+                  ? { ...prev, ...updated, isSigned: true }
+                  : updated
+                    ? ({ ...updated, isSigned: true } as NonNullable<typeof contract>)
+                    : prev,
+              );
+              setProfile((prev) => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  ...(prev.storeProfile ? { storeProfile: { ...prev.storeProfile, verificationStatus: 'PENDING' } } : {}),
+                  ...(prev.supplierProfile ? { supplierProfile: { ...prev.supplierProfile, verificationStatus: 'PENDING' } } : {}),
+                };
+              });
               setShowSigningModal(false);
-              setNotice('Đã ký kết hợp đồng điện tử thành công!');
+              setNotice('Đã ký kết hợp đồng điện tử thành công! Hồ sơ đang chờ Admin phê duyệt.');
+              onContractSigned?.();
+              setRetry((r) => r + 1);
               getMyContract().then((res) => {
                 setContract(res.contract);
                 setCanonicalText(res.canonicalText);
@@ -1622,6 +1763,27 @@ export default function ProfilePage({
             contract={contract}
             canonicalText={canonicalText}
           />
+          {(isStoreOwner || isSupplier) && (
+            <PartnerProfileEditModal
+              isOpen={showEditModal}
+              onClose={() => setShowEditModal(false)}
+              role={isSupplier ? 'SUPPLIER' : 'STORE_OWNER'}
+              storeProfile={profile.storeProfile}
+              supplierProfile={profile.supplierProfile}
+              onSaved={(updated) => {
+                setProfile((prev) => {
+                  if (!prev) return prev;
+                  const next = isStoreOwner
+                    ? { ...prev, storeProfile: updated }
+                    : { ...prev, supplierProfile: updated };
+                  fill(next);
+                  return next;
+                });
+                setNotice('Cập nhật thông tin thành công, vui lòng đợi Admin phê duyệt');
+                setRetry((r) => r + 1);
+              }}
+            />
+          )}
         </>
       )}
     </div>

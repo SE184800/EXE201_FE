@@ -1,3 +1,4 @@
+import DatePicker from '../components/DatePicker';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 
@@ -23,7 +24,7 @@ type Movement = {
 
 type StockBatch = {
   id: string;
-  batchType: 'WHOLESALE_ORDER' | 'MANUAL_IMPORT' | 'OTHER';
+  batchType: 'WHOLESALE_ORDER' | 'DAILY_IMPORT' | 'DAILY_EXPORT';
   title: string;
   subtitle: string;
   occurredAt: string;
@@ -35,12 +36,38 @@ type StockBatch = {
 };
 
 const labels: Record<string, string> = {
-  SALE: 'Bán hàng',
-  RECEIPT: 'Nhập hàng',
-  IMPORT: 'Nhập hàng sỉ',
+  SALE: 'Xuất bán',
+  RECEIPT: 'Nhập kho',
+  IMPORT: 'Nhập kho sỉ',
   ADJUSTMENT: 'Điều chỉnh',
   OPENING: 'Tồn đầu kỳ',
 };
+
+function toVnDateKey(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+}
+
+function toVnDateDisplay(iso: string): string {
+  return new Date(iso).toLocaleDateString('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  });
+}
+
+function summarizeBatchQuantities(movements: Movement[]): string {
+  const byUnit = new Map<string, number>();
+  for (const m of movements) {
+    byUnit.set(m.unit, (byUnit.get(m.unit) || 0) + m.quantityChange);
+  }
+  const parts: string[] = [];
+  for (const [unit, total] of byUnit.entries()) {
+    if (total === 0) continue;
+    parts.push(`${total > 0 ? '+' : ''}${total} ${unit}`);
+  }
+  return parts.join(' · ') || `${movements.length} lượt`;
+}
 
 function groupMovementsIntoBatches(movements: Movement[]): StockBatch[] {
   const batches: StockBatch[] = [];
@@ -50,7 +77,7 @@ function groupMovementsIntoBatches(movements: Movement[]): StockBatch[] {
     const row = movements[i];
     if (visited.has(row.id)) continue;
 
-    // Kiểm tra nếu là đơn hàng sỉ qua thẻ [ĐƠN SỈ #X]
+    // Đơn hàng sỉ qua thẻ [ĐƠN SỈ #X]
     const orderMatch = row.note ? row.note.match(/\[ĐƠN SỈ #(\d+)\]/i) : null;
     const nccMatch = row.note ? row.note.match(/\[NCC:\s*([^\]]+)\]/i) : null;
     const supplier = nccMatch ? nccMatch[1].trim() : undefined;
@@ -72,8 +99,8 @@ function groupMovementsIntoBatches(movements: Movement[]): StockBatch[] {
         id: `batch-order-${orderId}`,
         batchType: 'WHOLESALE_ORDER',
         orderId,
-        title: `Đợt nhập từ Đơn hàng sỉ #${orderId}`,
-        subtitle: supplier ? `Nhà cung cấp: ${supplier}` : 'Nhập kho từ đơn mua',
+        title: `Nhập kho từ Đơn sỉ #${orderId}`,
+        subtitle: supplier ? `Nhà cung cấp: ${supplier}` : `${batchMovements.length} mặt hàng`,
         occurredAt: batchMovements[0].createdAt,
         supplierName: supplier,
         totalItems: batchMovements.length,
@@ -83,61 +110,36 @@ function groupMovementsIntoBatches(movements: Movement[]): StockBatch[] {
       continue;
     }
 
-    // Nếu là nhập lẻ / tạo lô (RECEIPT hoặc IMPORT hoặc OPENING)
-    if (row.type === 'RECEIPT' || row.type === 'IMPORT' || row.type === 'OPENING') {
-      const rowTime = new Date(row.createdAt).getTime();
-      const batchMovements = [row];
-      visited.add(row.id);
+    const isInbound = row.quantityChange > 0 || ['RECEIPT', 'IMPORT', 'OPENING'].includes(row.type);
+    const dayKey = toVnDateKey(row.createdAt);
+    const dayDisplay = toVnDateDisplay(row.createdAt);
+    const batchMovements = [row];
+    visited.add(row.id);
 
-      for (let j = i + 1; j < movements.length; j++) {
-        const nextRow = movements[j];
-        if (visited.has(nextRow.id)) continue;
-        if (nextRow.type !== 'RECEIPT' && nextRow.type !== 'IMPORT' && nextRow.type !== 'OPENING') continue;
-        if (nextRow.note && nextRow.note.includes('[ĐƠN SỈ #')) continue;
-
-        const nextTime = new Date(nextRow.createdAt).getTime();
-        // Gom các mặt hàng được nhập cùng đợt trong vòng 90 giây
-        if (Math.abs(rowTime - nextTime) <= 90000) {
-          batchMovements.push(nextRow);
-          visited.add(nextRow.id);
-        }
+    for (let j = i + 1; j < movements.length; j++) {
+      const nextRow = movements[j];
+      if (visited.has(nextRow.id)) continue;
+      if (nextRow.note && nextRow.note.includes('[ĐƠN SỈ #')) continue;
+      const nextInbound = nextRow.quantityChange > 0 || ['RECEIPT', 'IMPORT', 'OPENING'].includes(nextRow.type);
+      if (nextInbound !== isInbound) continue;
+      if (toVnDateKey(nextRow.createdAt) === dayKey) {
+        batchMovements.push(nextRow);
+        visited.add(nextRow.id);
       }
-
-      const totalQty = batchMovements.reduce(
-        (sum, m) => sum + Math.max(0, m.quantityChange),
-        0,
-      );
-      const isSingle = batchMovements.length === 1;
-
-      batches.push({
-        id: `batch-receipt-${row.id}`,
-        batchType: 'MANUAL_IMPORT',
-        title: isSingle
-          ? `Đợt nhập lẻ: ${batchMovements[0].productName}`
-          : `Nhóm nhập gần nhau (${batchMovements.length} dòng)`,
-        subtitle: isSingle
-          ? `+${batchMovements[0].quantityChange} ${batchMovements[0].unit}${batchMovements[0].note ? ` · ${batchMovements[0].note}` : ''}`
-          : batchMovements.map((m) => m.productName).slice(0, 3).join(', ') + (batchMovements.length > 3 ? '…' : ''),
-        occurredAt: row.createdAt,
-        supplierName: supplier,
-        totalItems: batchMovements.length,
-        totalQuantity: totalQty,
-        movements: batchMovements,
-      });
-      continue;
     }
 
-    // Các giao dịch khác (SALE, ADJUSTMENT)
-    visited.add(row.id);
+    const uniqueNames = Array.from(new Set(batchMovements.map((m) => m.productName)));
+    const previewNames = uniqueNames.slice(0, 3).join(', ') + (uniqueNames.length > 3 ? ` và ${uniqueNames.length - 3} món khác` : '');
+
     batches.push({
-      id: `batch-other-${row.id}`,
-      batchType: 'OTHER',
-      title: `${labels[row.type] || row.type}: ${row.productName}`,
-      subtitle: `${row.quantityChange > 0 ? '+' : ''}${row.quantityChange} ${row.unit}${row.note ? ` · ${row.note}` : ''}`,
+      id: `batch-${isInbound ? 'in' : 'out'}-${dayKey}-${row.id}`,
+      batchType: isInbound ? 'DAILY_IMPORT' : 'DAILY_EXPORT',
+      title: isInbound ? `Nhập kho ngày ${dayDisplay}` : `Xuất kho ngày ${dayDisplay}`,
+      subtitle: `${batchMovements.length} giao dịch · ${previewNames}`,
       occurredAt: row.createdAt,
-      totalItems: 1,
-      totalQuantity: Math.abs(row.quantityChange),
-      movements: [row],
+      totalItems: batchMovements.length,
+      totalQuantity: batchMovements.reduce((sum, m) => sum + Math.abs(m.quantityChange), 0),
+      movements: batchMovements,
     });
   }
 
@@ -186,7 +188,7 @@ export default function StockActivity({
   useEffect(() => {
     let active = true;
     api
-      .get<{ movements: Movement[]; hasMore: boolean }>('/inventory/history', { params: { page } })
+      .get<{ movements: Movement[]; hasMore: boolean }>('/inventory/history', { params: { page, limit: 100 } })
       .then(({ data }) => {
         if (active) {
           setRows(data.movements);
@@ -301,13 +303,12 @@ export default function StockActivity({
           </label>
           <label>
             Ngày giao dịch
-            <input
-              type="date"
+            <DatePicker
               required
               max={new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })}
               value={occurredOn}
               disabled={busy}
-              onChange={(e) => setOccurredOn(e.target.value)}
+              onChange={(val) => setOccurredOn(val)}
             />
             <small>
               Quên nhập hôm qua? Chọn đúng ngày thực tế, hệ thống sẽ cộng vào báo cáo ngày đó.
@@ -315,12 +316,12 @@ export default function StockActivity({
           </label>
           <label>
             Hạn sử dụng của lô (không bắt buộc)
-            <input
-              type="date"
+            <DatePicker
               min={occurredOn}
               value={lotExpiryDate}
               disabled={busy}
-              onChange={(e) => setLotExpiryDate(e.target.value)}
+              onChange={(val) => setLotExpiryDate(val)}
+              placeholder="DD/MM/YYYY (hạn sử dụng lô)"
             />
             <small>Ngày này có thể ở tương lai; đây là hạn dùng, không phải ngày nhập.</small>
           </label>
@@ -457,25 +458,24 @@ export default function StockActivity({
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '14px' }}>
             {batches.map((batch) => {
               const isExpanded = Boolean(expandedBatches[batch.id]);
-              const isWholesale = batch.batchType === 'WHOLESALE_ORDER';
-              const isManual = batch.batchType === 'MANUAL_IMPORT';
+              const isImport = batch.batchType === 'WHOLESALE_ORDER' || batch.batchType === 'DAILY_IMPORT';
 
               return (
                 <div
                   key={batch.id}
                   style={{
                     borderRadius: '10px',
-                    border: `1px solid ${isWholesale ? '#bae6fd' : isManual ? '#bbf7d0' : '#e2e8f0'}`,
+                    border: `1px solid ${isImport ? '#bbf7d0' : '#fecaca'}`,
                     backgroundColor: '#ffffff',
                     boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
                     overflow: 'hidden',
                   }}
                 >
-                  {/* Header đợt nhập hàng */}
+                  {/* Header nhóm theo ngày */}
                   <div
                     style={{
                       padding: '12px 16px',
-                      backgroundColor: isWholesale ? '#f0f9ff' : isManual ? '#f0fdf4' : '#f8fafc',
+                      backgroundColor: isImport ? '#f0fdf4' : '#fef2f2',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'space-between',
@@ -492,11 +492,11 @@ export default function StockActivity({
                           padding: '3px 8px',
                           borderRadius: '4px',
                           letterSpacing: '0.3px',
-                          backgroundColor: isWholesale ? '#0284c7' : isManual ? '#16a34a' : '#64748b',
+                          backgroundColor: isImport ? '#16a34a' : '#dc2626',
                           color: '#ffffff',
                         }}
                       >
-                        {isWholesale ? 'ĐỢT NHẬP SỈ' : isManual ? 'NHẬP KHO LẺ' : 'BIẾN ĐỘNG'}
+                        {isImport ? 'NHẬP KHO' : 'XUẤT KHO'}
                       </span>
 
                       <div>
@@ -511,11 +511,11 @@ export default function StockActivity({
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                       <div style={{ textAlign: 'right' }}>
-                        <strong style={{ fontSize: '13px', color: '#0f172a', display: 'block' }}>
-                          {batch.totalItems} dòng trên trang · {Array.from(new Set(batch.movements.map(m => m.unit))).map(unit => `+${batch.movements.filter(m => m.unit === unit).reduce((sum, m) => sum + Math.max(0, m.quantityChange), 0)} ${unit}`).join(' · ')}
+                        <strong style={{ fontSize: '13px', color: isImport ? '#15803d' : '#b91c1c', display: 'block' }}>
+                          {summarizeBatchQuantities(batch.movements)}
                         </strong>
                         <span style={{ fontSize: '12px', color: '#64748b' }}>
-                          {new Date(batch.occurredAt).toLocaleString('vi-VN')}
+                          {toVnDateDisplay(batch.occurredAt)}
                         </span>
                       </div>
 
@@ -541,7 +541,7 @@ export default function StockActivity({
                     </div>
                   </div>
 
-                  {/* Chi tiết từng món trong đợt nhập */}
+                  {/* Chi tiết từng món trong ngày */}
                   {isExpanded && (
                     <div style={{ padding: '12px 16px', backgroundColor: '#ffffff' }}>
                       <table className="inventory-table" style={{ margin: 0 }}>
@@ -549,9 +549,9 @@ export default function StockActivity({
                           <tr style={{ backgroundColor: '#f8fafc' }}>
                             <th style={{ fontSize: '12px' }}>Sản phẩm</th>
                             <th style={{ fontSize: '12px' }}>Thao tác</th>
-                            <th style={{ fontSize: '12px' }}>Số lượng nhập</th>
+                            <th style={{ fontSize: '12px' }}>Số lượng</th>
                             <th style={{ fontSize: '12px' }}>Tồn trước → Sau</th>
-                            <th style={{ fontSize: '12px' }}>Ghi chú / Quy cách</th>
+                            <th style={{ fontSize: '12px' }}>Ghi chú / Thời gian</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -585,7 +585,12 @@ export default function StockActivity({
                                 {m.quantityBefore} → <strong>{m.quantityAfter}</strong> {m.unit}
                               </td>
                               <td style={{ fontSize: '12px', color: '#64748b' }}>
-                                {m.note || 'Không có ghi chú'}
+                                {m.note ? `${m.note} · ` : ''}
+                                {new Date(m.createdAt).toLocaleTimeString('vi-VN', {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  timeZone: 'Asia/Ho_Chi_Minh',
+                                })}
                               </td>
                             </tr>
                           ))}

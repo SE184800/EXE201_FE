@@ -62,7 +62,7 @@ export default function WalletQrCode({
     <div className="wallet-qr">
       <div className="wallet-qr-code">
         {dataUrl ? (
-          <img src={dataUrl} alt={`Mã QR nạp ${money(amount)}`} width={240} height={240} />
+          <img src={dataUrl} alt={`Mã QR nạp ${money(amount)}`} width={196} height={196} />
         ) : (
           <div className="wallet-qr-placeholder">Đang tạo mã QR…</div>
         )}
@@ -90,8 +90,8 @@ export default function WalletQrCode({
         </div>
       </dl>
       <p className="wallet-qr-hint">
-        Mở ứng dụng ngân hàng, chọn quét mã QR, kiểm tra số tiền rồi xác nhận. Toàn bộ tiền trong hệ
-        thống là tiền ảo nên không có giao dịch thật nào được thực hiện.
+        Mở ứng dụng ngân hàng, chọn quét mã QR, kiểm tra số tiền và thông tin chuyển khoản rồi bấm
+        xác nhận bên dưới.
       </p>
       <div className="wallet-qr-actions">
         <button className="primary-button" type="button" onClick={onConfirm} disabled={busy}>

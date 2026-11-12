@@ -7,6 +7,7 @@ import StoreRevenue from './StoreRevenue';
 import ProfilePage, { type StoreProfile, type Profile } from './ProfilePage';
 import StoreOnboarding from '../components/StoreOnboarding';
 import ContractSigningModal from '../components/ContractSigningModal';
+import PartnerProfileEditModal from '../components/PartnerProfileEditModal';
 import { getContractStatus } from '../services/contract.api';
 import RestockPage from './RestockPage';
 import SalesCalendar from './SalesCalendar';
@@ -19,16 +20,22 @@ import WalletPage from './wallet/WalletPage';
 import TopbarBalance from '../components/TopbarBalance';
 import Brand from '../components/Brand';
 import Icon from '../components/Icon';
+import DatePicker from '../components/DatePicker';
 import ExportSalesDialog from '../components/ExportSalesDialog';
 import InventoryImportDialog, {
   type InventoryImportDialogHandle,
 } from '../components/InventoryImportDialog';
 import OverviewRestockSuggestions from '../components/OverviewRestockSuggestions';
+import TodayDeliveryAlert from '../components/TodayDeliveryAlert';
+import type { SupplierOrder } from '../services/supplier.api';
 import type { AuthUser } from '../types/auth';
 import {
   createConsignmentRequest,
   getStoreConsignmentRequests,
   confirmConsignmentReceipt,
+  getStoreConsignmentSettlements,
+  payConsignmentSettlement,
+  type ConsignmentSettlement,
   type ConsignmentRequest,
 } from '../services/consignment.api';
 
@@ -130,9 +137,11 @@ export default function StoreInventory({
   const importDialog = useRef<InventoryImportDialogHandle>(null);
 
   const [consignmentRequests, setConsignmentRequests] = useState<ConsignmentRequest[]>([]);
+  const [storeOrders, setStoreOrders] = useState<SupplierOrder[]>([]);
   const [requestingConsignment, setRequestingConsignment] = useState<{ item: Item; type: 'RESTOCK' | 'EXCHANGE_EXPIRY' } | null>(null);
   const [showConsignmentHistory, setShowConsignmentHistory] = useState(false);
   const [showContractModal, setShowContractModal] = useState(false);
+  const [showPartnerEditModal, setShowPartnerEditModal] = useState(false);
   const [contractSigned, setContractSigned] = useState<boolean | null>(null);
   const [contractRefreshKey, setContractRefreshKey] = useState(0);
 
@@ -146,7 +155,22 @@ export default function StoreInventory({
     getContractStatus()
       .then((res) => setContractSigned(res.isSigned))
       .catch(() => { });
-  }, [revision]);
+  }, [revision, contractRefreshKey]);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get<{ orders: SupplierOrder[] }>('/orders')
+      .then(({ data }) => {
+        if (active && Array.isArray(data.orders)) {
+          setStoreOrders(data.orders);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [revision, activeTab]);
 
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
@@ -528,7 +552,14 @@ export default function StoreInventory({
           onSignedSuccess={() => {
             setShowContractModal(false);
             setContractSigned(true);
-            setNotice('Đã ký kết hợp đồng điện tử thành công!');
+            setStoreProfile((prev) => (prev ? { ...prev, verificationStatus: 'PENDING' } : prev));
+            api
+              .get<{ profile: Profile }>('/profile')
+              .then(({ data }) => {
+                if (data.profile.storeProfile) setStoreProfile(data.profile.storeProfile);
+              })
+              .catch(() => {});
+            setNotice('Đã ký kết hợp đồng điện tử thành công! Hồ sơ đang chờ Admin phê duyệt.');
             setContractRefreshKey((prev) => prev + 1);
             setActiveTab('profile');
           }}
@@ -802,43 +833,115 @@ export default function StoreInventory({
                   </button>
                 </div>
               )}
-              {contractSigned === false && (
-                <div
-                  style={{
-                    margin: '0 0 16px 0',
-                    padding: '12px 18px',
-                    backgroundColor: '#fff7ed',
-                    border: '1px solid #fed7aa',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '12px',
-                  }}
-                >
-                  <div style={{ fontSize: '13px', color: '#9a3412', lineHeight: 1.45 }}>
-                    <strong>Thỏa thuận kết nối nền tảng:</strong> Bạn chưa hoàn tất ký số Hợp đồng điện tử và thỏa thuận cơ chế ký quỹ 10% với SupplyMind.
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowContractModal(true)}
-                    style={{
-                      padding: '7px 16px',
-                      backgroundColor: '#ea580c',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '6px',
-                      fontSize: '12.5px',
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      whiteSpace: 'nowrap',
-                      boxShadow: '0 1px 2px rgba(234, 88, 12, 0.25)',
-                    }}
-                  >
-                    Ký hợp đồng ngay
-                  </button>
-                </div>
-              )}
+              {(() => {
+                          const rawVerificationStatus = storeProfile?.verificationStatus;
+          const verificationStatus =
+            rawVerificationStatus === 'APPROVED' ||
+            rawVerificationStatus === 'REJECTED' ||
+            rawVerificationStatus === 'PENDING'
+              ? rawVerificationStatus
+              : contractSigned
+                ? 'PENDING'
+                : 'DRAFT';
+                if (verificationStatus === 'REJECTED') {
+                  return (
+                    <div
+                      style={{
+                        margin: '0 0 16px 0',
+                        padding: '14px 18px',
+                        backgroundColor: '#fef2f2',
+                        border: '1px solid #fecaca',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                        flexWrap: 'wrap',
+                      }}
+                    >
+                      <div style={{ fontSize: '13.5px', color: '#991b1b', lineHeight: 1.45 }}>
+                        <strong style={{ marginRight: '6px' }}>CẦN ĐIỀU CHỈNH:</strong>
+                        Vui lòng cập nhật lại thông tin đăng ký
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowPartnerEditModal(true)}
+                        style={{
+                          padding: '8px 18px',
+                          backgroundColor: '#dc2626',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          fontWeight: 650,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        Cập nhật
+                      </button>
+                    </div>
+                  );
+                }
+                if (verificationStatus === 'PENDING') {
+                  return (
+                    <div
+                      style={{
+                        margin: '0 0 16px 0',
+                        padding: '12px 18px',
+                        backgroundColor: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        borderRadius: '8px',
+                        fontSize: '13px',
+                        color: '#1e40af',
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      <strong>Đang chờ duyệt:</strong> Hồ sơ và hợp đồng liên kết của bạn đã được gửi và đang chờ Admin phê duyệt.
+                    </div>
+                  );
+                }
+                if (verificationStatus === 'DRAFT') {
+                  return (
+                    <div
+                      style={{
+                        margin: '0 0 16px 0',
+                        padding: '12px 18px',
+                        backgroundColor: '#fff7ed',
+                        border: '1px solid #fed7aa',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '12px',
+                      }}
+                    >
+                      <div style={{ fontSize: '13px', color: '#9a3412', lineHeight: 1.45 }}>
+                        <strong>Chưa ký thỏa thuận:</strong> Bạn chưa hoàn tất ký số Hợp đồng điện tử và thỏa thuận cơ chế ký quỹ 10% với SupplyMind.
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowContractModal(true)}
+                        style={{
+                          padding: '7px 16px',
+                          backgroundColor: '#ea580c',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '12.5px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          whiteSpace: 'nowrap',
+                          boxShadow: '0 1px 2px rgba(234, 88, 12, 0.25)',
+                        }}
+                      >
+                        Ký hợp đồng ngay
+                      </button>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
               <section
                 hidden={
                   activeTab === 'profile' || activeTab === 'restock' || activeTab === 'calendar'
@@ -902,6 +1005,11 @@ export default function StoreInventory({
           {activeTab === 'quick-sale' && <VoiceQuickSale items={items} onSaved={refresh} />}
           {activeTab === 'overview' && (
             <>
+              <TodayDeliveryAlert
+                orders={storeOrders}
+                role="STORE_OWNER"
+                onViewOrders={() => setActiveTab('orders')}
+              />
               <OverviewRestockSuggestions
                 revision={revision}
                 onLogout={onLogout}
@@ -954,11 +1062,10 @@ export default function StoreInventory({
                   </div>
                   <label>
                     Ngày giao dịch
-                    <input
-                      type="date"
+                    <DatePicker
                       value={quickDate}
                       max={new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })}
-                      onChange={(e) => setQuickDate(e.target.value)}
+                      onChange={(val) => setQuickDate(val)}
                     />
                   </label>
                 </div>
@@ -1352,6 +1459,19 @@ export default function StoreInventory({
           <div hidden={activeTab !== 'profile'}>
             <ProfilePage
               contractRefreshKey={contractRefreshKey}
+              onContractSigned={() => {
+                setContractSigned(true);
+                setContractRefreshKey((k) => k + 1);
+                setStoreProfile((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        verificationStatus:
+                          prev.verificationStatus === 'DRAFT' ? 'PENDING' : prev.verificationStatus,
+                      }
+                    : prev,
+                );
+              }}
               onSaved={(name) => {
                 setDisplayName(name);
                 api
@@ -1495,13 +1615,11 @@ export default function StoreInventory({
           </label>
           <label className="inventory-name">
             Hạn sử dụng <span className="optional-label">Không bắt buộc</span>
-            <input
-              type="date"
-              min="0001-01-01"
-              max="9999-12-31"
+            <DatePicker
               value={form.expiryDate}
               disabled={saving}
-              onChange={(e) => setForm({ ...form, expiryDate: e.target.value })}
+              onChange={(val) => setForm({ ...form, expiryDate: val })}
+              placeholder="DD/MM/YYYY (hạn in trên bao bì)"
             />
             <small>Nhập ngày in trên bao bì. Nhiều lô hàng? Dùng hạn gần nhất.</small>
           </label>
@@ -1789,11 +1907,29 @@ export default function StoreInventory({
         onSignedSuccess={() => {
           setShowContractModal(false);
           setContractSigned(true);
-          setNotice('Đã ký kết hợp đồng điện tử thành công!');
+          setStoreProfile((prev) => (prev ? { ...prev, verificationStatus: 'PENDING' } : prev));
+          api
+            .get<{ profile: Profile }>('/profile')
+            .then(({ data }) => {
+              if (data.profile.storeProfile) setStoreProfile(data.profile.storeProfile);
+            })
+            .catch(() => {});
+          setNotice('Đã ký kết hợp đồng điện tử thành công! Hồ sơ đang chờ Admin phê duyệt.');
           setContractRefreshKey((prev) => prev + 1);
           setActiveTab('profile');
         }}
         user={user}
+      />
+      <PartnerProfileEditModal
+        isOpen={showPartnerEditModal}
+        onClose={() => setShowPartnerEditModal(false)}
+        role="STORE_OWNER"
+        storeProfile={storeProfile}
+        onSaved={(updated) => {
+          setStoreProfile(updated);
+          setContractRefreshKey((prev) => prev + 1);
+          setNotice('Cập nhật thông tin thành công, vui lòng đợi Admin phê duyệt');
+        }}
       />
     </main>
   );
@@ -1883,7 +2019,51 @@ function ConsignmentHistoryDialog({
   onClose: () => void;
   onConfirmReceipt: (requestId: string) => Promise<void>;
 }) {
+  const [activeTab, setActiveTab] = useState<'settlements' | 'requests'>('settlements');
+  const [settlements, setSettlements] = useState<ConsignmentSettlement[]>([]);
+  const [loadingSettlements, setLoadingSettlements] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [settlingId, setSettlingId] = useState<number | null>(null);
+  const [msg, setMsg] = useState('');
+
+  const loadSettlements = async () => {
+    setLoadingSettlements(true);
+    try {
+      const data = await getStoreConsignmentSettlements();
+      setSettlements(data || []);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingSettlements(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadSettlements();
+  }, []);
+
+  async function handleSettle(item: ConsignmentSettlement) {
+    if (
+      !window.confirm(
+        `Xác nhận kết toán ${item.unsettledQty} ${item.unit} "${item.productName}"?\nSố tiền ${item.dueAmount.toLocaleString('vi-VN')} ₫ sẽ được trừ từ Ví khả dụng để chuyển cho ${item.supplierName}.`
+      )
+    ) {
+      return;
+    }
+    setSettlingId(item.itemId);
+    setMsg('');
+    try {
+      const res = await payConsignmentSettlement(item.itemId, { qty: item.unsettledQty, method: 'WALLET' });
+      setMsg(res.message || 'Kết toán thành công!');
+      await loadSettlements();
+    } catch (err: any) {
+      window.alert(err?.response?.data?.message || err?.message || 'Lỗi khi kết toán.');
+    } finally {
+      setSettlingId(null);
+    }
+  }
+
+  const totalDue = settlements.reduce((sum, s) => sum + s.dueAmount, 0);
 
   async function handleConfirm(id: string) {
     setConfirmingId(id);
@@ -1900,14 +2080,149 @@ function ConsignmentHistoryDialog({
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
           <div>
             <span className="supplier-panel-label">HÀNG TIẾP THỊ & KÝ GỬI</span>
-            <h2>Theo dõi yêu cầu bù hàng / đổi date</h2>
+            <h2>Quản lý & Kết toán hàng ký gửi tiếp thị</h2>
           </div>
           <button className="dialog-close" onClick={onClose} style={{ fontSize: '24px', cursor: 'pointer', border: 'none', background: 'none' }}>
             ×
           </button>
         </div>
 
-        {!requests.length ? (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+          <button
+            type="button"
+            className={`table-button ${activeTab === 'settlements' ? 'primary-small' : ''}`}
+            style={activeTab === 'settlements' ? { background: '#0284c7', color: '#fff' } : {}}
+            onClick={() => setActiveTab('settlements')}
+          >
+            Bảng kê kết toán hàng đã bán ({settlements.filter((s) => s.unsettledQty > 0).length})
+          </button>
+          <button
+            type="button"
+            className={`table-button ${activeTab === 'requests' ? 'primary-small' : ''}`}
+            style={activeTab === 'requests' ? { background: '#0284c7', color: '#fff' } : {}}
+            onClick={() => setActiveTab('requests')}
+          >
+            Yêu cầu bù hàng / Đổi date ({requests.length})
+          </button>
+        </div>
+
+        {msg && (
+          <div
+            style={{
+              marginBottom: '12px',
+              padding: '10px 14px',
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              borderRadius: '6px',
+              color: '#166534',
+              fontSize: '13px',
+            }}
+          >
+            {msg}
+          </div>
+        )}
+
+        {activeTab === 'settlements' && (
+          <div>
+            <div
+              style={{
+                background: '#f0f9ff',
+                border: '1px solid #bae6fd',
+                borderRadius: '8px',
+                padding: '12px 14px',
+                marginBottom: '14px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '8px',
+              }}
+            >
+              <div>
+                <span style={{ fontSize: '12px', color: '#0369a1', fontWeight: 600 }}>TỔNG TIỀN CẦN KẾT TOÁN TRẢ VỰA</span>
+                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0284c7' }}>
+                  {totalDue.toLocaleString('vi-VN')} ₫
+                </div>
+              </div>
+              <button
+                type="button"
+                className="table-button"
+                style={{ fontSize: '12px' }}
+                onClick={() => void loadSettlements()}
+                disabled={loadingSettlements}
+              >
+                Làm mới
+              </button>
+            </div>
+
+            {loadingSettlements ? (
+              <p style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>Đang tải bảng kê đối soát...</p>
+            ) : !settlements.length ? (
+              <p style={{ textAlign: 'center', color: '#64748b', padding: '20px 0' }}>
+                Hiện tiệm chưa có mặt hàng ký gửi tiếp thị nào trong kho.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {settlements.map((s) => (
+                  <div
+                    key={s.itemId}
+                    style={{
+                      background: '#ffffff',
+                      border: s.unsettledQty > 0 ? '1px solid #bae6fd' : '1px solid #e2e8f0',
+                      borderRadius: '8px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '10px',
+                    }}
+                  >
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '0.95rem', color: '#0f172a' }}>{s.productName}</h4>
+                      <div style={{ fontSize: '0.82rem', color: '#64748b', marginTop: '2px' }}>
+                        NCC: <strong>{s.supplierName}</strong> · Tồn kho: {s.currentStock} {s.unit}
+                      </div>
+                      <div style={{ fontSize: '0.82rem', color: '#334155', marginTop: '4px' }}>
+                        Đã bán: <strong>{s.totalSold}</strong> {s.unit} · Đã trả: <strong>{s.settledQty}</strong> {s.unit} · Cần trả: <strong style={{ color: '#b91c1c' }}>{s.unsettledQty}</strong> {s.unit}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                        Giá sỉ thỏa thuận: <strong>{s.settlementPrice.toLocaleString('vi-VN')} ₫</strong>
+                      </div>
+                      <div
+                        style={{
+                          fontSize: '1rem',
+                          fontWeight: 700,
+                          color: s.dueAmount > 0 ? '#b91c1c' : '#15803d',
+                          margin: '2px 0 6px 0',
+                        }}
+                      >
+                        {s.dueAmount > 0 ? `Cần trả: ${s.dueAmount.toLocaleString('vi-VN')} ₫` : 'Đã kết toán đủ'}
+                      </div>
+                      {s.unsettledQty > 0 && (
+                        <button
+                          type="button"
+                          className="table-button primary-small"
+                          style={{ background: '#0284c7', color: '#fff', fontSize: '12px', padding: '4px 10px' }}
+                          disabled={settlingId === s.itemId}
+                          onClick={() => handleSettle(s)}
+                        >
+                          {settlingId === s.itemId ? 'Đang trừ ví...' : 'Kết toán qua Ví'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === 'requests' && (
+          <div>
+            {!requests.length ? (
           <p style={{ textAlign: 'center', color: '#64748b', padding: '30px 0' }}>
             Chưa có yêu cầu bù hàng hoặc đổi date nào.
           </p>
@@ -1982,6 +2297,8 @@ function ConsignmentHistoryDialog({
                 </div>
               </div>
             ))}
+          </div>
+        )}
           </div>
         )}
       </div>

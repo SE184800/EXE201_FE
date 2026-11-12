@@ -30,6 +30,7 @@ function ContractSigningContent({
   const [agreed, setAgreed] = useState(false);
   const [privateKey, setPrivateKey] = useState('');
   const [errorNotice, setErrorNotice] = useState('');
+  const [maskInput, setMaskInput] = useState(true);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -194,7 +195,7 @@ function ContractSigningContent({
                   Số hợp đồng: <strong>{contract?.contractNumber}</strong>
                 </div>
                 <div style={{ padding: '6px 12px', backgroundColor: '#ecfdf5', borderRadius: '6px', color: '#166534', fontWeight: 600 }}>
-                  Trạng thái: {contract?.isSigned ? 'ĐÃ KÝ KẾT' : 'CHỜ KÝ SỐ'}
+                  Trạng thái: {contract?.isSigned ? 'ĐÃ KÝ KẾT' : 'CHƯA KÝ THỎA THUẬN'}
                 </div>
                 <div style={{ padding: '6px 12px', backgroundColor: '#eff6ff', borderRadius: '6px', color: '#1d4ed8' }}>
                   Tiêu chuẩn: <strong>Luật Giao dịch điện tử 2023</strong>
@@ -283,27 +284,6 @@ function ContractSigningContent({
                     >
                       Khóa bí mật cá nhân (Private Key) để ký tên: <span style={{ color: '#dc2626' }}>*</span>
                     </label>
-                    {contract?.rawPrivateKey && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPrivateKey(contract.rawPrivateKey || '');
-                          if (errorNotice) setErrorNotice('');
-                        }}
-                        style={{
-                          fontSize: '12px',
-                          fontWeight: 650,
-                          color: '#166534',
-                          backgroundColor: '#dcfce7',
-                          border: '1px solid #86efac',
-                          borderRadius: '6px',
-                          padding: '4px 10px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Điền nhanh Private Key (Thử nghiệm)
-                      </button>
-                    )}
                   </div>
 
                   <div
@@ -316,9 +296,31 @@ function ContractSigningContent({
                       fontSize: '12px',
                       color: '#166534',
                       lineHeight: 1.5,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '8px',
                     }}
                   >
-                    <strong>Khóa ký:</strong> Dùng khóa cá nhân đã được cấp cho tài khoản. Không chia sẻ khóa này cho người khác.
+                    <span>
+                      <strong>Khóa ký:</strong> Nhập hoặc dán Khóa bí mật (Private Key) đã được gửi qua email khi đăng ký tài khoản. Không chia sẻ khóa này cho người khác.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setMaskInput(!maskInput)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        fontSize: '11.5px',
+                        color: '#15803d',
+                        textDecoration: 'underline',
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      {maskInput ? 'Hiện ký tự ô nhập' : 'Che ký tự ô nhập'}
+                    </button>
                   </div>
 
                   <textarea
@@ -341,6 +343,7 @@ function ContractSigningContent({
                       resize: 'vertical',
                       boxSizing: 'border-box',
                       backgroundColor: '#ffffff',
+                      ...(maskInput && privateKey ? ({ WebkitTextSecurity: 'disc' } as React.CSSProperties) : {}),
                     }}
                   />
 

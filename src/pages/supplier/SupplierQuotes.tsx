@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Icon from '../../components/Icon';
 import SupplierLayout from '../../components/SupplierLayout';
+import DatePicker from '../../components/DatePicker';
 import type { AuthUser } from '../../types/auth';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
 import {
@@ -353,12 +354,11 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                 </label>
                 <label className="supplier-field">
                   Có hiệu lực đến
-                  <input
+                  <DatePicker
                     required
-                    type="date"
                     min={localDate(new Date())}
                     value={form.validUntil}
-                    onChange={(event) => setForm({ ...form, validUntil: event.target.value })}
+                    onChange={(val) => setForm({ ...form, validUntil: val })}
                   />
                 </label>
                 <div className="supplier-field">
@@ -875,12 +875,10 @@ function DispatchConsignmentModal({
         {request.type === 'EXCHANGE_EXPIRY' && (
           <label className="supplier-dialog-field" style={{ marginTop: '8px' }}>
             <span>Hạn sử dụng (HSD) của lô mới bàn giao:</span>
-            <input
-              type="date"
+            <DatePicker
               required
               value={newExpiryDate}
-              onChange={(e) => setNewExpiryDate(e.target.value)}
-              style={{ width: '100%', padding: '8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+              onChange={(val) => setNewExpiryDate(val)}
             />
           </label>
         )}

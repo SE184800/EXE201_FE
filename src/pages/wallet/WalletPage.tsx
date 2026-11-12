@@ -8,8 +8,6 @@ import { api, getApiError, isUnauthenticated } from '../../services/api';
 import {
   confirmQrDeposit,
   createQrDepositRequest,
-  createSandboxDepositRequest,
-  createSandboxWithdrawalRequest,
   createWithdrawalRequest,
   getWallet,
   getWalletTransactions,
@@ -44,11 +42,12 @@ const TYPE_META: Record<
   COMPENSATION_RECEIVED: { label: 'Nhận bồi thường cọc', tagClass: 'tag-success', category: 'ESCROW' },
   ORDER_PAYMENT: { label: 'Thanh toán đơn hàng', tagClass: 'tag-danger', category: 'OTHER' },
   ORDER_RECEIVE: { label: 'Nhận tiền đơn hàng', tagClass: 'tag-success', category: 'OTHER' },
+  COMMISSION_FEE: { label: 'Phí hoa hồng nền tảng', tagClass: 'tag-warning', category: 'OTHER' },
   REFUND: { label: 'Hoàn tiền', tagClass: 'tag-success', category: 'OTHER' },
   REFUND_RECEIVED: { label: 'Thu hồi tiền hoàn', tagClass: 'tag-danger', category: 'OTHER' },
 };
 
-type FilterCategory = 'ALL' | 'ESCROW' | 'DEPOSIT' | 'WITHDRAW' | 'MOCK';
+type FilterCategory = 'ALL' | 'ESCROW' | 'DEPOSIT' | 'WITHDRAW';
 
 export default function WalletPage({
   onLogout,
@@ -78,7 +77,6 @@ export default function WalletPage({
 
   // Withdraw modal state
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
-  const [withdrawMode, setWithdrawMode] = useState<'OFFICIAL' | 'SANDBOX'>('OFFICIAL');
   const [withdrawForm, setWithdrawForm] = useState({
     amount: '',
     bankName: 'Vietcombank',
@@ -159,54 +157,6 @@ export default function WalletPage({
       .catch(() => { });
   }, []);
 
-  // Simulator actions
-  async function handleAddMockFunds(amount = 5000000) {
-    if (busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      await createSandboxDepositRequest({
-        amount,
-        note: `Nạp thử nghiệm ${money(amount)} vào ví hệ thống`,
-      });
-      setNotice(`Đã nạp thành công ${money(amount)} thử nghiệm vào ví.`);
-      await load();
-    } catch (e) {
-      setError(getApiError(e));
-      if (isUnauthenticated(e)) onLogout();
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleResetMockBalance() {
-    if (busy) return;
-    setBusy(true);
-    setError('');
-    try {
-      const current = overview?.wallet?.balance ?? 0;
-      const target = 10000000;
-      if (current < target) {
-        await createSandboxDepositRequest({
-          amount: target - current,
-          note: 'Đặt lại số dư ví thử nghiệm về 10.000.000 ₫',
-        });
-      } else if (current > target) {
-        await createSandboxWithdrawalRequest({
-          amount: current - target,
-          note: 'Đặt lại số dư ví thử nghiệm về 10.000.000 ₫',
-        });
-      }
-      setNotice('Đã đặt lại số dư ví hệ thống về 10.000.000 ₫.');
-      await load();
-    } catch (e) {
-      setError(getApiError(e));
-      if (isUnauthenticated(e)) onLogout();
-    } finally {
-      setBusy(false);
-    }
-  }
-
   // Create QR for official deposit
   async function handleGenerateQr(e?: FormEvent) {
     if (e) e.preventDefault();
@@ -272,22 +222,14 @@ export default function WalletPage({
 
     setBusy(true);
     try {
-      if (withdrawMode === 'SANDBOX') {
-        await createSandboxWithdrawalRequest({
-          amount: parsedAmount,
-          note: withdrawForm.note || 'Rút tiền thử nghiệm',
-        });
-        setNotice(`Đã xử lý rút ngay ${money(parsedAmount)} thử nghiệm về tài khoản.`);
-      } else {
-        await createWithdrawalRequest({
-          amount: parsedAmount,
-          bankName: withdrawForm.bankName,
-          bankAccountNumber: withdrawForm.bankAccountNumber.trim(),
-          bankAccountHolder: withdrawForm.bankAccountHolder.trim(),
-          note: withdrawForm.note || undefined,
-        });
-        setNotice(`Đã gửi yêu cầu rút ${money(parsedAmount)}. Hệ thống sẽ xử lý giải ngân.`);
-      }
+      await createWithdrawalRequest({
+        amount: parsedAmount,
+        bankName: withdrawForm.bankName,
+        bankAccountNumber: withdrawForm.bankAccountNumber.trim(),
+        bankAccountHolder: withdrawForm.bankAccountHolder.trim(),
+        note: withdrawForm.note || undefined,
+      });
+      setNotice(`Đã gửi yêu cầu rút ${money(parsedAmount)}. Hệ thống sẽ xử lý giải ngân.`);
       setShowWithdrawModal(false);
       setWithdrawForm((prev) => ({ ...prev, amount: '', note: '' }));
       await load();
@@ -303,7 +245,6 @@ export default function WalletPage({
   const filteredTransactions = transactions.filter((t) => {
     if (filter === 'ALL') return true;
     const meta = TYPE_META[t.type];
-    if (filter === 'MOCK') return t.method === 'SANDBOX' || meta?.category === 'MOCK';
     return meta?.category === filter;
   });
 
@@ -441,112 +382,6 @@ export default function WalletPage({
         </div>
       </div>
 
-      {/* ESCROW Account Card */}
-      <div
-        className="escrow-account-card"
-        style={{
-          background: 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)',
-          border: '1px solid #bbf7d0',
-          borderRadius: '12px',
-          padding: '16px 20px',
-          marginBottom: '20px',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '12px',
-          }}
-        >
-          <div>
-            <span
-              style={{
-                fontSize: '11px',
-                fontWeight: 700,
-                color: '#166534',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                display: 'block',
-                marginBottom: '3px',
-              }}
-            >
-              TÀI KHOẢN TẠM GIỮ TIỀN CỌC TRUNG GIAN (ESCROW)
-            </span>
-            <div style={{ fontSize: '15px', fontWeight: 700, color: '#065f46' }}>
-              Sacombank · STK: 050138052378 · Chủ TK: LE TRAN MINH DUC
-            </div>
-            <div style={{ fontSize: '12.5px', color: '#15803d', marginTop: '3px', lineHeight: 1.5 }}>
-              Hệ thống lưu giữ cọc 10% an toàn tuyệt đối và chỉ tự động giải ngân cho Chủ vựa khi Cửa
-              hàng xác nhận nhận đủ hàng đạt chuẩn. Trong trường hợp hàng hóa bị sự cố hoặc hủy đơn
-              hợp lệ, tiền cọc sẽ được hoàn trả lại cho cửa hàng.
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              type="button"
-              className="table-button primary-small"
-              onClick={() => {
-                setShowDepositModal(true);
-                setQr(null);
-                setDepositAmount('500000');
-              }}
-              style={{
-                fontSize: '12.5px',
-                padding: '8px 16px',
-                backgroundColor: '#166534',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '6px',
-                fontWeight: 600,
-                cursor: 'pointer',
-              }}
-            >
-              Nạp cọc ngay qua VietQR
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Simulator Panel (Mock Mode) */}
-      <div className="supplier-panel wallet-mock-panel">
-        <div className="mock-panel-header">
-          <div>
-            <h3 style={{ margin: '0 0 4px', fontSize: '15.5px', color: '#1e3a8a' }}>
-              Chế độ thử nghiệm tiền hệ thống
-            </h3>
-            <p className="form-description" style={{ margin: 0, fontSize: '13px', color: '#334155' }}>
-              Hệ thống cấp sẵn tiền mô phỏng để bạn kiểm tra đầy đủ luồng đặt cọc 10%, duyệt đơn và
-              giải phóng cọc mà không cần nạp tiền thật.
-            </p>
-          </div>
-          <div className="mock-panel-actions">
-            <button
-              type="button"
-              className="dash-primary"
-              disabled={busy}
-              onClick={() => handleAddMockFunds(5000000)}
-              style={{ fontSize: '13px', padding: '8px 14px' }}
-            >
-              <Icon name="sparkle" />
-              {busy ? 'Đang nạp…' : '+ Nạp 5.000.000 ₫ thử nghiệm'}
-            </button>
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={busy}
-              onClick={handleResetMockBalance}
-              style={{ fontSize: '13px', padding: '8px 14px' }}
-            >
-              {busy ? 'Đang xử lý…' : '↺ Đặt lại 10.000.000 ₫'}
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* Transaction History Section */}
       <div className="supplier-panel wallet-transactions-panel">
         <div
@@ -575,7 +410,6 @@ export default function WalletPage({
                 { id: 'ESCROW', label: 'Ký quỹ cọc' },
                 { id: 'DEPOSIT', label: 'Nạp tiền' },
                 { id: 'WITHDRAW', label: 'Rút tiền' },
-                { id: 'MOCK', label: 'Thử nghiệm' },
               ] as const
             ).map((btn) => (
               <button
@@ -621,7 +455,7 @@ export default function WalletPage({
                     label: tx.typeLabel || tx.type,
                     tagClass: 'tag-info',
                   };
-                  const isPositive = tx.direction === 'CREDIT' || tx.amount > 0;
+                  const isPositive = tx.direction === 'CREDIT';
                   const absAmount = Math.abs(tx.amount);
                   return (
                     <tr key={tx.id}>
@@ -671,6 +505,7 @@ export default function WalletPage({
             style={{ maxWidth: '520px' }}
           >
             <div
+              className="wallet-modal-header"
               style={{
                 padding: '16px 20px',
                 borderBottom: '1px solid #e2e8f0',
@@ -698,7 +533,7 @@ export default function WalletPage({
               </button>
             </div>
 
-            <div style={{ padding: '20px' }}>
+            <div className="wallet-modal-body" style={{ padding: '20px' }}>
               {!qr ? (
                 <form onSubmit={(e) => void handleGenerateQr(e)}>
                   <div style={{ marginBottom: '16px' }}>
@@ -882,6 +717,7 @@ export default function WalletPage({
             style={{ maxWidth: '520px' }}
           >
             <div
+              className="wallet-modal-header"
               style={{
                 padding: '16px 20px',
                 borderBottom: '1px solid #e2e8f0',
@@ -909,7 +745,11 @@ export default function WalletPage({
               </button>
             </div>
 
-            <form onSubmit={(e) => void handleSubmitWithdraw(e)} style={{ padding: '20px' }}>
+            <form
+              className="wallet-modal-body"
+              onSubmit={(e) => void handleSubmitWithdraw(e)}
+              style={{ padding: '20px' }}
+            >
               <div
                 style={{
                   padding: '12px 14px',
@@ -1061,27 +901,7 @@ export default function WalletPage({
                 />
               </div>
 
-              <div style={{ marginBottom: '18px' }}>
-                <label
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '8px',
-                    fontSize: '13px',
-                    color: '#334155',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={withdrawMode === 'SANDBOX'}
-                    onChange={(e) => setWithdrawMode(e.target.checked ? 'SANDBOX' : 'OFFICIAL')}
-                  />
-                  <span>Chế độ thử nghiệm (Xử lý giải ngân ngay lập tức)</span>
-                </label>
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
                 <button
                   type="button"
                   onClick={() => setShowWithdrawModal(false)}

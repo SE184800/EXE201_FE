@@ -1,3 +1,4 @@
+import DatePicker from './DatePicker';
 import { useEffect, useState } from 'react';
 import Icon from './Icon';
 import { getStoreRevenue, vietnamDay, vnd, type StoreRevenueReport } from '../services/storeRevenue.api';
@@ -236,20 +237,18 @@ function ExportSalesContent({
           <div className="export-date-row">
             <label>
               Từ ngày
-              <input
-                type="date"
+              <DatePicker
                 value={from}
                 max={to || undefined}
-                onChange={(e) => setFrom(e.target.value)}
+                onChange={(val) => setFrom(val)}
               />
             </label>
             <label>
               Đến ngày
-              <input
-                type="date"
+              <DatePicker
                 value={to}
                 min={from || undefined}
-                onChange={(e) => setTo(e.target.value)}
+                onChange={(val) => setTo(val)}
               />
             </label>
           </div>

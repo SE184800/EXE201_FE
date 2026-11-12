@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode, type SetStateAction } from 'react';
 import { NavLink, Navigate, useParams } from 'react-router-dom';
 import Brand from '../../components/Brand';
+import DatePicker from '../../components/DatePicker';
 import Icon from '../../components/Icon';
+import NotificationBell from '../../components/NotificationBell';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
 import { logout } from '../../services/auth.api';
 import type { AuthUser } from '../../types/auth';
 import { AdminDialog, Badge, DateFields, Empty, LoadState, Metric, Pager } from './admin.shared';
 import { dateTime, defaultPeriod, money, useAdminData } from './admin.data';
 import AdminWalletSection, { type AdminWalletTab } from './AdminWalletPage';
+import AdminDisputes from './AdminDisputes';
 import './admin.css';
 
 type Props = { onLogout: () => void };
@@ -29,22 +32,37 @@ type Account = {
   status: string;
   lockReason: string | null;
   suspendedUntil: string | null;
+  deletedAt?: string | null;
   updatedAt: string;
   createdAt: string;
   subscription: AccountSubscription;
 };
 type Verification = {
   id: number;
+  userId?: number;
+  role?: string;
+  roleLabel?: string;
+  phone?: string;
   businessName: string;
   warehouseAddress: string;
   region: string | null;
   taxCode: string | null;
   legalRepresentative: string | null;
+  bankName?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountHolder?: string | null;
+  bankQrImageUrl?: string | null;
   verificationDocumentUrl: string | null;
   verificationStatus: string;
   verificationVersion: number;
   verificationNote: string | null;
   submittedAt: string | null;
+  reviewedAt?: string | null;
+  locationType?: string | null;
+  alleyDetail?: string | null;
+  isAddressVerified?: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
   user: Account;
 };
 type Settlement = {
@@ -62,18 +80,57 @@ type Settlement = {
   paymentStatus: string;
   region: string | null;
 };
-const navigation = [
-  { path: '', label: 'Tổng quan', icon: 'store' },
-  { path: 'users', label: 'Người dùng', icon: 'user' },
-  { path: 'verification', label: 'Xác minh chủ vựa', icon: 'shield' },
-  { path: 'finance', label: 'Hoa hồng & đối soát', icon: 'box' },
-  { path: 'wallet', label: 'Quản lý ví tiền', icon: 'chart' },
-  { path: 'holidays', label: 'Ngày lễ & AI', icon: 'sparkle' },
-  { path: 'ai', label: 'Hoạt động AI', icon: 'sparkle' },
-  { path: 'moderation', label: 'Duyệt bài AI', icon: 'sparkle' },
-  { path: 'ai-config', label: 'Cấu hình AI & Ký quỹ', icon: 'sparkle' },
-  { path: 'audit', label: 'Nhật ký hệ thống', icon: 'lock' },
-] as const;
+type NavItem = {
+  path: string;
+  label: string;
+  icon: 'store' | 'user' | 'shield' | 'box' | 'chart' | 'sparkle' | 'lock' | 'calendar';
+};
+
+type NavGroup = {
+  section: string;
+  items: NavItem[];
+};
+
+const navGroups: NavGroup[] = [
+  {
+    section: 'TỔNG QUAN & PHÂN TÍCH',
+    items: [
+      { path: '', label: 'Bảng điều khiển', icon: 'chart' },
+      { path: 'ai', label: 'Giám sát hoạt động AI', icon: 'sparkle' },
+    ],
+  },
+  {
+    section: 'ĐỐI TÁC & VẬN HÀNH',
+    items: [
+      { path: 'users', label: 'Tài khoản & Đối tác', icon: 'user' },
+      { path: 'verification', label: 'Xác minh chủ vựa', icon: 'shield' },
+      { path: 'disputes', label: 'Lịch sử khiếu nại', icon: 'shield' },
+    ],
+  },
+  {
+    section: 'TÀI CHÍNH & VÍ TIỀN',
+    items: [
+      { path: 'finance', label: 'Hoa hồng & Đối soát', icon: 'box' },
+      { path: 'wallet', label: 'Quản lý ví & Nạp rút', icon: 'chart' },
+    ],
+  },
+  {
+    section: 'KIỂM DUYỆT & SỰ KIỆN',
+    items: [
+      { path: 'moderation', label: 'Hàng chờ duyệt bài AI', icon: 'sparkle' },
+      { path: 'holidays', label: 'Sự kiện & Ngày lễ', icon: 'calendar' },
+    ],
+  },
+  {
+    section: 'HỆ THỐNG & CẤU HÌNH',
+    items: [
+      { path: 'ai-config', label: 'Cấu hình tham số sàn', icon: 'store' },
+      { path: 'audit', label: 'Nhật ký kiểm toán', icon: 'lock' },
+    ],
+  },
+];
+
+const navigation = navGroups.flatMap((group) => group.items);
 
 /** Wallet sub tabs live under the `wallet` navigation entry. */
 const walletTabs: Record<string, AdminWalletTab> = {
@@ -110,21 +167,26 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
         <Brand light />
         <span className="admin-console-label">QUẢN TRỊ NỀN TẢNG</span>
         <nav aria-label="Quản trị">
-          {navigation.map((item) => (
-            <NavLink
-              key={item.path}
-              to={`/admin${item.path ? '/' + item.path : ''}`}
-              end={item.path === ''}
-              className={({ isActive }) =>
-                isActive ||
-                (item.path !== '' && (tab === item.path || tab.startsWith(item.path + '/')))
-                  ? 'active'
-                  : undefined
-              }
-            >
-              <Icon name={item.icon} />
-              <span>{item.label}</span>
-            </NavLink>
+          {navGroups.map((group) => (
+            <div key={group.section} className="admin-nav-group">
+              <span className="admin-nav-group-title">{group.section}</span>
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={`/admin${item.path ? '/' + item.path : ''}`}
+                  end={item.path === ''}
+                  className={({ isActive }) =>
+                    isActive ||
+                    (item.path !== '' && (tab === item.path || tab.startsWith(item.path + '/')))
+                      ? 'active'
+                      : undefined
+                  }
+                >
+                  <Icon name={item.icon} />
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
           ))}
         </nav>
         <div className="admin-sidebar-bottom">
@@ -133,25 +195,46 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
             <strong>{user.name}</strong>
             <small>Quản trị viên</small>
           </div>
-          <button aria-label="Đăng xuất" disabled={busy} onClick={() => void signOut()}>
+          <button aria-label="Đăng xuất" disabled={busy} onClick={() => void signOut()} title="Đăng xuất">
             <Icon name="logout" />
           </button>
         </div>
       </aside>
       <main className="admin-main">
         <header className="admin-topbar">
-          <span>
-            SupplyMind AI <span className="admin-slash">/</span>{' '}
-            {tab in walletTabs
-              ? 'Quản lý ví tiền'
-              : navigation.find((item) => item.path === tab)?.label}
-          </span>
-          <div className="admin-top-actions">
-            <span className="admin-admin-tag">
-              <Icon name="shield" /> Admin
+          <div className="admin-topbar-left">
+            <span className="admin-breadcrumb">
+              SupplyMind B2B <span className="admin-slash">/</span>{' '}
+              <strong>
+                {tab in walletTabs
+                  ? 'Quản lý ví tiền'
+                  : navigation.find((item) => item.path === tab)?.label || 'Bảng điều khiển'}
+              </strong>
             </span>
-            <button disabled={busy} onClick={() => void signOut()}>
-              Đăng xuất
+            <div className="admin-system-status">
+              <span className="admin-status-dot pulse" />
+              <span>Hệ thống: Trực tuyến</span>
+            </div>
+          </div>
+          <div className="admin-top-actions">
+            <NotificationBell />
+            <div className="admin-datetime-chip">
+              <Icon name="calendar" />
+              <span>
+                {new Date().toLocaleDateString('vi-VN', {
+                  weekday: 'short',
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                })}
+              </span>
+            </div>
+            <span className="admin-admin-tag">
+              <Icon name="shield" /> Super Admin
+            </span>
+            <button className="admin-logout-btn" disabled={busy} onClick={() => void signOut()} title="Đăng xuất khỏi hệ thống">
+              <Icon name="logout" />
+              <span>Đăng xuất</span>
             </button>
           </div>
         </header>
@@ -167,6 +250,8 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
             <Users onLogout={onLogout} />
           ) : tab === 'verification' ? (
             <Verifications onLogout={onLogout} />
+          ) : tab === 'disputes' ? (
+            <AdminDisputes onLogout={onLogout} />
           ) : tab === 'finance' ? (
             <Finance onLogout={onLogout} />
           ) : tab in walletTabs ? (
@@ -417,26 +502,98 @@ function Overview({ onLogout }: Props) {
 }
 
 
+type UserDeletionCheck = {
+  userId: number;
+  username: string;
+  name: string;
+  role: string;
+  canDelete: boolean;
+  mode: 'HARD' | 'SOFT';
+  alreadyDeleted: boolean;
+  reasons: string[];
+  checks: {
+    ordersClear: boolean;
+    openOrdersCount: number;
+    openOrderIds: number[];
+    complaintsClear: boolean;
+    openComplaintsCount: number;
+    walletClear: boolean;
+    walletBalance: number;
+    walletHeldBalance: number;
+    pendingDepositsCount: number;
+    pendingWithdrawalsCount: number;
+  };
+  history: {
+    hasTransactionHistory: boolean;
+    totalOrdersCount: number;
+    totalComplaintsCount: number;
+    walletTxCount: number;
+    depositCount: number;
+    withdrawalCount: number;
+    paymentCount: number;
+    subPaymentCount: number;
+  };
+};
+
+type UserDeletionResult = {
+  success?: boolean;
+  mode?: 'HARD' | 'SOFT';
+  message?: string;
+};
+
 function DeleteUserDialog({
   user,
   onClose,
   onSuccess,
+  onSwitchToManage,
   onLogout,
 }: {
   user: Account;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (result: UserDeletionResult) => void;
+  onSwitchToManage?: () => void;
   onLogout?: () => void;
 }) {
+  const [check, setCheck] = useState<UserDeletionCheck | null>(null);
+  const [loadingCheck, setLoadingCheck] = useState(true);
+  const [checkError, setCheckError] = useState('');
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingCheck(true);
+    setCheckError('');
+    setCheck(null);
+    api
+      .get<UserDeletionCheck>(`/admin/users/${user.id}/deletion-check`)
+      .then((res) => {
+        if (!cancelled) {
+          setCheck(res.data);
+          setLoadingCheck(false);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        if (isUnauthenticated(err) && onLogout) {
+          onLogout();
+          return;
+        }
+        setCheckError(getApiError(err));
+        setLoadingCheck(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user.id, onLogout]);
+
   const handleDelete = async () => {
+    if (!check?.canDelete) return;
     setError('');
     setDeleting(true);
     try {
-      await api.delete(`/admin/users/${user.id}`);
-      onSuccess?.();
+      const res = await api.delete<UserDeletionResult>(`/admin/users/${user.id}`);
+      onSuccess?.(res.data);
     } catch (err) {
       if (isUnauthenticated(err) && onLogout) {
         onLogout();
@@ -446,6 +603,10 @@ function DeleteUserDialog({
       setDeleting(false);
     }
   };
+
+  const pendingMoneyRequests =
+    (check?.checks.pendingDepositsCount || 0) + (check?.checks.pendingWithdrawalsCount || 0);
+  const formatVnd = (amount: number) => `${amount.toLocaleString('vi-VN')} đ`;
 
   return (
     <div
@@ -470,7 +631,7 @@ function DeleteUserDialog({
         style={{
           backgroundColor: '#FFFFFF',
           borderRadius: '16px',
-          maxWidth: '540px',
+          maxWidth: '580px',
           width: '100%',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
           overflow: 'hidden',
@@ -484,55 +645,229 @@ function DeleteUserDialog({
             borderBottom: '1px solid #FFE4E6',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
             gap: '12px',
           }}
         >
-          <span
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span
+              style={{
+                backgroundColor: '#FFE4E6',
+                color: '#E11D48',
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '20px',
+                fontWeight: 700,
+                flexShrink: 0,
+              }}
+            >
+              !
+            </span>
+            <div>
+              <h3 style={{ margin: 0, color: '#9F1239', fontSize: '17px', fontWeight: 700 }}>
+                Kiểm tra điều kiện & xóa tài khoản
+              </h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#BE123C' }}>
+                Người dùng: <strong>{user.name}</strong> (@{user.username} · #{user.id})
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label="Đóng"
+            disabled={deleting}
+            onClick={onClose}
             style={{
-              backgroundColor: '#FFE4E6',
-              color: '#E11D48',
-              width: '40px',
-              height: '40px',
-              borderRadius: '50%',
-              display: 'flex',
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              border: '1px solid #FECDD3',
+              backgroundColor: '#FFFFFF',
+              color: '#9F1239',
+              fontSize: '20px',
+              lineHeight: 1,
+              cursor: deleting ? 'not-allowed' : 'pointer',
+              display: 'inline-flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: '20px',
-              fontWeight: 700,
               flexShrink: 0,
             }}
           >
-            !
-          </span>
-          <div>
-            <h3 style={{ margin: 0, color: '#9F1239', fontSize: '17px', fontWeight: 700 }}>
-              Xóa tài khoản người dùng
-            </h3>
-            <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#BE123C' }}>
-              Người dùng: <strong>{user.name}</strong> (@{user.username} · #{user.id})
-            </p>
-          </div>
+            ×
+          </button>
         </div>
 
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <div
-            style={{
-              backgroundColor: '#FEF2F2',
-              border: '1px solid #FECACA',
-              borderRadius: '10px',
-              padding: '14px 16px',
-            }}
-          >
-            <p style={{ margin: 0, fontSize: '13.5px', color: '#991B1B', lineHeight: 1.6 }}>
-              Hành động này sẽ <strong>xóa vĩnh viễn</strong> tài khoản người dùng <strong>@{user.username}</strong> và toàn bộ dữ liệu kiểm thử liên quan (hồ sơ cửa hàng, kho hàng, hợp đồng, ví giả lập).
+          {loadingCheck ? (
+            <div
+              style={{
+                padding: '18px',
+                borderRadius: '10px',
+                backgroundColor: '#F8FAFC',
+                border: '1px solid #E2E8F0',
+                fontSize: '13.5px',
+                color: '#475569',
+              }}
+            >
+              Đang kiểm tra đơn hàng, khiếu nại và số dư ví của tài khoản...
+            </div>
+          ) : checkError ? (
+            <p
+              style={{
+                margin: 0,
+                color: '#DC2626',
+                fontSize: '13px',
+                backgroundColor: '#FEF2F2',
+                padding: '12px 14px',
+                borderRadius: '8px',
+                border: '1px solid #FECACA',
+              }}
+            >
+              {checkError}
             </p>
-            <p style={{ margin: '8px 0 0 0', fontSize: '12.5px', color: '#B91C1C', lineHeight: 1.5 }}>
-              Sau khi xóa, tên đăng nhập và số điện thoại/email này có thể được sử dụng để <strong>đăng ký lại tài khoản mới</strong> phục vụ mục đích kiểm thử hệ thống.
-            </p>
-          </div>
+          ) : (
+            check && (
+              <>
+                <div
+                  style={{
+                    border: '1px solid #E2E8F0',
+                    borderRadius: '10px',
+                    padding: '14px 16px',
+                    backgroundColor: '#F8FAFC',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '10px',
+                  }}
+                >
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A' }}>
+                    3 điều kiện bắt buộc trước khi xóa
+                  </div>
+
+                  {[
+                    {
+                      label: 'Đơn hàng đang xử lý',
+                      ok: check.checks.ordersClear,
+                      detail: check.checks.ordersClear
+                        ? 'Đạt · 0 đơn mở'
+                        : `Chưa đạt · Còn ${check.checks.openOrdersCount} đơn chưa hoàn tất/hủy`,
+                    },
+                    {
+                      label: 'Khiếu nại / Tranh chấp',
+                      ok: check.checks.complaintsClear,
+                      detail: check.checks.complaintsClear
+                        ? 'Đạt · 0 khiếu nại mở'
+                        : `Chưa đạt · Còn ${check.checks.openComplaintsCount} khiếu nại đang xử lý`,
+                    },
+                    {
+                      label: 'Số dư ví & yêu cầu nạp/rút',
+                      ok: check.checks.walletClear,
+                      detail: check.checks.walletClear
+                        ? 'Đạt · Số dư 0 đ, không có lệnh nạp/rút chờ xử lý'
+                        : `Chưa đạt · Số dư ${formatVnd(check.checks.walletBalance)}` +
+                          (check.checks.walletHeldBalance !== 0
+                            ? ` (tạm giữ ${formatVnd(check.checks.walletHeldBalance)})`
+                            : '') +
+                          (pendingMoneyRequests > 0
+                            ? ` · ${pendingMoneyRequests} lệnh nạp/rút chờ xử lý`
+                            : ''),
+                    },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '8px 10px',
+                        borderRadius: '8px',
+                        backgroundColor: item.ok ? '#ECFDF5' : '#FEF2F2',
+                        border: `1px solid ${item.ok ? '#A7F3D0' : '#FECACA'}`,
+                      }}
+                    >
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B' }}>
+                        {item.label}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '12.5px',
+                          fontWeight: 600,
+                          color: item.ok ? '#047857' : '#B91C1C',
+                          textAlign: 'right',
+                        }}
+                      >
+                        {item.detail}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                {check.mode === 'SOFT' ? (
+                  <div
+                    style={{
+                      backgroundColor: '#FFFBEB',
+                      border: '1px solid #FDE68A',
+                      borderRadius: '10px',
+                      padding: '12px 14px',
+                    }}
+                  >
+                    <p style={{ margin: 0, fontSize: '13px', color: '#92400E', lineHeight: 1.55 }}>
+                      <strong>Xóa mềm (giữ lịch sử):</strong> Tài khoản bị khóa đăng nhập vĩnh viễn;
+                      đơn hàng và sổ cái ví vẫn được giữ lại để đối soát.
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      backgroundColor: '#FEF2F2',
+                      border: '1px solid #FECACA',
+                      borderRadius: '10px',
+                      padding: '12px 14px',
+                    }}
+                  >
+                    <p style={{ margin: 0, fontSize: '13px', color: '#991B1B', lineHeight: 1.55 }}>
+                      <strong>Xóa vĩnh viễn:</strong> Tài khoản chưa có giao dịch, dữ liệu sẽ bị xóa hoàn toàn
+                      và có thể dùng lại tên đăng nhập, email, SĐT để đăng ký mới.
+                    </p>
+                  </div>
+                )}
+
+                {!check.canDelete && (
+                  <div
+                    style={{
+                      backgroundColor: '#FFF7ED',
+                      border: '1px solid #FED7AA',
+                      borderRadius: '10px',
+                      padding: '12px 14px',
+                      fontSize: '13px',
+                      color: '#9A3412',
+                      lineHeight: 1.55,
+                    }}
+                  >
+                    <strong>Chưa thể xóa:</strong> Cần xử lý hết đơn mở, khiếu nại và đưa ví về 0 đ trước,
+                    hoặc bấm <strong>Chuyển sang quản lý</strong> để khóa tài khoản.
+                  </div>
+                )}
+              </>
+            )
+          )}
 
           {error && (
-            <p style={{ margin: 0, color: '#DC2626', fontSize: '13px', backgroundColor: '#FEF2F2', padding: '10px 14px', borderRadius: '8px', border: '1px solid #FECACA' }}>
+            <p
+              style={{
+                margin: 0,
+                color: '#DC2626',
+                fontSize: '13px',
+                backgroundColor: '#FEF2F2',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                border: '1px solid #FECACA',
+              }}
+            >
               {error}
             </p>
           )}
@@ -544,30 +879,34 @@ function DeleteUserDialog({
             backgroundColor: '#F8FAFC',
             display: 'flex',
             justifyContent: 'flex-end',
-            gap: '12px',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '10px',
             borderTop: '1px solid #E2E8F0',
           }}
         >
+          {!loadingCheck && check && onSwitchToManage && (
+            <button
+              type="button"
+              disabled={deleting}
+              onClick={onSwitchToManage}
+              style={{
+                padding: '8px 18px',
+                borderRadius: '8px',
+                border: '1px solid #D97706',
+                backgroundColor: '#FFFBEB',
+                color: '#B45309',
+                fontWeight: 600,
+                fontSize: '14px',
+                cursor: deleting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              Chuyển sang quản lý
+            </button>
+          )}
           <button
             type="button"
-            disabled={deleting}
-            onClick={onClose}
-            style={{
-              padding: '8px 20px',
-              borderRadius: '8px',
-              border: '1px solid #CBD5E1',
-              backgroundColor: '#FFFFFF',
-              color: '#334155',
-              fontWeight: 600,
-              fontSize: '14px',
-              cursor: deleting ? 'not-allowed' : 'pointer',
-            }}
-          >
-            Hủy bỏ
-          </button>
-          <button
-            type="button"
-            disabled={deleting}
+            disabled={loadingCheck || Boolean(checkError) || !check?.canDelete || deleting}
             onClick={handleDelete}
             style={{
               padding: '8px 20px',
@@ -577,13 +916,21 @@ function DeleteUserDialog({
               color: '#FFFFFF',
               fontWeight: 600,
               fontSize: '14px',
-              cursor: deleting ? 'not-allowed' : 'pointer',
+              opacity: loadingCheck || Boolean(checkError) || !check?.canDelete || deleting ? 0.5 : 1,
+              cursor:
+                loadingCheck || Boolean(checkError) || !check?.canDelete || deleting
+                  ? 'not-allowed'
+                  : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
             }}
           >
-            {deleting ? 'Đang xóa...' : 'Xác nhận xóa vĩnh viễn'}
+            {deleting
+              ? 'Đang xóa...'
+              : check?.mode === 'SOFT'
+                ? 'Xác nhận xóa mềm'
+                : 'Xác nhận xóa vĩnh viễn'}
           </button>
         </div>
       </div>
@@ -660,8 +1007,10 @@ function Users({ onLogout }: Props) {
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Tất cả trạng thái</option>
             <option value="ACTIVE">Hoạt động</option>
+            <option value="INACTIVE">Chưa hoạt động</option>
             <option value="SUSPENDED">Khóa tạm thời</option>
             <option value="BANNED">Khóa vĩnh viễn</option>
+            <option value="DELETED">Đã xóa</option>
           </select>
         </label>
         <button className="admin-primary">Tìm kiếm</button>
@@ -711,29 +1060,35 @@ function Users({ onLogout }: Props) {
                         )}
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                          <button onClick={() => setSelected(user)}>Quản lý</button>
-                          <button
-                            type="button"
-                            style={{
-                              padding: '6px 10px',
-                              backgroundColor: '#FFF1F2',
-                              color: '#E11D48',
-                              border: '1px solid #FECDD3',
-                              borderRadius: '6px',
-                              cursor: 'pointer',
-                              fontSize: '13px',
-                              fontWeight: 500,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '4px',
-                            }}
-                            onClick={() => setDeleteTarget(user)}
-                            title="Xóa vĩnh viễn tài khoản người dùng"
-                          >
-                            Xóa
-                          </button>
-                        </div>
+                        {user.status === 'DELETED' ? (
+                          <small style={{ color: '#64748B' }}>
+                            {user.deletedAt ? `Đã xóa · ${dateTime(user.deletedAt)}` : 'Đã xóa · Lưu trữ sổ cái'}
+                          </small>
+                        ) : (
+                          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <button onClick={() => setSelected(user)}>Quản lý</button>
+                            <button
+                              type="button"
+                              style={{
+                                padding: '6px 10px',
+                                backgroundColor: '#FFF1F2',
+                                color: '#E11D48',
+                                border: '1px solid #FECDD3',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                                fontWeight: 500,
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                              }}
+                              onClick={() => setDeleteTarget(user)}
+                              title="Kiểm tra điều kiện & xóa tài khoản"
+                            >
+                              Xóa
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -762,12 +1117,17 @@ function Users({ onLogout }: Props) {
         <DeleteUserDialog
           user={deleteTarget}
           onClose={() => setDeleteTarget(null)}
-          onSuccess={() => {
+          onSwitchToManage={() => {
+            const target = deleteTarget;
+            setDeleteTarget(null);
+            setSelected(target);
+          }}
+          onSuccess={(result) => {
             const deletedName = deleteTarget.name;
             setDeleteTarget(null);
             setRevision((n) => n + 1);
-            setUserToast(`Đã xóa vĩnh viễn tài khoản "${deletedName}" thành công.`);
-            setTimeout(() => setUserToast(''), 4000);
+            setUserToast(result?.message || `Đã xóa tài khoản "${deletedName}" thành công.`);
+            setTimeout(() => setUserToast(''), 5000);
           }}
           onLogout={onLogout}
         />
@@ -775,16 +1135,25 @@ function Users({ onLogout }: Props) {
     </>
   );
 }
+function toDateTimeLocalInput(value?: string | null) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (!Number.isFinite(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 function AccountDialog({
   user,
   onClose,
   onSaved,
   onLogout,
 }: Props & { user: Account; onClose: () => void; onSaved: () => void }) {
-  const [status, setStatus] = useState(user.status),
+  const [status, setStatus] = useState(user.status === 'INACTIVE' ? 'ACTIVE' : user.status),
     [reason, setReason] = useState(''),
-    [until, setUntil] = useState('');
-  const [showDeleteNotice, setShowDeleteNotice] = useState(false);
+    [until, setUntil] = useState(() =>
+      user.status === 'SUSPENDED' ? toDateTimeLocalInput(user.suspendedUntil) : '',
+    );
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   const lock = useRef(false);
@@ -797,7 +1166,7 @@ function AccountDialog({
     try {
       await api.patch(`/admin/users/${user.id}/status`, {
         status,
-        reason,
+        reason: reason.trim() || 'Giải quyết vấn đề phát sinh',
         suspendedUntil: until ? new Date(until).toISOString() : null,
         expectedUpdatedAt: user.updatedAt,
       });
@@ -812,10 +1181,6 @@ function AccountDialog({
   }
   async function unlockSubscription() {
     if (lock.current) return;
-    if (reason.trim().length < 3) {
-      setError('Nhập lý do mở khóa từ 3 ký tự.');
-      return;
-    }
     if (
       !window.confirm(
         'Cấp miễn phí thêm 1 tháng sử dụng cho tài khoản này? Thao tác không tạo giao dịch thanh toán.',
@@ -826,7 +1191,9 @@ function AccountDialog({
     setBusy(true);
     setError('');
     try {
-      await api.post(`/admin/users/${user.id}/subscription/unlock`, { reason });
+      await api.post(`/admin/users/${user.id}/subscription/unlock`, {
+        reason: reason.trim() || 'Giải quyết vấn đề phát sinh',
+      });
       onSaved();
     } catch (e) {
       setError(getApiError(e));
@@ -842,6 +1209,11 @@ function AccountDialog({
         <p>
           {user.name} · <Badge status={user.status} />
         </p>
+        {user.status === 'INACTIVE' && (
+          <p className="admin-note">
+            Tài khoản chưa xác minh nên đang Chưa hoạt động. Duyệt tại Xác minh đối tác để kích hoạt.
+          </p>
+        )}
         {user.lockReason && <p className="admin-note">Lý do gần nhất: {user.lockReason}</p>}
         <div className="admin-subscription-box">
           <div>
@@ -885,15 +1257,13 @@ function AccountDialog({
             </label>
           )}
           <label>
-            Lý do quản trị
+            Lý do quản trị (không bắt buộc)
             <textarea
-              required
-              minLength={3}
               maxLength={500}
               rows={3}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Ví dụ: Cho phép tài khoản tiếp tục demo với giáo viên"
+              placeholder="Mặc định: Giải quyết vấn đề phát sinh"
             />
           </label>
           <p className="admin-note">
@@ -905,42 +1275,7 @@ function AccountDialog({
               {error}
             </p>
           )}
-          <div
-          style={{
-            marginTop: '20px',
-            paddingTop: '16px',
-            borderTop: '1px dashed #E2E8F0',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <div>
-            <span style={{ fontSize: '13px', color: '#64748B', display: 'block' }}>
-              Xóa tài khoản khỏi hệ thống
-            </span>
-            <small style={{ fontSize: '11px', color: '#94A3B8' }}>
-              Luồng cần giải quyết theo lộ trình (Roadmap)
-            </small>
-          </div>
-          <button
-            type="button"
-            style={{
-              padding: '6px 12px',
-              backgroundColor: '#FFF1F2',
-              color: '#E11D48',
-              border: '1px solid #FECDD3',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '13px',
-              fontWeight: 600,
-            }}
-            onClick={() => setShowDeleteNotice(true)}
-          >
-            Xóa người dùng
-          </button>
-        </div>
-        <div className="admin-dialog-actions">
+          <div className="admin-dialog-actions">
             <button type="button" onClick={onClose}>
               Hủy
             </button>
@@ -950,38 +1285,88 @@ function AccountDialog({
           </div>
         </fieldset>
       </form>
-      {showDeleteNotice && (
-        <DeleteUserDialog
-          user={user}
-          onClose={() => setShowDeleteNotice(false)}
-          onSuccess={() => {
-            setShowDeleteNotice(false);
-            onSaved();
-          }}
-          onLogout={onLogout}
-        />
-      )}
     </AdminDialog>
   );
 }
 
 function Verifications({ onLogout }: Props) {
-  const [status, setStatus] = useState('PENDING'),
+  const [status, setStatus] = useState(''),
     [q, setQ] = useState('');
-  const [query, setQuery] = useState({ status: 'PENDING', q: '', page: 1 }),
+  const [query, setQuery] = useState({ status: '', q: '', page: 1 }),
     [revision, setRevision] = useState(0),
     [selected, setSelected] = useState<Verification | null>(null);
+
+  // Quick Action & Rejection Modal State
+  const [rejecting, setRejecting] = useState<Verification | null>(null);
+  const [rejectReasonSelect, setRejectReasonSelect] = useState('Mã số thuế không trùng khớp');
+  const [rejectCustomReason, setRejectCustomReason] = useState('');
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionNotice, setActionNotice] = useState('');
+
   const { data, loading, error } = useAdminData<List & { profiles: Verification[] }>(
     '/admin/verifications',
     query,
     onLogout,
     revision,
   );
+
+  async function handleQuickApprove(item: Verification) {
+    if (actionBusy) return;
+    setActionBusy(true);
+    setActionNotice('');
+    try {
+      await api.patch('/admin/verifications/' + item.id, {
+        status: 'APPROVED',
+        note: '',
+        version: item.verificationVersion,
+        role: item.role,
+      });
+      setActionNotice('Đã xác minh hồ sơ "' + item.businessName + '". Hệ thống đã gửi email thông báo.');
+      setRevision((n) => n + 1);
+      if (selected && selected.id === item.id) setSelected(null);
+    } catch (err) {
+      alert(getApiError(err));
+      if (isUnauthenticated(err)) onLogout();
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function handleConfirmReject() {
+    if (!rejecting || actionBusy) return;
+    const finalReason = rejectReasonSelect === 'Khác' ? rejectCustomReason.trim() : rejectReasonSelect;
+    if (!finalReason || finalReason.length < 3) {
+      alert('Vui lòng nhập lý do từ chối chi tiết (tối thiểu 3 ký tự).');
+      return;
+    }
+    setActionBusy(true);
+    setActionNotice('');
+    try {
+      await api.patch('/admin/verifications/' + rejecting.id, {
+        status: 'REJECTED',
+        note: finalReason,
+        version: rejecting.verificationVersion,
+        role: rejecting.role,
+      });
+      setActionNotice('Đã chuyển trạng thái hồ sơ "' + rejecting.businessName + '" thành Cần điều chỉnh và gửi email thông báo.');
+      setRejecting(null);
+      setRejectReasonSelect('Mã số thuế không trùng khớp');
+      setRejectCustomReason('');
+      setRevision((n) => n + 1);
+      if (selected && selected.id === rejecting.id) setSelected(null);
+    } catch (err) {
+      alert(getApiError(err));
+      if (isUnauthenticated(err)) onLogout();
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
   return (
     <>
       <Heading
         eyebrow="PARTNER VERIFICATION"
-        title="Xác minh chủ vựa"
+        title="Xác minh chủ vựa & chủ tạp hóa"
         description="Kiểm tra thông tin và giấy tờ đối tác trước khi cho phép mở bán trên sàn."
       />
       <form
@@ -993,60 +1378,137 @@ function Verifications({ onLogout }: Props) {
         }}
       >
         <label>
-          Tên gian hàng
+          Tên đối tác
           <input
             maxLength={150}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Tìm chủ vựa / đại lý"
+            placeholder="Tìm theo tên, SĐT hoặc MST"
           />
         </label>
         <label>
           Trạng thái hồ sơ
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Tất cả hồ sơ</option>
-            <option value="PENDING">Chờ duyệt</option>
-            <option value="DRAFT">Chưa gửi duyệt</option>
+            <option value="PENDING">Đang chờ duyệt</option>
+            <option value="DRAFT">Chưa ký thỏa thuận</option>
             <option value="APPROVED">Đã xác minh</option>
-            <option value="REJECTED">Cần bổ sung / đã thu hồi</option>
+            <option value="REJECTED">Cần điều chỉnh</option>
           </select>
         </label>
         <button className="admin-primary">Lọc hồ sơ</button>
       </form>
+
+      {actionNotice && (
+        <div
+          role="status"
+          style={{
+            margin: '12px 0',
+            padding: '12px 16px',
+            backgroundColor: '#f0fdf4',
+            border: '1px solid #86efac',
+            borderRadius: '8px',
+            color: '#15803d',
+            fontSize: '13.5px',
+            fontWeight: 500,
+          }}
+        >
+          {actionNotice}
+        </div>
+      )}
+
       <LoadState loading={loading} error={error} />
       {data && (
-        <Panel title="Hồ sơ đối tác">
+        <Panel title="Danh sách hồ sơ đối tác">
           {data.profiles.length ? (
             <div className="admin-verification-grid">
-              {data.profiles.map((p) => (
-                <article key={p.id} className="admin-verification-card">
-                  <div className="admin-card-top">
-                    <span className="admin-shop-icon">
-                      <Icon name="store" />
-                    </span>
-                    <Badge status={p.verificationStatus} />
-                  </div>
-                  <h3>{p.businessName}</h3>
-                  <p>{p.warehouseAddress}</p>
-                  <dl>
-                    <div>
-                      <dt>Người đại diện</dt>
-                      <dd>{p.legalRepresentative || 'Chưa bổ sung'}</dd>
+              {data.profiles.map((p) => {
+                const roleBadgeText = p.role === 'SUPPLIER' ? 'Chủ vựa' : 'Chủ tạp hóa';
+                const roleBadgeBg = p.role === 'SUPPLIER' ? '#ede9fe' : '#e0f2fe';
+                const roleBadgeColor = p.role === 'SUPPLIER' ? '#6d28d9' : '#0369a1';
+                const displayPhone = p.phone || p.user?.phone || 'Chưa có SĐT';
+
+                return (
+                  <article key={p.role + '-' + p.id} className="admin-verification-card">
+                    <div className="admin-card-top" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span
+                          style={{
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            backgroundColor: roleBadgeBg,
+                            color: roleBadgeColor,
+                            letterSpacing: '0.04em',
+                            textTransform: 'uppercase',
+                          }}
+                        >
+                          {roleBadgeText}
+                        </span>
+                        <Badge status={p.verificationStatus} />
+                      </div>
+                      <small style={{ color: '#64748b', fontSize: '11.5px' }}>{dateTime(p.submittedAt)}</small>
                     </div>
-                    <div>
-                      <dt>Khu vực</dt>
-                      <dd>{p.region || 'Chưa bổ sung'}</dd>
+
+                    <h3 style={{ margin: '10px 0 4px 0', fontSize: '16px', fontWeight: 650, color: '#0f172a' }}>
+                      {p.businessName}
+                    </h3>
+                    <div style={{ fontSize: '13px', color: '#334155', marginBottom: '6px' }}>
+                      <strong>Số điện thoại:</strong> {displayPhone}
                     </div>
-                    <div>
-                      <dt>Gửi duyệt</dt>
-                      <dd>{dateTime(p.submittedAt)}</dd>
+                    <p style={{ margin: '0 0 10px 0', fontSize: '12.5px', color: '#64748b', lineHeight: 1.45 }}>
+                      {p.warehouseAddress || 'Chưa cập nhật địa chỉ'}
+                    </p>
+
+                    {p.verificationStatus === 'REJECTED' && p.verificationNote && (
+                      <div
+                        style={{
+                          padding: '6px 10px',
+                          backgroundColor: '#fef2f2',
+                          border: '1px solid #fee2e2',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          color: '#991b1b',
+                          marginBottom: '10px',
+                        }}
+                      >
+                        <strong>Lý do:</strong> {p.verificationNote}
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        display: 'flex',
+                        gap: '8px',
+                        flexWrap: 'wrap',
+                        marginTop: 'auto',
+                        paddingTop: '12px',
+                        borderTop: '1px solid #f1f5f9',
+                      }}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelected(p)}
+                        style={{
+                          flex: 1,
+                          minWidth: '90px',
+                          padding: '7px 10px',
+                          backgroundColor: '#ffffff',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          fontSize: '12.5px',
+                          fontWeight: 600,
+                          color: '#334155',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Xem chi tiết
+                      </button>
                     </div>
-                  </dl>
-                  <button onClick={() => setSelected(p)}>
-                    Xem hồ sơ <span>→</span>
-                  </button>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <Empty>Không có hồ sơ trong trạng thái đã chọn.</Empty>
@@ -1054,147 +1516,318 @@ function Verifications({ onLogout }: Props) {
           <Pager {...data} onPage={(page) => setQuery({ ...query, page })} />
         </Panel>
       )}
+
+      {/* Detail Dialog */}
       {selected && (
         <VerificationDialog
           profile={selected}
-          onLogout={onLogout}
           onClose={() => setSelected(null)}
-          onSaved={() => {
-            setSelected(null);
-            setRevision((n) => n + 1);
+          onApprove={() => handleQuickApprove(selected)}
+          onReject={() => {
+            setRejecting(selected);
+            setRejectReasonSelect('Mã số thuế không trùng khớp');
+            setRejectCustomReason('');
           }}
         />
+      )}
+
+      {/* Rejection Modal with Preset Reasons & Custom Reason */}
+      {rejecting && (
+        <AdminDialog
+          title={'Từ chối hồ sơ: ' + rejecting.businessName}
+          onClose={() => setRejecting(null)}
+          busy={actionBusy}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleConfirmReject();
+            }}
+          >
+            <fieldset disabled={actionBusy}>
+              <div style={{ marginBottom: '16px' }}>
+                <p style={{ margin: '0 0 12px 0', fontSize: '13.5px', color: '#475569', lineHeight: 1.5 }}>
+                  Vui lòng chọn lý do từ chối hồ sơ của <strong>{rejecting.businessName}</strong> ({rejecting.role === 'SUPPLIER' ? 'Chủ vựa' : 'Chủ tạp hóa'}).
+                  Hệ thống sẽ chuyển trạng thái đơn sang <strong>Cần điều chỉnh</strong> và gửi email thông báo chi tiết đến đối tác.
+                </p>
+
+                <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '6px', color: '#334155' }}>
+                  Lý do từ chối:
+                </label>
+                <select
+                  value={rejectReasonSelect}
+                  onChange={(e) => setRejectReasonSelect(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '9px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '14px',
+                    outline: 'none',
+                    marginBottom: '12px',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <option value="Mã số thuế không trùng khớp">Mã số thuế không trùng khớp</option>
+                  <option value="Thông tin tài khoản có vấn đề">Thông tin tài khoản có vấn đề</option>
+                  <option value="Khác">Khác</option>
+                </select>
+
+                {rejectReasonSelect === 'Khác' && (
+                  <div>
+                    <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', marginBottom: '6px', color: '#334155' }}>
+                      Nhập lý do chi tiết:
+                    </label>
+                    <textarea
+                      required
+                      rows={3}
+                      placeholder="Nhập lý do chi tiết"
+                      value={rejectCustomReason}
+                      onChange={(e) => setRejectCustomReason(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="admin-dialog-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setRejecting(null)}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#f1f5f9',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="admin-primary"
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#dc2626',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {actionBusy ? 'Đang xử lý…' : 'Xác nhận'}
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        </AdminDialog>
       )}
     </>
   );
 }
+
 function VerificationDialog({
   profile: p,
-  onLogout,
   onClose,
-  onSaved,
-}: Props & { profile: Verification; onClose: () => void; onSaved: () => void }) {
-  const [status, setStatus] = useState(
-    p.verificationStatus === 'APPROVED' ? 'REJECTED' : 'APPROVED',
-  ),
-    [note, setNote] = useState('');
-  const [busy, setBusy] = useState(false),
-    [error, setError] = useState('');
-  const lock = useRef(false);
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    if (lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setError('');
-    try {
-      await api.patch(`/admin/verifications/${p.id}`, {
-        status,
-        note,
-        version: p.verificationVersion,
-      });
-      onSaved();
-    } catch (e) {
-      setError(getApiError(e));
-      if (isUnauthenticated(e)) onLogout();
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
-  }
+  onApprove,
+  onReject,
+}: {
+  profile: Verification;
+  onClose: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  const roleLabel = p.role === 'SUPPLIER' ? 'Chủ vựa' : 'Chủ tạp hóa';
+  const roleBadgeBg = p.role === 'SUPPLIER' ? '#ede9fe' : '#e0f2fe';
+  const roleBadgeColor = p.role === 'SUPPLIER' ? '#6d28d9' : '#0369a1';
+
   return (
-    <AdminDialog title={p.businessName} onClose={onClose} busy={busy}>
+    <AdminDialog title={`Chi tiết hồ sơ đối tác: ${p.businessName}`} onClose={onClose} busy={false}>
+      <div style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+        <span
+          style={{
+            fontSize: '12px',
+            fontWeight: 700,
+            padding: '4px 12px',
+            borderRadius: '6px',
+            backgroundColor: roleBadgeBg,
+            color: roleBadgeColor,
+            letterSpacing: '0.04em',
+            textTransform: 'uppercase',
+          }}
+        >
+          {roleLabel}
+        </span>
+        <Badge status={p.verificationStatus} />
+        {p.isAddressVerified && (
+          <span style={{ fontSize: '12px', fontWeight: 600, color: '#15803d', backgroundColor: '#dcfce7', padding: '3px 8px', borderRadius: '4px' }}>
+            Đã xác minh bản đồ
+          </span>
+        )}
+      </div>
+
       <dl className="admin-detail-list">
         <div>
-          <dt>Tài khoản</dt>
+          <dt>Cơ sở kinh doanh</dt>
           <dd>
-            @{p.user.username} · <Badge status={p.user.status} />
+            <strong style={{ fontSize: '15px', color: '#0f172a' }}>{p.businessName}</strong>
           </dd>
         </div>
         <div>
-          <dt>Liên hệ</dt>
+          <dt>Tài khoản người dùng</dt>
           <dd>
-            {p.user.email || 'Chưa có email'}
-            <br />
-            {p.user.phone || 'Chưa có số điện thoại'}
+            <strong>{p.user.name}</strong> (@{p.user.username}) · <Badge status={p.user.status} />
           </dd>
         </div>
         <div>
-          <dt>Đại diện</dt>
-          <dd>{p.legalRepresentative || 'Chưa bổ sung'}</dd>
-        </div>
-        <div>
-          <dt>Mã ĐKKD / MST</dt>
-          <dd>{p.taxCode || 'Chưa bổ sung'}</dd>
-        </div>
-        <div>
-          <dt>Kho hàng</dt>
-          <dd>{p.warehouseAddress}</dd>
-        </div>
-        <div>
-          <dt>Khu vực</dt>
-          <dd>{p.region || 'Chưa bổ sung'}</dd>
-        </div>
-        <div>
-          <dt>Giấy tờ</dt>
+          <dt>Thông tin liên hệ</dt>
           <dd>
-            {p.verificationDocumentUrl?.startsWith('https://') ? (
-              <a href={p.verificationDocumentUrl} target="_blank" rel="noopener noreferrer">
-                Mở giấy tờ đối tác
-              </a>
+            <div>Email: <strong>{p.user.email || 'Chưa cập nhật'}</strong></div>
+            <div>SĐT: <strong>{p.phone || p.user.phone || 'Chưa cập nhật'}</strong></div>
+          </dd>
+        </div>
+        <div>
+          <dt>Người đại diện hợp pháp</dt>
+          <dd>{p.legalRepresentative || p.bankAccountHolder || p.user.name || 'Chưa bổ sung'}</dd>
+        </div>
+        <div>
+          <dt>Mã số thuế (MST / ĐKKD)</dt>
+          <dd>
+            {p.taxCode ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <strong style={{ fontSize: '14px', letterSpacing: '0.05em', color: '#0f172a' }}>{p.taxCode}</strong>
+                <a
+                  href={'https://masothue.com/search?q=' + encodeURIComponent(p.taxCode)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontSize: '12px',
+                    color: '#2563eb',
+                    textDecoration: 'underline',
+                    fontWeight: 600,
+                  }}
+                >
+                  [Tra cứu mã số thuế trên masothue.com]
+                </a>
+              </span>
             ) : (
-              'Chưa bổ sung'
+              <span style={{ color: '#dc2626' }}>Chưa bổ sung mã số thuế</span>
             )}
           </dd>
         </div>
-      </dl>
-      {p.verificationNote && <p className="admin-note">Nhận xét gần nhất: {p.verificationNote}</p>}
-      {['PENDING', 'APPROVED'].includes(p.verificationStatus) ? (
-        <form onSubmit={save}>
-          <fieldset disabled={busy}>
-            <label>
-              Kết quả xem xét
-              <select value={status} onChange={(e) => setStatus(e.target.value)}>
-                {p.verificationStatus === 'PENDING' && (
-                  <option value="APPROVED">Chấp thuận mở bán</option>
-                )}
-                <option value="REJECTED">
-                  {p.verificationStatus === 'APPROVED'
-                    ? 'Thu hồi quyền mở bán'
-                    : 'Từ chối, yêu cầu bổ sung'}
-                </option>
-              </select>
-            </label>
-            <label>
-              Nhận xét / căn cứ
-              <textarea
-                required
-                minLength={3}
-                maxLength={500}
-                rows={3}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-              />
-            </label>
-            <p className="admin-note">
-              Hãy kiểm tra giấy tờ và thông tin liên hệ trước khi chấp thuận. Kết quả được gửi về
-              màn hình của chủ vựa.
-            </p>
-            {error && (
-              <p role="alert" className="error-notice">
-                {error}
-              </p>
+        <div>
+          <dt>Địa chỉ hoạt động</dt>
+          <dd>
+            <div>{p.warehouseAddress || 'Chưa cập nhật địa chỉ'}</div>
+            {p.alleyDetail && (
+              <div style={{ marginTop: '4px', fontSize: '12.5px', color: '#64748b' }}>
+                Đặc điểm đường vào: {p.alleyDetail}
+              </div>
             )}
-            <div className="admin-dialog-actions">
-              <button type="button" onClick={onClose}>
-                Đóng
-              </button>
-              <button className="admin-primary">{busy ? 'Đang lưu…' : 'Lưu kết quả'}</button>
-            </div>
-          </fieldset>
-        </form>
-      ) : (
-        <p className="admin-note">Chủ vựa cần hoàn thiện và gửi lại hồ sơ trước khi được duyệt.</p>
+            {p.latitude && p.longitude && (
+              <div style={{ marginTop: '4px', fontSize: '12px', color: '#0284c7' }}>
+                Tọa độ GPS: {p.latitude.toFixed(6)}, {p.longitude.toFixed(6)}
+              </div>
+            )}
+          </dd>
+        </div>
+        <div>
+          <dt>Tài khoản ngân hàng đối soát</dt>
+          <dd>
+            {p.bankName ? (
+              <div style={{ padding: '8px 12px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
+                <div>Ngân hàng: <strong>{p.bankName}</strong></div>
+                <div>Số tài khoản: <strong style={{ letterSpacing: '0.04em' }}>{p.bankAccountNumber || 'Chưa nhập'}</strong></div>
+                {p.bankAccountHolder && <div>Chủ tài khoản: <strong>{p.bankAccountHolder}</strong></div>}
+              </div>
+            ) : (
+              <span style={{ color: '#dc2626' }}>Chưa thiết lập tài khoản thanh toán</span>
+            )}
+          </dd>
+        </div>
+        {p.bankQrImageUrl && (
+          <div>
+            <dt>Mã QR thanh toán</dt>
+            <dd>
+              <a href={p.bankQrImageUrl} target="_blank" rel="noopener noreferrer" title="Nhấp để xem ảnh đầy đủ">
+                <img
+                  src={p.bankQrImageUrl}
+                  alt="QR thanh toán ngân hàng"
+                  style={{ maxHeight: '130px', maxWidth: '130px', objectFit: 'contain', borderRadius: '6px', border: '1px solid #cbd5e1', marginTop: '4px' }}
+                />
+              </a>
+              <div style={{ fontSize: '11px', color: '#64748b', marginTop: '2px' }}>Nhấp ảnh để mở kích thước đầy đủ</div>
+            </dd>
+          </div>
+        )}
+        {p.submittedAt && (
+          <div>
+            <dt>Thời gian gửi duyệt</dt>
+            <dd>{new Date(p.submittedAt).toLocaleString('vi-VN')}</dd>
+          </div>
+        )}
+        {p.reviewedAt && (
+          <div>
+            <dt>Thời gian thẩm định gần nhất</dt>
+            <dd>{new Date(p.reviewedAt).toLocaleString('vi-VN')}</dd>
+          </div>
+        )}
+      </dl>
+
+      {p.verificationStatus === 'REJECTED' && p.verificationNote && (
+        <div style={{ marginTop: '14px', padding: '10px 14px', backgroundColor: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '6px', fontSize: '13px', color: '#991b1b' }}>
+          <strong>Lý do:</strong> {p.verificationNote}
+        </div>
+      )}
+
+      {p.verificationStatus === 'PENDING' && (
+        <div className="admin-dialog-actions" style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+          <button
+            type="button"
+            onClick={onReject}
+            style={{
+              padding: '10px 20px',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: '#dc2626',
+              color: '#ffffff',
+              fontWeight: 650,
+              fontSize: '14px',
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(220, 38, 38, 0.25)',
+            }}
+          >
+            Từ chối
+          </button>
+          <button
+            type="button"
+            onClick={onApprove}
+            style={{
+              padding: '10px 22px',
+              borderRadius: '8px',
+              border: 'none',
+              backgroundColor: '#16a34a',
+              color: '#ffffff',
+              fontWeight: 650,
+              fontSize: '14px',
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(22, 163, 74, 0.25)',
+            }}
+          >
+            Xác nhận
+          </button>
+        </div>
       )}
     </AdminDialog>
   );
@@ -1797,22 +2430,20 @@ function HolidayDialog({
           <div className="admin-holiday-dates">
             <label>
               Từ ngày
-              <input
+              <DatePicker
                 required
-                type="date"
                 value={form.startDate}
                 max={form.endDate}
-                onChange={(event) => setForm({ ...form, startDate: event.target.value })}
+                onChange={(val) => setForm({ ...form, startDate: val })}
               />
             </label>
             <label>
               Đến ngày
-              <input
+              <DatePicker
                 required
-                type="date"
                 min={form.startDate}
                 value={form.endDate}
-                onChange={(event) => setForm({ ...form, endDate: event.target.value })}
+                onChange={(val) => setForm({ ...form, endDate: val })}
               />
             </label>
           </div>
@@ -2770,12 +3401,42 @@ type SystemConfig = {
     escrowHoldDays: number;
     description: string;
   };
+  orderAndDelivery?: {
+    orderAutoCancelHours?: number;
+    complaintWindowHours?: number;
+    deliveryAllowedStartHour?: number;
+    deliveryAllowedEndHour?: number;
+    autoCompleteDeliveredHours?: number;
+    allowWeekendDelivery?: boolean;
+  };
+  consignment?: {
+    maxConsignmentItemsPerStore?: number;
+    settlementCycleDays?: number;
+    allowConsignmentForUnverified?: boolean;
+  };
+  walletLimits?: {
+    minDepositAmount?: number;
+    minWithdrawalAmount?: number;
+    maxDailyWithdrawalAmount?: number;
+    autoApproveWithdrawalThreshold?: number;
+  };
+  systemNotice?: {
+    maintenanceMode?: boolean;
+    maintenanceMessage?: string;
+    announcementEnabled?: boolean;
+    announcementTitle?: string;
+    announcementContent?: string;
+    announcementType?: 'INFO' | 'WARNING' | 'ALERT';
+  };
   updatedAt: string;
   updatedBy: string | null;
 };
 
+type ConfigTabKey = 'all' | 'order' | 'escrow' | 'consignment' | 'wallet' | 'ai' | 'notice';
+
 function AiSystemConfig({ onLogout }: Props) {
   const [revision, setRevision] = useState(0);
+  const [configTab, setConfigTab] = useState<ConfigTabKey>('all');
   const { data, loading, error } = useAdminData<SystemConfig>(
     '/admin/system-config',
     {},
@@ -2784,14 +3445,16 @@ function AiSystemConfig({ onLogout }: Props) {
   );
 
   const [draft, setDraft] = useState<{ source: SystemConfig; value: SystemConfig } | null>(null);
-  const form = draft && draft.source === data ? draft.value : (data ?? null);
+  const rawForm = draft && draft.source === data ? draft.value : (data ?? null);
+
   function setForm(update: SetStateAction<SystemConfig | null>) {
-    setDraft(previous => {
+    setDraft((previous) => {
       const current = previous && previous.source === data ? previous.value : (data ?? null);
       const next = typeof update === 'function' ? update(current) : update;
       return next && data ? { source: data, value: next } : null;
     });
   }
+
   const [newForbiddenWord, setNewForbiddenWord] = useState('');
   const [newRestrictedWord, setNewRestrictedWord] = useState('');
   const [forbiddenSearch, setForbiddenSearch] = useState('');
@@ -2800,27 +3463,60 @@ function AiSystemConfig({ onLogout }: Props) {
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
 
-
   useEffect(() => {
     if (!saveSuccess) return;
     const timer = setTimeout(() => setSaveSuccess(''), 4000);
     return () => clearTimeout(timer);
   }, [saveSuccess]);
 
-  if (loading && !form) {
+  if (loading && !rawForm) {
     return <LoadState loading={true} error="" />;
   }
 
-  if (error && !form) {
+  if (error && !rawForm) {
     return <LoadState loading={false} error={error} />;
   }
 
-  if (!form) return null;
+  if (!rawForm) return null;
+
+  // Normalize with safe defaults
+  const form: SystemConfig = {
+    ...rawForm,
+    orderAndDelivery: {
+      orderAutoCancelHours: rawForm.orderAndDelivery?.orderAutoCancelHours ?? 4,
+      complaintWindowHours: rawForm.orderAndDelivery?.complaintWindowHours ?? 24,
+      deliveryAllowedStartHour: rawForm.orderAndDelivery?.deliveryAllowedStartHour ?? 5,
+      deliveryAllowedEndHour: rawForm.orderAndDelivery?.deliveryAllowedEndHour ?? 21,
+      autoCompleteDeliveredHours: rawForm.orderAndDelivery?.autoCompleteDeliveredHours ?? 48,
+      allowWeekendDelivery: rawForm.orderAndDelivery?.allowWeekendDelivery ?? true,
+    },
+    consignment: {
+      maxConsignmentItemsPerStore: rawForm.consignment?.maxConsignmentItemsPerStore ?? 5,
+      settlementCycleDays: rawForm.consignment?.settlementCycleDays ?? 7,
+      allowConsignmentForUnverified: rawForm.consignment?.allowConsignmentForUnverified ?? false,
+    },
+    walletLimits: {
+      minDepositAmount: rawForm.walletLimits?.minDepositAmount ?? 50000,
+      minWithdrawalAmount: rawForm.walletLimits?.minWithdrawalAmount ?? 100000,
+      maxDailyWithdrawalAmount: rawForm.walletLimits?.maxDailyWithdrawalAmount ?? 50000000,
+      autoApproveWithdrawalThreshold: rawForm.walletLimits?.autoApproveWithdrawalThreshold ?? 2000000,
+    },
+    systemNotice: {
+      maintenanceMode: rawForm.systemNotice?.maintenanceMode ?? false,
+      maintenanceMessage:
+        rawForm.systemNotice?.maintenanceMessage ??
+        'Hệ thống SupplyMind đang bảo trì nâng cấp hệ thống định kỳ. Quý khách vui lòng quay lại sau.',
+      announcementEnabled: rawForm.systemNotice?.announcementEnabled ?? false,
+      announcementTitle: rawForm.systemNotice?.announcementTitle ?? 'Thông báo từ Ban Quản Trị Sàn SupplyMind',
+      announcementContent: rawForm.systemNotice?.announcementContent ?? '',
+      announcementType: rawForm.systemNotice?.announcementType ?? 'INFO',
+    },
+  };
 
   function handleAddForbidden() {
     const trimmed = newForbiddenWord.trim().toLowerCase();
     if (!trimmed) return;
-    if (form?.aiModeration.criticalForbiddenKeywords.includes(trimmed)) {
+    if (form.aiModeration.criticalForbiddenKeywords.includes(trimmed)) {
       alert('Từ cấm này đã có trong danh sách.');
       return;
     }
@@ -2844,9 +3540,7 @@ function AiSystemConfig({ onLogout }: Props) {
         ...curr,
         aiModeration: {
           ...curr.aiModeration,
-          criticalForbiddenKeywords: curr.aiModeration.criticalForbiddenKeywords.filter(
-            (w) => w !== word
-          ),
+          criticalForbiddenKeywords: curr.aiModeration.criticalForbiddenKeywords.filter((w) => w !== word),
         },
       };
     });
@@ -2855,7 +3549,7 @@ function AiSystemConfig({ onLogout }: Props) {
   function handleAddRestricted() {
     const trimmed = newRestrictedWord.trim().toLowerCase();
     if (!trimmed) return;
-    if (form?.aiModeration.restrictedKeywords.includes(trimmed)) {
+    if (form.aiModeration.restrictedKeywords.includes(trimmed)) {
       alert('Từ khóa này đã có trong danh sách.');
       return;
     }
@@ -2886,13 +3580,12 @@ function AiSystemConfig({ onLogout }: Props) {
   }
 
   async function handleSaveAll() {
-    if (!form) return;
     setSaving(true);
     setSaveError('');
     setSaveSuccess('');
     try {
       await api.put('/admin/system-config', form);
-      setSaveSuccess('Đã lưu cấu hình AI duyệt bài và tỷ lệ ký quỹ thành công!');
+      setSaveSuccess('Đã lưu toàn bộ cấu hình tham số sàn và chính sách vận hành thành công!');
       setRevision((n) => n + 1);
     } catch (e) {
       setSaveError(getApiError(e));
@@ -2903,7 +3596,7 @@ function AiSystemConfig({ onLogout }: Props) {
   }
 
   async function handleResetDefault() {
-    if (!window.confirm('Bạn có chắc muốn khôi phục toàn bộ cấu hình AI và ký quỹ về mặc định ban đầu?')) {
+    if (!window.confirm('Bạn có chắc muốn khôi phục toàn bộ cấu hình hệ thống về mặc định ban đầu?')) {
       return;
     }
     setSaving(true);
@@ -2911,7 +3604,7 @@ function AiSystemConfig({ onLogout }: Props) {
     setSaveSuccess('');
     try {
       await api.post('/admin/system-config/reset');
-      setSaveSuccess('Đã khôi phục toàn bộ cấu hình về mặc định ban đầu!');
+      setSaveSuccess('Đã khôi phục toàn bộ cấu hình về mặc định ban đầu thành công!');
       setRevision((n) => n + 1);
     } catch (e) {
       setSaveError(getApiError(e));
@@ -2932,9 +3625,9 @@ function AiSystemConfig({ onLogout }: Props) {
   return (
     <>
       <Heading
-        eyebrow="AI & ESCROW CONFIGURATION"
-        title="Cấu hình AI duyệt bài & Ký quỹ sàn"
-        description="Quản trị viên tùy chỉnh các từ cấm, từ khóa hạn chế, các ngưỡng nhạy cảm cho AI kiểm duyệt bài đăng và điều chỉnh tỷ lệ phần trăm ký quỹ (escrow) phù hợp với sàn thay vì để tự động hoàn toàn."
+        eyebrow="SYSTEM CONFIGURATION & POLICIES"
+        title="Cấu hình Tham số Sàn & Chính sách Vận hành"
+        description="Trung tâm can thiệp và kiểm soát toàn diện: SLA giao nhận, tỷ lệ cọc ký quỹ Escrow, chính sách ký gửi tiếp thị, hạn mức ví nạp/rút, từ cấm kiểm duyệt AI và thông báo bảo trì toàn sàn."
         action={
           <div style={{ display: 'flex', gap: '10px' }}>
             <button
@@ -2965,34 +3658,87 @@ function AiSystemConfig({ onLogout }: Props) {
                 gap: '6px',
               }}
             >
-              {saving ? 'Đang lưu…' : 'Lưu cấu hình'}
+              {saving ? 'Đang lưu…' : 'Lưu toàn bộ cấu hình'}
             </button>
           </div>
         }
       />
 
-      {/* Metrics row */}
-      <div className="admin-metrics four">
+      {/* Metrics Row */}
+      <div className="admin-metrics four" style={{ marginBottom: '18px' }}>
         <Metric
-          label="Từ cấm Mức 3 (Tự cấm)"
-          value={`${form.aiModeration.criticalForbiddenKeywords.length} từ`}
-          note="Chất cấm, vũ khí, hàng giả, cờ bạc..."
+          label="SLA Tự Hủy Đơn Sỉ"
+          value={`${form.orderAndDelivery?.orderAutoCancelHours} giờ`}
+          note="Hoàn 100% cọc nếu vựa chậm duyệt"
         />
         <Metric
-          label="Từ hạn chế Mức 2 (Duyệt)"
-          value={`${form.aiModeration.restrictedKeywords.length} từ`}
-          note="Thuốc lá, xì gà, rượu mạnh..."
-        />
-        <Metric
-          label="Tỷ lệ ký quỹ chuẩn"
+          label="Ký quỹ Escrow Chuẩn"
           value={`${form.escrowDeposit.defaultDepositRate}%`}
-          note={`Mức trần: ${form.escrowDeposit.maxDepositRate}%`}
+          note={`Trần tối đa: ${form.escrowDeposit.maxDepositRate}%`}
         />
         <Metric
-          label="Trạng thái AI duyệt bài"
-          value={form.aiModeration.autoModerationEnabled ? 'Đang BẬT' : 'Đã TẮT'}
-          note={`Độ nghiêm ngặt: ${form.aiModeration.strictness}`}
+          label="Ký Gửi Tiếp Thị Tối Đa"
+          value={`${form.consignment?.maxConsignmentItemsPerStore} mặt hàng`}
+          note={`Đối soát ${form.consignment?.settlementCycleDays} ngày/lần`}
         />
+        <Metric
+          label="Duyệt Rút Tự Động"
+          value={`${((form.walletLimits?.autoApproveWithdrawalThreshold || 0) / 1000000).toLocaleString('vi-VN')} tr ₫`}
+          note={`Hạn mức: ${((form.walletLimits?.maxDailyWithdrawalAmount || 0) / 1000000).toLocaleString('vi-VN')} tr/ngày`}
+        />
+      </div>
+
+      {/* Navigation Tabs for Configuration */}
+      <div className="admin-config-tabs">
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'all' ? 'active' : ''}`}
+          onClick={() => setConfigTab('all')}
+        >
+          Tất cả cấu hình
+        </button>
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'order' ? 'active' : ''}`}
+          onClick={() => setConfigTab('order')}
+        >
+          1. Đơn hàng & SLA giao hàng
+        </button>
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'escrow' ? 'active' : ''}`}
+          onClick={() => setConfigTab('escrow')}
+        >
+          2. Ký quỹ & Đặt cọc sỉ
+        </button>
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'consignment' ? 'active' : ''}`}
+          onClick={() => setConfigTab('consignment')}
+        >
+          3. Hàng ký gửi tiếp thị
+        </button>
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'wallet' ? 'active' : ''}`}
+          onClick={() => setConfigTab('wallet')}
+        >
+          4. Hạn mức Ví & Nạp rút
+        </button>
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'ai' ? 'active' : ''}`}
+          onClick={() => setConfigTab('ai')}
+        >
+          5. Kiểm duyệt AI & Từ cấm
+        </button>
+        <button
+          type="button"
+          className={`admin-config-tab-btn ${configTab === 'notice' ? 'active' : ''}`}
+          onClick={() => setConfigTab('notice')}
+        >
+          6. Thông báo sàn & Bảo trì
+        </button>
       </div>
 
       {saveSuccess && (
@@ -3019,436 +3765,888 @@ function AiSystemConfig({ onLogout }: Props) {
       )}
 
       <div className="admin-config-container">
-        {/* CARD 1: CẤU HÌNH PHẦN TRĂM KÝ QUỸ */}
-        <section className="admin-config-card">
-          <div className="admin-config-card-header">
-            <div>
+        {/* CARD 1: CẤU HÌNH ĐƠN HÀNG & SLA GIAO HÀNG */}
+        {(configTab === 'all' || configTab === 'order') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
+              <span className="admin-mini-label" style={{ color: '#0284c7' }}>SLA VẬN HÀNH & ĐƠN HÀNG</span>
+              <h2>Chính sách Đặt hàng & SLA Giao hàng</h2>
+              <p>
+                Thiết lập giới hạn thời gian chủ vựa tiếp nhận đơn sỉ, thời hạn cho phép tiệm khiếu nại và khung giờ giao hàng trong ngày.
+              </p>
+            </div>
+
+            <div className="admin-config-grid">
+              <div className="admin-config-field">
+                <label htmlFor="orderAutoCancelHours">Thời hạn vựa tiếp nhận đơn trước khi tự hủy (giờ)</label>
+                <input
+                  id="orderAutoCancelHours"
+                  type="number"
+                  min={1}
+                  max={72}
+                  value={form.orderAndDelivery?.orderAutoCancelHours}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      orderAndDelivery: {
+                        ...form.orderAndDelivery,
+                        orderAutoCancelHours: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Nếu vựa không duyệt chuẩn bị hàng trong số giờ này, hệ thống tự động hủy đơn và hoàn 100% cọc về ví cho tiệm.</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="complaintWindowHours">Thời hạn khiếu nại sau khi nhận hàng (giờ)</label>
+                <input
+                  id="complaintWindowHours"
+                  type="number"
+                  min={1}
+                  max={168}
+                  value={form.orderAndDelivery?.complaintWindowHours}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      orderAndDelivery: {
+                        ...form.orderAndDelivery,
+                        complaintWindowHours: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Thời gian tối đa để chủ tạp hóa kiểm hàng và bấm gửi khiếu nại (Mặc định: 24 giờ).</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="autoCompleteDeliveredHours">Thời hạn tự động hoàn tất đơn sau khi giao (giờ)</label>
+                <input
+                  id="autoCompleteDeliveredHours"
+                  type="number"
+                  min={12}
+                  max={168}
+                  value={form.orderAndDelivery?.autoCompleteDeliveredHours}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      orderAndDelivery: {
+                        ...form.orderAndDelivery,
+                        autoCompleteDeliveredHours: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Nếu quá thời gian này và tiệm không khiếu nại, hệ thống tự động hoàn tất đơn và giải ngân cho vựa.</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label>Khung giờ giao hàng cho phép trong ngày</label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={23}
+                    placeholder="Từ (giờ)"
+                    style={{ width: '100px' }}
+                    value={form.orderAndDelivery?.deliveryAllowedStartHour}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        orderAndDelivery: {
+                          ...form.orderAndDelivery,
+                          deliveryAllowedStartHour: Number(e.target.value),
+                        },
+                      })
+                    }
+                  />
+                  <span>đến</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={24}
+                    placeholder="Đến (giờ)"
+                    style={{ width: '100px' }}
+                    value={form.orderAndDelivery?.deliveryAllowedEndHour}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        orderAndDelivery: {
+                          ...form.orderAndDelivery,
+                          deliveryAllowedEndHour: Number(e.target.value),
+                        },
+                      })
+                    }
+                  />
+                  <span style={{ fontSize: '13px', color: '#64748b' }}>giờ hàng ngày</span>
+                </div>
+                <small>Ví dụ: từ 5h sáng đến 21h tối. Tránh việc vựa hẹn giờ giao ban đêm gây phiền toái cho tiệm.</small>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '16px' }} className="admin-config-toggle">
+              <span>
+                <strong>Cho phép chuyến xe giao hàng vào cuối tuần (Thứ Bảy & Chủ Nhật)</strong>
+                <small>Khi bật, chủ vựa có thể lên lịch chuyến xe giao hàng vào các ngày cuối tuần như bình thường.</small>
+              </span>
+              <input
+                type="checkbox"
+                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                checked={form.orderAndDelivery?.allowWeekendDelivery}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    orderAndDelivery: {
+                      ...form.orderAndDelivery,
+                      allowWeekendDelivery: e.target.checked,
+                    },
+                  })
+                }
+              />
+            </div>
+          </section>
+        )}
+
+        {/* CARD 2: CẤU HÌNH PHẦN TRĂM KÝ QUỸ ESCROW */}
+        {(configTab === 'all' || configTab === 'escrow') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
               <span className="admin-mini-label">CHÍNH SÁCH BẢO ĐẢM TÀI CHÍNH</span>
               <h2>Tỷ lệ phần trăm ký quỹ (Escrow Deposit Rate)</h2>
               <p>
                 Admin điều chỉnh tỷ lệ phần trăm tiền cọc đảm bảo hợp đồng sỉ giữa tiệm tạp hóa và chủ vựa. Tiền cọc được tạm giữ an toàn trong hệ thống ký quỹ cho đến khi đơn hàng hoàn tất.
               </p>
             </div>
-            
-          </div>
 
-          <div className="admin-config-grid">
-            <div className="admin-config-field">
-              <label htmlFor="defaultDepositRate">Tỷ lệ ký quỹ chuẩn khuyến nghị (%)</label>
-              <input
-                id="defaultDepositRate"
-                type="number"
-                min={0}
-                max={100}
-                step={0.5}
-                value={form.escrowDeposit.defaultDepositRate}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    escrowDeposit: {
-                      ...form.escrowDeposit,
-                      defaultDepositRate: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-              <small>Mức cọc chuẩn áp dụng mặc định khi chủ vựa gửi báo giá (VD: 10% hoặc 20%).</small>
+            <div className="admin-config-grid">
+              <div className="admin-config-field">
+                <label htmlFor="defaultDepositRate">Tỷ lệ ký quỹ chuẩn khuyến nghị (%)</label>
+                <input
+                  id="defaultDepositRate"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.5}
+                  value={form.escrowDeposit.defaultDepositRate}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      escrowDeposit: {
+                        ...form.escrowDeposit,
+                        defaultDepositRate: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Mức cọc chuẩn áp dụng mặc định khi chủ vựa gửi báo giá (Mặc định: 10%).</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="maxDepositRate">Tỷ lệ ký quỹ tối đa cho phép (%)</label>
+                <input
+                  id="maxDepositRate"
+                  type="number"
+                  min={form.escrowDeposit.minDepositRate}
+                  max={100}
+                  step={0.5}
+                  value={form.escrowDeposit.maxDepositRate}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      escrowDeposit: {
+                        ...form.escrowDeposit,
+                        maxDepositRate: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Mức trần tối đa, chủ vựa không được phép yêu cầu cọc vượt ngưỡng này (Mặc định: 50%).</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="highValueThreshold">Ngưỡng đơn giá trị cao (VNĐ)</label>
+                <input
+                  id="highValueThreshold"
+                  type="number"
+                  min={0}
+                  step={500000}
+                  value={form.escrowDeposit.highValueThreshold}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      escrowDeposit: {
+                        ...form.escrowDeposit,
+                        highValueThreshold: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Đơn hàng vượt giá trị này sẽ tự động áp dụng chính sách ký quỹ bảo đảm.</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="escrowHoldDays">Thời gian tạm giữ ký quỹ sau khi giao (ngày)</label>
+                <input
+                  id="escrowHoldDays"
+                  type="number"
+                  min={0}
+                  max={30}
+                  value={form.escrowDeposit.escrowHoldDays}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      escrowDeposit: {
+                        ...form.escrowDeposit,
+                        escrowHoldDays: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Số ngày giữ cọc để chủ tạp hóa kiểm tra hàng hóa trước khi giải tỏa hoàn tất.</small>
+              </div>
             </div>
+          </section>
+        )}
 
-            <div className="admin-config-field">
-              <label htmlFor="maxDepositRate">Tỷ lệ ký quỹ tối đa cho phép (%)</label>
-              <input
-                id="maxDepositRate"
-                type="number"
-                min={form.escrowDeposit.minDepositRate}
-                max={100}
-                step={0.5}
-                value={form.escrowDeposit.maxDepositRate}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    escrowDeposit: {
-                      ...form.escrowDeposit,
-                      maxDepositRate: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-              <small>Mức trần tối đa, chủ vựa không được phép yêu cầu cọc vượt ngưỡng này (VD: 50%).</small>
-            </div>
-
-            <div className="admin-config-field">
-              <label htmlFor="highValueThreshold">Ngưỡng đơn giá trị cao (VNĐ)</label>
-              <input
-                id="highValueThreshold"
-                type="number"
-                min={0}
-                step={500000}
-                value={form.escrowDeposit.highValueThreshold}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    escrowDeposit: {
-                      ...form.escrowDeposit,
-                      highValueThreshold: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-              <small>Đơn hàng vượt giá trị này sẽ tự động áp dụng chính sách ký quỹ bảo đảm.</small>
-            </div>
-
-            <div className="admin-config-field">
-              <label htmlFor="escrowHoldDays">Thời gian tạm giữ ký quỹ sau khi giao (ngày)</label>
-              <input
-                id="escrowHoldDays"
-                type="number"
-                min={0}
-                max={30}
-                value={form.escrowDeposit.escrowHoldDays}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    escrowDeposit: {
-                      ...form.escrowDeposit,
-                      escrowHoldDays: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-              <small>Số ngày giữ cọc để chủ tạp hóa kiểm tra hàng hóa trước khi giải tỏa hoàn tất.</small>
-            </div>
-          </div>
-        </section>
-
-        {/* CARD 2: QUẢN LÝ TỪ CẤM NGHIÊM TRỌNG (MỨC 3) */}
-        <section className="admin-config-card">
-          <div className="admin-config-card-header">
-            <div>
-              <span className="admin-mini-label" style={{ color: '#b91c1c' }}>MỨC 3 · TỰ ĐỘNG CẤM ĐĂNG BÁN</span>
-              <h2>Quản lý Danh sách Từ cấm Nghiêm trọng</h2>
+        {/* CARD 3: CẤU HÌNH HÀNG KÝ GỬI TIẾP THỊ */}
+        {(configTab === 'all' || configTab === 'consignment') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
+              <span className="admin-mini-label" style={{ color: '#0d9488' }}>MÔ HÌNH HÀNG TIẾP THỊ 0Đ</span>
+              <h2>Chính sách Hàng Ký Gửi & Bán Thử</h2>
               <p>
-                Khi sản phẩm có chứa bất kỳ từ cấm nào bên dưới (trong tên, danh mục, quy cách hoặc mô tả), AI sẽ ngay lập tức từ chối và cấm đăng bán thẳng để bảo vệ an toàn sàn.
+                Quản lý quy định đưa hàng vào bán thử tại tiệm tạp hóa không cần vốn nhập trước, hạn chế rủi ro nợ xấu và chu kỳ đối soát thanh toán.
               </p>
             </div>
-            
-          </div>
 
-          <div className="admin-tag-input-row">
-            <input
-              type="text"
-              placeholder="Nhập từ cấm mới (VD: tiền giả, pháo sáng, súng bắn cát...) rồi nhấn Thêm"
-              value={newForbiddenWord}
-              onChange={(e) => setNewForbiddenWord(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleAddForbidden();
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="admin-primary"
-              onClick={handleAddForbidden}
-              disabled={!newForbiddenWord.trim()}
-              style={{ padding: '9px 18px', whiteSpace: 'nowrap' }}
-            >
-              + Thêm từ cấm
-            </button>
-          </div>
+            <div className="admin-config-grid">
+              <div className="admin-config-field">
+                <label htmlFor="maxConsignmentItemsPerStore">Số lượng mặt hàng ký gửi tối đa tại 1 tiệm</label>
+                <input
+                  id="maxConsignmentItemsPerStore"
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={form.consignment?.maxConsignmentItemsPerStore}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      consignment: {
+                        ...form.consignment,
+                        maxConsignmentItemsPerStore: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Mỗi chủ vựa chỉ được ký gửi tối đa số mặt hàng này tại cùng 1 tiệm tạp hóa (Mặc định: 5 mặt hàng).</small>
+              </div>
 
-          <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>
-              Tổng cộng {form.aiModeration.criticalForbiddenKeywords.length} từ cấm:
-            </span>
-            <input
-              type="text"
-              placeholder="Lọc nhanh từ cấm..."
-              value={forbiddenSearch}
-              onChange={(e) => setForbiddenSearch(e.target.value)}
-              style={{
-                padding: '4px 10px',
-                borderRadius: '6px',
-                border: '1px solid #cbd5e1',
-                fontSize: '12px',
-                maxWidth: '200px',
-              }}
-            />
-          </div>
+              <div className="admin-config-field">
+                <label htmlFor="settlementCycleDays">Chu kỳ nhắc nhở đối soát định kỳ (ngày)</label>
+                <input
+                  id="settlementCycleDays"
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={form.consignment?.settlementCycleDays}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      consignment: {
+                        ...form.consignment,
+                        settlementCycleDays: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Hệ thống tự động phát thông báo nhắc nhở tiệm tạp hóa thanh toán tiền sỉ các mặt hàng ký gửi đã bán lẻ.</small>
+              </div>
+            </div>
 
-          <div className="admin-tag-cloud">
-            {filteredForbidden.length > 0 ? (
-              filteredForbidden.map((word) => (
-                <span key={word} className="admin-tag-chip critical">
-                  <span>{word}</span>
-                  <button
-                    type="button"
-                    className="admin-tag-remove-btn"
-                    onClick={() => handleRemoveForbidden(word)}
-                    title={`Xóa từ "${word}" khỏi danh sách từ cấm`}
-                    aria-label={`Xóa ${word}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))
-            ) : (
-              <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '8px' }}>
-                Không tìm thấy từ cấm nào khớp với tìm kiếm.
+            <div style={{ marginTop: '16px' }} className="admin-config-toggle">
+              <span>
+                <strong>Yêu cầu Chủ vựa phải hoàn tất Xác minh uy tín (Approved) mới được đưa hàng ký gửi</strong>
+                <small>Bảo vệ chủ tiệm tạp hóa khỏi các nhà cung cấp chưa được chứng thực giấy tờ kinh doanh hợp lệ.</small>
               </span>
-            )}
-          </div>
-        </section>
+              <input
+                type="checkbox"
+                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                checked={!form.consignment?.allowConsignmentForUnverified}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    consignment: {
+                      ...form.consignment,
+                      allowConsignmentForUnverified: !e.target.checked,
+                    },
+                  })
+                }
+              />
+            </div>
+          </section>
+        )}
 
-        {/* CARD 3: QUẢN LÝ TỪ KHÓA HẠN CHẾ (MỨC 2) */}
-        <section className="admin-config-card">
-          <div className="admin-config-card-header">
-            <div>
-              <span className="admin-mini-label" style={{ color: '#b45309' }}>MỨC 2 · CẦN ADMIN DUYỆT</span>
-              <h2>Quản lý Danh sách Từ khóa Hạn chế / Có điều kiện</h2>
+        {/* CARD 4: CẤU HÌNH HẠN MỨC VÍ & NẠP RÚT */}
+        {(configTab === 'all' || configTab === 'wallet') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
+              <span className="admin-mini-label" style={{ color: '#7c3aed' }}>KIỂM SOÁT TÀI CHÍNH & VÍ ĐIỆN TỬ</span>
+              <h2>Hạn mức Ví & Kiểm soát Nạp / Rút Tiền</h2>
               <p>
-                Sản phẩm chứa các từ khóa này (thuốc lá, xì gà, rượu, thực phẩm chức năng...) sẽ không bị cấm ngay mà được đưa vào Hàng chờ duyệt để Admin kiểm tra giấy phép kinh doanh.
+                Thiết lập hạn mức nạp rút tối thiểu, tối đa mỗi ngày và ngưỡng duyệt tự động nhằm phòng ngừa rủi ro chiếm đoạt ví và rửa tiền.
               </p>
             </div>
-            
-          </div>
 
-          <div className="admin-tag-input-row">
-            <input
-              type="text"
-              placeholder="Nhập từ khóa hạn chế mới (VD: thuốc lào, shisha, vape, rượu ngoại...) rồi nhấn Thêm"
-              value={newRestrictedWord}
-              onChange={(e) => setNewRestrictedWord(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleAddRestricted();
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="admin-primary"
-              onClick={handleAddRestricted}
-              disabled={!newRestrictedWord.trim()}
-              style={{ padding: '9px 18px', whiteSpace: 'nowrap' }}
-            >
-              + Thêm từ hạn chế
-            </button>
-          </div>
+            <div className="admin-config-grid">
+              <div className="admin-config-field">
+                <label htmlFor="minDepositAmount">Số tiền nạp tối thiểu mỗi giao dịch (VNĐ)</label>
+                <input
+                  id="minDepositAmount"
+                  type="number"
+                  min={10000}
+                  step={10000}
+                  value={form.walletLimits?.minDepositAmount}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      walletLimits: {
+                        ...form.walletLimits,
+                        minDepositAmount: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Số tiền tối thiểu một lần nạp vào ví (Mặc định: 50.000đ).</small>
+              </div>
 
-          <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>
-              Tổng cộng {form.aiModeration.restrictedKeywords.length} từ khóa hạn chế:
-            </span>
-            <input
-              type="text"
-              placeholder="Lọc từ hạn chế..."
-              value={restrictedSearch}
-              onChange={(e) => setRestrictedSearch(e.target.value)}
-              style={{
-                padding: '4px 10px',
-                borderRadius: '6px',
-                border: '1px solid #cbd5e1',
-                fontSize: '12px',
-                maxWidth: '200px',
-              }}
-            />
-          </div>
+              <div className="admin-config-field">
+                <label htmlFor="minWithdrawalAmount">Số tiền rút tối thiểu mỗi giao dịch (VNĐ)</label>
+                <input
+                  id="minWithdrawalAmount"
+                  type="number"
+                  min={10000}
+                  step={10000}
+                  value={form.walletLimits?.minWithdrawalAmount}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      walletLimits: {
+                        ...form.walletLimits,
+                        minWithdrawalAmount: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Mức rút tối thiểu tránh các giao dịch siêu nhỏ gây quá tải ngân hàng (Mặc định: 100.000đ).</small>
+              </div>
 
-          <div className="admin-tag-cloud">
-            {filteredRestricted.length > 0 ? (
-              filteredRestricted.map((word) => (
-                <span key={word} className="admin-tag-chip warning">
-                  <span>{word}</span>
-                  <button
-                    type="button"
-                    className="admin-tag-remove-btn"
-                    onClick={() => handleRemoveRestricted(word)}
-                    title={`Xóa từ "${word}" khỏi danh sách hạn chế`}
-                    aria-label={`Xóa ${word}`}
-                  >
-                    ×
-                  </button>
-                </span>
-              ))
-            ) : (
-              <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '8px' }}>
-                Không tìm thấy từ khóa nào khớp với tìm kiếm.
+              <div className="admin-config-field">
+                <label htmlFor="maxDailyWithdrawalAmount">Hạn mức rút tiền tối đa mỗi ngày (VNĐ/tài khoản)</label>
+                <input
+                  id="maxDailyWithdrawalAmount"
+                  type="number"
+                  min={500000}
+                  step={5000000}
+                  value={form.walletLimits?.maxDailyWithdrawalAmount}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      walletLimits: {
+                        ...form.walletLimits,
+                        maxDailyWithdrawalAmount: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Giới hạn bảo vệ tài sản, một tài khoản không thể rút vượt ngưỡng này trong vòng 24 giờ (Mặc định: 50.000.000đ).</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="autoApproveWithdrawalThreshold">Ngưỡng tự động duyệt lệnh rút tiền (VNĐ)</label>
+                <input
+                  id="autoApproveWithdrawalThreshold"
+                  type="number"
+                  min={0}
+                  step={500000}
+                  value={form.walletLimits?.autoApproveWithdrawalThreshold}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      walletLimits: {
+                        ...form.walletLimits,
+                        autoApproveWithdrawalThreshold: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Các lệnh rút dưới mức này sẽ được hệ thống duyệt ngay; trên mức này bắt buộc Admin kiểm tra chứng từ (Mặc định: 2.000.000đ).</small>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* CARD 5: CẤU HÌNH THÔNG BÁO SÀN & BẢO TRÌ */}
+        {(configTab === 'all' || configTab === 'notice') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
+              <span className="admin-mini-label" style={{ color: '#ea580c' }}>TRẠNG THÁI NỀN TẢNG & TRUYỀN THÔNG</span>
+              <h2>Thông báo Toàn sàn & Chế độ Bảo trì</h2>
+              <p>
+                Phát đi thông báo khẩn cấp (thời tiết, bão lũ, kỳ nghỉ lễ Tết) đến toàn bộ tiệm tạp hóa và chủ vựa hoặc bật chế độ bảo trì kỹ thuật.
+              </p>
+            </div>
+
+            <div className="admin-config-toggle">
+              <span>
+                <strong>Bật chế độ bảo trì hệ thống toàn sàn (Maintenance Mode)</strong>
+                <small>Khi bật, hệ thống sẽ tạm khóa các thao tác đặt hàng sỉ và hiển thị lời nhắn bảo trì cho người dùng.</small>
               </span>
-            )}
-          </div>
-        </section>
+              <input
+                type="checkbox"
+                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                checked={form.systemNotice?.maintenanceMode}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    systemNotice: {
+                      ...form.systemNotice,
+                      maintenanceMode: e.target.checked,
+                    },
+                  })
+                }
+              />
+            </div>
 
-        {/* CARD 4: CÀI ĐẶT THUẬT TOÁN & NGƯỠNG RỦI RO AI */}
-        <section className="admin-config-card">
-          <div className="admin-config-card-header">
-            <div>
+            {form.systemNotice?.maintenanceMode && (
+              <div className="admin-config-field" style={{ marginBottom: '16px' }}>
+                <label htmlFor="maintenanceMessage">Lời nhắn thông báo bảo trì hiển thị cho người dùng</label>
+                <textarea
+                  id="maintenanceMessage"
+                  rows={3}
+                  value={form.systemNotice?.maintenanceMessage}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      systemNotice: {
+                        ...form.systemNotice,
+                        maintenanceMessage: e.target.value,
+                      },
+                    })
+                  }
+                />
+              </div>
+            )}
+
+            <div className="admin-config-toggle">
+              <span>
+                <strong>Kích hoạt Banner thông báo khẩn cấp toàn sàn</strong>
+                <small>Hiển thị thanh banner nổi bật ở đầu trang của cả Tiệm tạp hóa lẫn Chủ vựa.</small>
+              </span>
+              <input
+                type="checkbox"
+                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                checked={form.systemNotice?.announcementEnabled}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    systemNotice: {
+                      ...form.systemNotice,
+                      announcementEnabled: e.target.checked,
+                    },
+                  })
+                }
+              />
+            </div>
+
+            {form.systemNotice?.announcementEnabled && (
+              <div className="admin-config-grid" style={{ marginTop: '12px' }}>
+                <div className="admin-config-field">
+                  <label htmlFor="announcementTitle">Tiêu đề thông báo</label>
+                  <input
+                    id="announcementTitle"
+                    type="text"
+                    placeholder="VD: Cảnh báo bão số 6 ảnh hưởng các tuyến vận chuyển nông sản miền Trung..."
+                    value={form.systemNotice?.announcementTitle}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        systemNotice: {
+                          ...form.systemNotice,
+                          announcementTitle: e.target.value,
+                        },
+                      })
+                    }
+                  />
+                </div>
+
+                <div className="admin-config-field">
+                  <label htmlFor="announcementType">Mức độ ưu tiên thông báo</label>
+                  <select
+                    id="announcementType"
+                    value={form.systemNotice?.announcementType}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        systemNotice: {
+                          ...form.systemNotice,
+                          announcementType: e.target.value as 'INFO' | 'WARNING' | 'ALERT',
+                        },
+                      })
+                    }
+                  >
+                    <option value="INFO">Thông tin chung (Màu xanh dương)</option>
+                    <option value="WARNING">Cảnh báo lưu ý (Màu vàng cam)</option>
+                    <option value="ALERT">Khẩn cấp nghiêm trọng (Màu đỏ)</option>
+                  </select>
+                </div>
+
+                <div className="admin-config-field" style={{ gridColumn: '1 / -1' }}>
+                  <label htmlFor="announcementContent">Nội dung chi tiết thông báo</label>
+                  <textarea
+                    id="announcementContent"
+                    rows={3}
+                    placeholder="Nhập nội dung chi tiết thông báo gửi đến các chủ tiệm và chủ vựa..."
+                    value={form.systemNotice?.announcementContent}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        systemNotice: {
+                          ...form.systemNotice,
+                          announcementContent: e.target.value,
+                        },
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* CARD 6: CÀI ĐẶT THUẬT TOÁN & NGƯỠNG RỦI RO AI */}
+        {(configTab === 'all' || configTab === 'ai') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
               <span className="admin-mini-label">QUY TẮC PHÁ GIÁ & SỐ LƯỢNG ẢO</span>
               <h2>Cài đặt Thuật toán AI & Ngưỡng Rủi ro</h2>
               <p>
                 Điều chỉnh các ngưỡng giá tối thiểu/tối đa và số lượng MOQ để AI phát hiện kịp thời các hành vi phá giá, tạo đơn ảo hoặc số lượng phi thực tế.
               </p>
             </div>
-            
-          </div>
 
-          {/* Toggle Enable/Disable AI */}
-          <div className="admin-config-toggle">
-            <span>
-              <strong>Kích hoạt tính năng AI kiểm duyệt tự động</strong>
-              <small>Khi tắt, các bài đăng sản phẩm sỉ sẽ không bị AI kiểm tra hay chặn tự động.</small>
-            </span>
-            <input
-              type="checkbox"
-              style={{ width: '20px', height: '20px', cursor: 'pointer' }}
-              checked={form.aiModeration.autoModerationEnabled}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  aiModeration: {
-                    ...form.aiModeration,
-                    autoModerationEnabled: e.target.checked,
-                  },
-                })
-              }
-            />
-          </div>
-
-          <div className="admin-config-grid">
-            <div className="admin-config-field">
-              <label htmlFor="strictness">Độ nghiêm ngặt của AI</label>
-              <select
-                id="strictness"
-                value={form.aiModeration.strictness}
+            <div className="admin-config-toggle">
+              <span>
+                <strong>Kích hoạt tính năng AI kiểm duyệt tự động</strong>
+                <small>Khi tắt, các bài đăng sản phẩm sỉ sẽ không bị AI kiểm tra hay chặn tự động.</small>
+              </span>
+              <input
+                type="checkbox"
+                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                checked={form.aiModeration.autoModerationEnabled}
                 onChange={(e) =>
                   setForm({
                     ...form,
                     aiModeration: {
                       ...form.aiModeration,
-                      strictness: e.target.value as 'STANDARD' | 'STRICT' | 'LENIENT',
+                      autoModerationEnabled: e.target.checked,
                     },
                   })
                 }
+              />
+            </div>
+
+            <div className="admin-config-grid">
+              <div className="admin-config-field">
+                <label htmlFor="strictness">Độ nghiêm ngặt của AI</label>
+                <select
+                  id="strictness"
+                  value={form.aiModeration.strictness}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      aiModeration: {
+                        ...form.aiModeration,
+                        strictness: e.target.value as 'STANDARD' | 'STRICT' | 'LENIENT',
+                      },
+                    })
+                  }
+                >
+                  <option value="STANDARD">Tiêu chuẩn (Khuyên dùng - Cân bằng kiểm duyệt)</option>
+                  <option value="STRICT">Nghiêm ngặt (Tăng độ nhạy cảnh báo 25%, kiểm soát chặt)</option>
+                  <option value="LENIENT">Linh hoạt (Nới lỏng, chỉ chặn vi phạm nặng)</option>
+                </select>
+                <small>Quyết định hệ số tính điểm rủi ro (risk score) của sản phẩm.</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="minSuspiciousPrice">Giá sỉ tối thiểu nghi vấn giá ảo / phá giá (VNĐ)</label>
+                <input
+                  id="minSuspiciousPrice"
+                  type="number"
+                  min={0}
+                  step={100}
+                  value={form.aiModeration.minSuspiciousPrice}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      aiModeration: {
+                        ...form.aiModeration,
+                        minSuspiciousPrice: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Giá sỉ thấp hơn mức này sẽ bị coi là giá ảo phá giá (Mặc định: 500đ).</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="warningLowPrice">Giá sỉ thấp bất thường cần xác minh (VNĐ)</label>
+                <input
+                  id="warningLowPrice"
+                  type="number"
+                  min={form.aiModeration.minSuspiciousPrice}
+                  step={500}
+                  value={form.aiModeration.warningLowPrice}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      aiModeration: {
+                        ...form.aiModeration,
+                        warningLowPrice: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Sản phẩm trong khoảng này sẽ cảnh báo Mức 2 để Admin xác minh.</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="maxSuspiciousPrice">Giá sỉ tối đa bất thường (VNĐ)</label>
+                <input
+                  id="maxSuspiciousPrice"
+                  type="number"
+                  min={form.aiModeration.warningLowPrice}
+                  step={10000000}
+                  value={form.aiModeration.maxSuspiciousPrice}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      aiModeration: {
+                        ...form.aiModeration,
+                        maxSuspiciousPrice: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Giá sỉ vượt trần này sẽ bị AI cấm vì nghi ngờ thông tin sai lệch.</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="maxMoq">Số lượng MOQ tối đa phi thực tế</label>
+                <input
+                  id="maxMoq"
+                  type="number"
+                  min={1}
+                  step={1000}
+                  value={form.aiModeration.maxMoq}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      aiModeration: {
+                        ...form.aiModeration,
+                        maxMoq: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>Số lượng tối thiểu (MOQ) vượt ngưỡng này sẽ bị cấm (Mặc định: 50.000).</small>
+              </div>
+
+              <div className="admin-config-field">
+                <label htmlFor="warningMoq">Ngưỡng MOQ cao cần kiểm tra</label>
+                <input
+                  id="warningMoq"
+                  type="number"
+                  min={1}
+                  max={form.aiModeration.maxMoq}
+                  step={500}
+                  value={form.aiModeration.warningMoq}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      aiModeration: {
+                        ...form.aiModeration,
+                        warningMoq: Number(e.target.value),
+                      },
+                    })
+                  }
+                />
+                <small>MOQ vượt ngưỡng này sẽ cảnh báo Admin duyệt (Mặc định: 5.000).</small>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* CARD 7: QUẢN LÝ TỪ CẤM NGHIÊM TRỌNG (MỨC 3) */}
+        {(configTab === 'all' || configTab === 'ai') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
+              <span className="admin-mini-label" style={{ color: '#b91c1c' }}>MỨC 3 · TỰ ĐỘNG CẤM ĐĂNG BÁN</span>
+              <h2>Quản lý Danh sách Từ cấm Nghiêm trọng</h2>
+              <p>
+                Khi sản phẩm có chứa bất kỳ từ cấm nào bên dưới (trong tên, danh mục, quy cách hoặc mô tả), AI sẽ ngay lập tức từ chối và cấm đăng bán thẳng để bảo vệ an toàn sàn.
+              </p>
+            </div>
+
+            <div className="admin-tag-input-row">
+              <input
+                type="text"
+                placeholder="Nhập từ cấm mới (VD: tiền giả, pháo sáng, súng bắn cát...) rồi nhấn Thêm"
+                value={newForbiddenWord}
+                onChange={(e) => setNewForbiddenWord(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddForbidden();
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="admin-primary"
+                onClick={handleAddForbidden}
+                disabled={!newForbiddenWord.trim()}
+                style={{ padding: '9px 18px', whiteSpace: 'nowrap' }}
               >
-                <option value="STANDARD">Tiêu chuẩn (Khuyên dùng - Cân bằng kiểm duyệt)</option>
-                <option value="STRICT">Nghiêm ngặt (Tăng độ nhạy cảnh báo 25%, kiểm soát chặt)</option>
-                <option value="LENIENT">Linh hoạt (Nới lỏng, chỉ chặn vi phạm nặng)</option>
-              </select>
-              <small>Quyết định hệ số tính điểm rủi ro (risk score) của sản phẩm.</small>
+                + Thêm từ cấm
+              </button>
             </div>
 
-            <div className="admin-config-field">
-              <label htmlFor="minSuspiciousPrice">Giá sỉ tối thiểu nghi vấn giá ảo / phá giá (VNĐ)</label>
+            <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>
+                Tổng cộng {form.aiModeration.criticalForbiddenKeywords.length} từ cấm:
+              </span>
               <input
-                id="minSuspiciousPrice"
-                type="number"
-                min={0}
-                step={100}
-                value={form.aiModeration.minSuspiciousPrice}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    aiModeration: {
-                      ...form.aiModeration,
-                      minSuspiciousPrice: Number(e.target.value),
-                    },
-                  })
-                }
+                type="text"
+                placeholder="Lọc nhanh từ cấm..."
+                value={forbiddenSearch}
+                onChange={(e) => setForbiddenSearch(e.target.value)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '12px',
+                  maxWidth: '200px',
+                }}
               />
-              <small>Giá sỉ thấp hơn mức này sẽ bị coi là giá ảo phá giá (Mặc định: 500đ).</small>
             </div>
 
-            <div className="admin-config-field">
-              <label htmlFor="warningLowPrice">Giá sỉ thấp bất thường cần xác minh (VNĐ)</label>
-              <input
-                id="warningLowPrice"
-                type="number"
-                min={form.aiModeration.minSuspiciousPrice}
-                step={500}
-                value={form.aiModeration.warningLowPrice}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    aiModeration: {
-                      ...form.aiModeration,
-                      warningLowPrice: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-              <small>Sản phẩm trong khoảng này sẽ cảnh báo Mức 2 để Admin xác minh.</small>
+            <div className="admin-tag-cloud">
+              {filteredForbidden.length > 0 ? (
+                filteredForbidden.map((word) => (
+                  <span key={word} className="admin-tag-chip critical">
+                    <span>{word}</span>
+                    <button
+                      type="button"
+                      className="admin-tag-remove-btn"
+                      onClick={() => handleRemoveForbidden(word)}
+                      title={`Xóa từ "${word}" khỏi danh sách từ cấm`}
+                      aria-label={`Xóa ${word}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '8px' }}>
+                  Không tìm thấy từ cấm nào khớp với tìm kiếm.
+                </span>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* CARD 8: QUẢN LÝ TỪ KHÓA HẠN CHẾ (MỨC 2) */}
+        {(configTab === 'all' || configTab === 'ai') && (
+          <section className="admin-config-card">
+            <div className="admin-config-card-header">
+              <span className="admin-mini-label" style={{ color: '#b45309' }}>MỨC 2 · CẦN ADMIN DUYỆT</span>
+              <h2>Quản lý Danh sách Từ khóa Hạn chế / Có điều kiện</h2>
+              <p>
+                Sản phẩm chứa các từ khóa này (thuốc lá, xì gà, rượu, thực phẩm chức năng...) sẽ không bị cấm ngay mà được đưa vào Hàng chờ duyệt để Admin kiểm tra giấy phép kinh doanh.
+              </p>
             </div>
 
-            <div className="admin-config-field">
-              <label htmlFor="maxSuspiciousPrice">Giá sỉ tối đa bất thường (VNĐ)</label>
+            <div className="admin-tag-input-row">
               <input
-                id="maxSuspiciousPrice"
-                type="number"
-                min={form.aiModeration.warningLowPrice}
-                step={10000000}
-                value={form.aiModeration.maxSuspiciousPrice}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    aiModeration: {
-                      ...form.aiModeration,
-                      maxSuspiciousPrice: Number(e.target.value),
-                    },
-                  })
-                }
+                type="text"
+                placeholder="Nhập từ khóa hạn chế mới (VD: thuốc lào, shisha, vape, rượu ngoại...) rồi nhấn Thêm"
+                value={newRestrictedWord}
+                onChange={(e) => setNewRestrictedWord(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddRestricted();
+                  }
+                }}
               />
-              <small>Giá sỉ vượt trần này sẽ bị AI cấm vì nghi ngờ thông tin sai lệch.</small>
+              <button
+                type="button"
+                className="admin-primary"
+                onClick={handleAddRestricted}
+                disabled={!newRestrictedWord.trim()}
+                style={{ padding: '9px 18px', whiteSpace: 'nowrap' }}
+              >
+                + Thêm từ hạn chế
+              </button>
             </div>
 
-            <div className="admin-config-field">
-              <label htmlFor="maxMoq">Số lượng MOQ tối đa phi thực tế</label>
+            <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>
+                Tổng cộng {form.aiModeration.restrictedKeywords.length} từ khóa hạn chế:
+              </span>
               <input
-                id="maxMoq"
-                type="number"
-                min={1}
-                step={1000}
-                value={form.aiModeration.maxMoq}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    aiModeration: {
-                      ...form.aiModeration,
-                      maxMoq: Number(e.target.value),
-                    },
-                  })
-                }
+                type="text"
+                placeholder="Lọc từ hạn chế..."
+                value={restrictedSearch}
+                onChange={(e) => setRestrictedSearch(e.target.value)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '12px',
+                  maxWidth: '200px',
+                }}
               />
-              <small>Số lượng tối thiểu (MOQ) vượt ngưỡng này sẽ bị cấm (Mặc định: 50.000).</small>
             </div>
 
-            <div className="admin-config-field">
-              <label htmlFor="warningMoq">Ngưỡng MOQ cao cần kiểm tra</label>
-              <input
-                id="warningMoq"
-                type="number"
-                min={1}
-                max={form.aiModeration.maxMoq}
-                step={500}
-                value={form.aiModeration.warningMoq}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    aiModeration: {
-                      ...form.aiModeration,
-                      warningMoq: Number(e.target.value),
-                    },
-                  })
-                }
-              />
-              <small>MOQ vượt ngưỡng này sẽ cảnh báo Admin duyệt (Mặc định: 5.000).</small>
+            <div className="admin-tag-cloud">
+              {filteredRestricted.length > 0 ? (
+                filteredRestricted.map((word) => (
+                  <span key={word} className="admin-tag-chip warning">
+                    <span>{word}</span>
+                    <button
+                      type="button"
+                      className="admin-tag-remove-btn"
+                      onClick={() => handleRemoveRestricted(word)}
+                      title={`Xóa từ "${word}" khỏi danh sách hạn chế`}
+                      aria-label={`Xóa ${word}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))
+              ) : (
+                <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '8px' }}>
+                  Không tìm thấy từ khóa nào khớp với tìm kiếm.
+                </span>
+              )}
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* BOTTOM ACTION BUTTONS */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '14px', marginTop: '10px' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '14px', marginTop: '14px', marginBottom: '20px' }}>
           <button
             type="button"
             onClick={handleResetDefault}

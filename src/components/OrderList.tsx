@@ -18,10 +18,12 @@ import {
   type SupplierOrder,
 } from '../services/supplier.api';
 import Icon from './Icon';
+import DatePicker from './DatePicker';
 import ExportDropdown from './ExportDropdown';
 import { exportSupplierOrdersToExcel, exportSupplierOrdersToPdf } from '../utils/exportSupplier';
 import { depositOrderWithWallet, getWallet } from '../services/wallet.api';
 import './complaint-dialog.css';
+import OrderStepper from './OrderStepper';
 import { orderPaymentSummary, supplierPaymentBank } from '../utils/orderPayment';
 
 const statuses = {
@@ -33,13 +35,19 @@ const statuses = {
   DELIVERED: 'Đã giao',
   COMPLETED: 'Hoàn tất',
   REJECTED: 'Đã từ chối',
+  CANCELLED: 'Đã hủy',
 };
 
 const COMPLAINT_STATUS_MAP: Record<string, { label: string; color: string; bg: string }> = {
-  OPEN: { label: 'Chờ chủ vựa xem', color: '#c2410c', bg: '#fff7ed' },
-  IN_REVIEW: { label: 'Chủ vựa đang xử lý', color: '#1d4ed8', bg: '#eff6ff' },
-  RESOLVED: { label: 'Đã giải quyết', color: '#15803d', bg: '#f0fdf4' },
-  REJECTED: { label: 'Chủ vựa từ chối', color: '#b91c1c', bg: '#fef2f2' },
+  OPEN: { label: 'Mới tạo · Chờ chủ vựa phản hồi', color: '#c2410c', bg: '#fff7ed' },
+  IN_REVIEW: { label: 'Đang xử lý · Hai bên đang trao đổi', color: '#1d4ed8', bg: '#eff6ff' },
+  RESOLVED: { label: 'Hoàn thành · Đã thống nhất kết quả', color: '#15803d', bg: '#f0fdf4' },
+  CLOSED_TIMEOUT: { label: 'Đã đóng (Lịch sử cũ)', color: '#7c2d12', bg: '#ffedd5' },
+  CLOSED_UNRESOLVED: { label: 'Đã đóng (Lịch sử cũ)', color: '#475569', bg: '#f1f5f9' },
+  REJECTED: { label: 'Chủ vựa từ chối đề xuất', color: '#b91c1c', bg: '#fef2f2' },
+  ESCALATED: { label: 'Đang xử lý (Hồ sơ cũ)', color: '#6d28d9', bg: '#f5f3ff' },
+  ADMIN_RESOLVED_BUYER: { label: 'Hoàn thành (Hồ sơ cũ)', color: '#15803d', bg: '#f0fdf4' },
+  ADMIN_RESOLVED_SUPPLIER: { label: 'Hoàn thành (Hồ sơ cũ)', color: '#475569', bg: '#f1f5f9' },
 };
 
 const COMPLAINT_REASONS: { code: string; label: string }[] = [
@@ -64,20 +72,12 @@ const REASON_LABELS: Record<string, string> = {
 
 const money = (n: number) => Math.round(n).toLocaleString('vi-VN') + ' ₫';
 
-const DESIRED_RESOLUTIONS: { code: string; label: string }[] = [
-  { code: 'REFUND', label: 'Hoàn tiền / Trừ cọc tương ứng' },
-  { code: 'REPLACE', label: 'Giao bù hàng mới chuyến sau' },
-  { code: 'RETURN', label: 'Đổi trả toàn bộ hàng lỗi' },
-  { code: 'DISCOUNT', label: 'Giảm giá / Cấn trừ công nợ' },
-];
-
 const SUPPLIER_RESOLUTIONS: { code: string; label: string }[] = [
-  { code: 'AGREE_REPLACE_0VND', label: 'Đồng ý giao bù hàng mới (Tự động tạo đơn 0đ)' },
-  { code: 'AGREE_REFUND', label: 'Đồng ý hoàn tiền / Trừ cọc' },
-  { code: 'AGREE_REPLACE', label: 'Đồng ý giao bù hàng mới chuyến sau' },
-  { code: 'AGREE_RETURN', label: 'Đồng ý thu hồi đổi trả hàng' },
-  { code: 'DISCUSS', label: 'Đang liên hệ trao đổi phương án với cửa hàng' },
-  { code: 'REJECT', label: 'Từ chối (Hàng giao đúng và đảm bảo tiêu chuẩn)' },
+  { code: 'AGREE_REPLACE_0VND', label: 'Giao bù hàng mới (Tự động tạo đơn 0đ khi Tiệm đồng ý)' },
+  { code: 'DEDUCT_COD', label: 'Giảm trừ tiền hàng hỏng trực tiếp vào COD' },
+  { code: 'RETURN_REFUND', label: 'Nhận lại hàng & Hoàn 100% cọc / tiền ví khi Tiệm đồng ý' },
+  { code: 'DISCUSS', label: 'Trao đổi thêm phương án khác với cửa hàng' },
+  { code: 'REJECT', label: 'Từ chối bồi thường (Hàng giao đúng quy chuẩn)' },
 ];
 
 async function compressImageFile(file: File): Promise<string> {
@@ -245,6 +245,114 @@ function computeOrderLossAmount(order: SupplierOrder): number {
   return Math.round(totalLoss);
 }
 
+function getOrderTotalDeduction(order: SupplierOrder): number {
+  const incidentDeduct = order.driverInfo?.incidentReport?.action === 'DEDUCT_COD'
+    ? computeOrderLossAmount(order)
+    : 0;
+  const complaintDeduct = Number(order.complaint?.workflow?.agreedDeductAmount || 0);
+  return incidentDeduct + (Number.isFinite(complaintDeduct) && complaintDeduct > 0 ? complaintDeduct : 0);
+}
+
+function formatComplaintTime(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleString('vi-VN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+type ComplaintHistoryEntry = {
+  at?: string;
+  actorRole?: string;
+  actorName?: string;
+  round?: number;
+  action?: string;
+  label?: string;
+  note?: string | null;
+};
+
+type ActionModalState =
+  | {
+      type: 'buyer-decision';
+      complaintId: number;
+      decision: 'ACCEPT' | 'WITHDRAW';
+      title: string;
+      message: string;
+      confirmLabel: string;
+      requireInput?: boolean;
+      minLength?: number;
+      inputLabel?: string;
+      inputPlaceholder?: string;
+      tone?: 'primary' | 'warning' | 'danger';
+    }
+  | {
+      type: 'cancel-order';
+      orderId: number;
+      title: string;
+      message: string;
+      confirmLabel: string;
+      requireInput?: false;
+      inputLabel: string;
+      inputPlaceholder?: string;
+      tone?: 'danger';
+    }
+  | {
+      type: 'complete-supplementary';
+      orderId: number;
+      title: string;
+      message: string;
+      confirmLabel: string;
+      tone?: 'primary';
+    };
+
+function normalizeHistoryLabel(label?: string): string {
+  const raw = (label || '').trim();
+  if (!raw) return 'Cập nhật';
+  if (raw.startsWith('Bắt đầu · ')) return raw.slice('Bắt đầu · '.length);
+  if (raw.startsWith('Đang xử lý · ')) return raw.slice('Đang xử lý · '.length);
+  return raw;
+}
+
+function cleanHistoryNote(item: ComplaintHistoryEntry): string {
+  const note = (item.note || '').trim();
+  if (!note) return '';
+  if (item.action === 'CREATE_COMPLAINT') {
+    const match = note.match(/^\[Sự cố:[^\]]+\]\s*\n?([\s\S]*)$/);
+    const detail = match ? (match[1] || '').trim() : note;
+    return detail || 'Đã gửi báo cáo sự cố kèm thông tin chi tiết.';
+  }
+  return note.replace(/^\[[^\]]+\]:\s*/, '').trim();
+}
+
+function dedupeComplaintHistory(rawHistory: ComplaintHistoryEntry[]): ComplaintHistoryEntry[] {
+  const seen = new Set<string>();
+  const cleaned: ComplaintHistoryEntry[] = [];
+
+  for (const item of rawHistory) {
+    const label = normalizeHistoryLabel(item.label);
+    const note = cleanHistoryNote(item);
+    const key = `${item.actorRole || ''}::${note.toLowerCase()}`;
+    if (note && seen.has(key) && label === 'Chủ vựa phản hồi') {
+      continue;
+    }
+    if (note && (item.action === 'PROPOSE' || item.action === 'REJECT' || label.startsWith('Chủ vựa đề xuất'))) {
+      // Remove earlier legacy fallback "Chủ vựa phản hồi" entry with identical note
+      const dupIdx = cleaned.findIndex(
+        (prev) => prev.actorRole === 'SUPPLIER' && prev.label === 'Chủ vựa phản hồi' && prev.note?.toLowerCase() === note.toLowerCase(),
+      );
+      if (dupIdx !== -1) cleaned.splice(dupIdx, 1);
+    }
+    if (note) seen.add(key);
+    cleaned.push({ ...item, label, note });
+  }
+  return cleaned;
+}
+
 const RESCHEDULE_HOURS = ['08', '09', '10', '11', '12', '13', '14', '15', '16', '17'];
 const RESCHEDULE_MINUTES = ['00', '15', '30', '45'];
 
@@ -301,7 +409,8 @@ export default function OrderList({
   onInventoryChanged,
   onViewHistory,
 }: Props) {
-  const [query, setQuery] = useState({ page: 1, status: '' });
+  const [searchInput, setSearchInput] = useState('');
+  const [query, setQuery] = useState({ page: 1, status: '', q: '' });
   const [data, setData] = useState<{ orders: SupplierOrder[]; total: number; hasMore: boolean }>({
     orders: [],
     total: 0,
@@ -311,6 +420,11 @@ export default function OrderList({
   const [depositNotice, setDepositNotice] = useState('');
   const [loading, setLoading] = useState(true);
   const [reload, setReload] = useState(0);
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Record<number, boolean>>({});
+  const [actionModal, setActionModal] = useState<ActionModalState | null>(null);
+  const [actionModalInput, setActionModalInput] = useState('');
+  const [actionModalError, setActionModalError] = useState('');
+  const [actionModalBusy, setActionModalBusy] = useState(false);
 
   // Packing checklist state (orderId -> itemIds checked)
   const [packingMap, setPackingMap] = useState<Record<number, number[]>>({});
@@ -327,10 +441,9 @@ export default function OrderList({
   const [complaintResponse, setComplaintResponse] = useState('');
   const [complaintActionBusy, setComplaintActionBusy] = useState(false);
   const [complaintSelectedItems, setComplaintSelectedItems] = useState<Record<number, number>>({});
-  const [complaintLooseItems, setComplaintLooseItems] = useState<Record<number, { isLoose: boolean; looseQty: number | string }>>({});
-  const [complaintResolution, setComplaintResolution] = useState<string>('REFUND');
   const [complaintImages, setComplaintImages] = useState<string[]>([]);
-  const [supplierPlan, setSupplierPlan] = useState<string>('AGREE_REFUND');
+  const [supplierPlan, setSupplierPlan] = useState<string>('AGREE_REPLACE_0VND');
+  const [supplierDeductAmount, setSupplierDeductAmount] = useState<string>('');
   const [viewingImage, setViewingImage] = useState<string | null>(null);
   const [depositBusy, setDepositBusy] = useState<number | null>(null);
   const [depositDraft, setDepositDraft] = useState<{ orderId: number; reference: string } | null>(
@@ -656,23 +769,34 @@ export default function OrderList({
     }
   }
 
-  async function updateComplaint(status: string) {
+  async function submitSupplierProposal() {
     if (!complaintOrder?.complaint || complaintActionBusy) return;
-    setComplaintActionBusy(true);
+    const trimmedNote = complaintResponse.trim();
+    if (trimmedNote.length < 3) {
+      setComplaintMessage('Lỗi: Vui lòng nhập phản hồi chi tiết (tối thiểu 3 ký tự).');
+      return;
+    }
+    let parsedDeduct: number | undefined;
+    if (supplierPlan === 'DEDUCT_COD') {
+      parsedDeduct = Math.round(Number(supplierDeductAmount));
+      if (!Number.isFinite(parsedDeduct) || parsedDeduct <= 0) {
+        setComplaintMessage('Lỗi: Vui lòng nhập số tiền đề xuất giảm trừ vào COD lớn hơn 0.');
+        return;
+      }
+    }
 
-    const planLabel =
-      SUPPLIER_RESOLUTIONS.find((p) => p.code === supplierPlan)?.label || supplierPlan;
-    const finalResponse = complaintResponse.trim()
-      ? `[Phương án: ${planLabel}] ${complaintResponse.trim()}`
-      : `[Phương án: ${planLabel}]`;
+    setComplaintActionBusy(true);
+    setComplaintMessage('');
 
     try {
-      await api.patch(`/complaints/${complaintOrder.complaint.id}`, {
-        status,
-        response: finalResponse,
+      await api.post(`/complaints/${complaintOrder.complaint.id}/respond`, {
+        action: supplierPlan,
+        deductAmount: parsedDeduct,
+        note: trimmedNote,
       });
       setComplaintOrder(null);
       setComplaintResponse('');
+      setSupplierDeductAmount('');
       setReload((n) => n + 1);
     } catch (issue) {
       setComplaintMessage(getApiError(issue));
@@ -700,31 +824,15 @@ export default function OrderList({
       .map(([idStr, qty]) => {
         const it = complaintOrder.items.find((item) => item.id === Number(idStr));
         if (!it) return '';
-        const intact = getIntactItemArrived(complaintOrder, it);
-        const loose = complaintLooseItems[it.id];
-        let lineCost: number;
-        let summaryLabel: string;
-        if (loose?.isLoose && intact.packInfo.multiplier > 1) {
-          const eff = typeof loose.looseQty === 'number' && loose.looseQty > 0
-            ? Math.min(loose.looseQty, intact.remainingLoose)
-            : (typeof loose.looseQty === 'string' && parseInt(loose.looseQty, 10) > 0 ? Math.min(parseInt(loose.looseQty, 10), intact.remainingLoose) : 1);
-          lineCost = (eff / intact.totalLoose) * it.lineTotal;
-          summaryLabel = `${it.productName} (Hỏng lẻ ${eff}/${intact.packInfo.multiplier} ${intact.packInfo.unit}: ${money(Math.round(lineCost))})`;
-        } else {
-          lineCost = qty * it.unitPrice;
-          summaryLabel = `${it.productName} (x${qty} ${it.packaging || 'phần'}: ${money(lineCost)})`;
-        }
+        const lineCost = qty * it.unitPrice;
         totalDamage += lineCost;
-        return summaryLabel;
+        return `${it.productName} (x${qty} ${it.packaging || 'thùng'}: ${money(lineCost)})`;
       })
       .filter(Boolean);
 
     const itemInfo = itemSummaries.join('; ');
-    const claimValueText = ` | Bồi hoàn ước tính: ${money(totalDamage)}`;
-    const resolutionLabel =
-      DESIRED_RESOLUTIONS.find((r) => r.code === complaintResolution)?.label || complaintResolution;
-
-    const structuredHeader = `[Sự cố: ${itemInfo}${claimValueText} | Đề xuất: ${resolutionLabel}]`;
+    const claimValueText = ` | Thiệt hại ước tính: ${money(totalDamage)}`;
+    const structuredHeader = `[Sự cố: ${itemInfo}${claimValueText}]`;
     const finalDescription = complaintDescription.trim()
       ? `${structuredHeader}\n${complaintDescription.trim()}`
       : structuredHeader;
@@ -762,17 +870,138 @@ export default function OrderList({
       initialMap[it.id] = it.quantity;
     });
     setComplaintSelectedItems(initialMap);
-    setComplaintResolution(DESIRED_RESOLUTIONS[0].code);
     setComplaintImages([]);
     setComplaintMessage('');
   };
 
+  const handleCancelOrder = (order: SupplierOrder) => {
+    setActionModalError('');
+    setActionModalInput('Tôi muốn điều chỉnh lại mặt hàng');
+    setActionModal({
+      type: 'cancel-order',
+      orderId: order.id,
+      title: `Hủy đơn hàng #${order.id}`,
+      message: 'Đơn hàng sẽ được hủy và hoàn lại cọc (nếu có) theo quy định.',
+      confirmLabel: 'Xác nhận hủy đơn',
+      inputLabel: 'Lý do hủy đơn',
+      inputPlaceholder: 'Nhập lý do hủy đơn (không bắt buộc)...',
+      tone: 'danger',
+    });
+  };
+
+  const handleBuyerDecision = (
+    complaintId: number,
+    decision: 'ACCEPT' | 'WITHDRAW',
+  ) => {
+    setActionModalError('');
+    setActionModalInput('');
+    if (decision === 'ACCEPT') {
+      setActionModal({
+        type: 'buyer-decision',
+        complaintId,
+        decision,
+        title: 'Xác nhận đồng ý phương án',
+        message: 'Xác nhận đồng ý với giải pháp Chủ vựa đã đề xuất và ghi nhận trạng thái Hoàn thành cho khiếu nại này?',
+        confirmLabel: 'Đồng ý & Hoàn thành',
+        tone: 'primary',
+      });
+      return;
+    }
+    setActionModal({
+      type: 'buyer-decision',
+      complaintId,
+      decision: 'WITHDRAW',
+      title: 'Rút khiếu nại đơn hàng',
+      message: 'Bạn muốn chủ động rút khiếu nại và khép lại yêu cầu này?',
+      confirmLabel: 'Xác nhận rút khiếu nại',
+      tone: 'danger',
+    });
+  };
+
+  const submitActionModal = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!actionModal || actionModalBusy) return;
+    setActionModalError('');
+
+    if (actionModal.type === 'buyer-decision' && actionModal.requireInput) {
+      const trimmed = actionModalInput.trim();
+      if (trimmed.length < (actionModal.minLength || 3)) {
+        setActionModalError(`Vui lòng nhập nội dung tối thiểu ${actionModal.minLength || 3} ký tự.`);
+        return;
+      }
+    }
+
+    setActionModalBusy(true);
+    try {
+      if (actionModal.type === 'cancel-order') {
+        const res = await fetch(`/api/orders/${actionModal.orderId}/cancel`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reason: actionModalInput.trim() || 'Cửa hàng tự hủy khi đơn chưa được duyệt.',
+          }),
+        });
+        const resData = await res.json();
+        if (!res.ok) throw new Error(resData.message || 'Không thể hủy đơn hàng.');
+        setDepositNotice(resData.message || `Đã hủy đơn hàng #${actionModal.orderId}.`);
+      } else if (actionModal.type === 'buyer-decision') {
+        const note = actionModal.requireInput ? actionModalInput.trim() : undefined;
+        const res = await api.post<{ success: boolean; message?: string }>(
+          `/complaints/${actionModal.complaintId}/buyer-decision`,
+          { decision: actionModal.decision, ...(note ? { note } : {}) },
+        );
+        setDepositNotice(res.data?.message || 'Đã cập nhật kết quả thương lượng.');
+      } else if (actionModal.type === 'complete-supplementary') {
+        const payRes = await fetch(`/api/orders/${actionModal.orderId}/pay`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'COD', amount: 0 }),
+        });
+        const payData = await payRes.json().catch(() => ({}));
+        if (!payRes.ok) throw new Error(payData.message || 'Không thể xác nhận đơn giao bù.');
+        const compRes = await fetch(`/api/orders/${actionModal.orderId}/complete`, { method: 'POST' });
+        const compData = await compRes.json().catch(() => ({}));
+        if (!compRes.ok) throw new Error(compData.message || 'Không thể hoàn tất đơn giao bù.');
+        setDepositNotice(`Đã xác nhận nhận đủ hàng giao bù cho đơn #${actionModal.orderId}.`);
+      }
+      setActionModal(null);
+      setActionModalInput('');
+      setReload((n) => n + 1);
+    } catch (issue: any) {
+      if (isUnauthenticated(issue)) {
+        setActionModal(null);
+        onLogout();
+      } else {
+        setActionModalError(getApiError(issue) || issue?.message || 'Không thể thực hiện thao tác này.');
+      }
+    } finally {
+      setActionModalBusy(false);
+    }
+  };
+
   const openSupplierComplaint = (order: SupplierOrder) => {
     setComplaintOrder(order);
-    setComplaintResponse(order.complaint?.response || '');
-    setSupplierPlan(SUPPLIER_RESOLUTIONS[0].code);
+    setComplaintResponse('');
+    const proposed = order.complaint?.workflow?.proposedAction;
+    const isValidPlan = SUPPLIER_RESOLUTIONS.some((p) => p.code === proposed);
+    setSupplierPlan(isValidPlan && proposed ? proposed : SUPPLIER_RESOLUTIONS[0].code);
+    setSupplierDeductAmount(
+      order.complaint?.workflow?.proposedDeductAmount
+        ? String(Math.round(order.complaint.workflow.proposedDeductAmount))
+        : '',
+    );
     setComplaintMessage('');
   };
+
+  useEffect(() => {
+    const trimmed = searchInput.trim();
+    if (trimmed === query.q) return;
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      setQuery((prev) => ({ ...prev, page: 1, q: trimmed }));
+    }, 320);
+    return () => window.clearTimeout(timer);
+  }, [searchInput, query.q]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -866,26 +1095,74 @@ export default function OrderList({
         </div>
       )}
 
-      <label className="order-filter">
-        Trạng thái đơn
-        <select
-          aria-label="Lọc trạng thái đơn"
-          value={query.status}
-          disabled={loading || busy}
-          onChange={(e) => {
-            setLoading(true);
-            setQuery({ page: 1, status: e.target.value });
-          }}
-        >
-          <option value="">Tất cả trạng thái</option>
-          {Object.entries(statuses).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
-        </select>
-        <span>{data.total} đơn phù hợp</span>
-      </label>
+      <div className="order-toolbar">
+        <div className="order-search-field">
+          <span>Tìm kiếm đơn hàng</span>
+          <div className="order-search-input-wrap">
+            <input
+              type="search"
+              className="order-search-input"
+              aria-label="Tìm kiếm đơn hàng"
+              placeholder={
+                kind === 'store'
+                  ? 'Tìm mã đơn (#1206), tên sản phẩm, chủ vựa...'
+                  : 'Tìm mã đơn (#1206), sản phẩm, tên cửa hàng...'
+              }
+              value={searchInput}
+              disabled={busy}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  const trimmed = searchInput.trim();
+                  if (trimmed !== query.q) {
+                    setLoading(true);
+                    setQuery((prev) => ({ ...prev, page: 1, q: trimmed }));
+                  }
+                }
+              }}
+            />
+            {searchInput && (
+              <button
+                type="button"
+                className="order-search-clear"
+                aria-label="Xóa từ khóa tìm kiếm"
+                onClick={() => {
+                  setSearchInput('');
+                  if (query.q !== '') {
+                    setLoading(true);
+                    setQuery((prev) => ({ ...prev, page: 1, q: '' }));
+                  }
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+
+        <label className="order-filter">
+          Trạng thái đơn
+          <select
+            aria-label="Lọc trạng thái đơn"
+            value={query.status}
+            disabled={loading || busy}
+            onChange={(e) => {
+              setLoading(true);
+              setQuery((prev) => ({ ...prev, page: 1, status: e.target.value }));
+            }}
+          >
+            <option value="">Tất cả trạng thái</option>
+            <option value="HAS_COMPLAINT">Đang khiếu nại</option>
+            {Object.entries(statuses).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+          <span>{data.total} đơn phù hợp</span>
+        </label>
+      </div>
 
       {error ? (
         <p className="error-notice" role="alert">
@@ -919,6 +1196,9 @@ export default function OrderList({
                     : `Đã thanh toán ví · ${money(order.walletPayment.amount)}`}
                 </p>
               )}
+
+              {/* Tiến trình 5 bước: Đặt đơn -> Duyệt đơn -> Soạn hàng (Hẹn giờ) -> Đang giao -> Hàng đã đến */}
+              <OrderStepper order={order} />
 
               <div className="order-items">
                 {order.items.map((item) => (
@@ -1416,32 +1696,11 @@ export default function OrderList({
                     <summary>Chi tiết cọc</summary>
                     <div className="order-deposit-detail-content">
                       {isEscrowRef(order.depositReference) ? (
-                        <div
-                          style={{
-                            margin: '6px 0',
-                            fontSize: '12px',
-                            color: '#047857',
-                            backgroundColor: '#f0fdf4',
-                            padding: '8px 12px',
-                            borderRadius: '6px',
-                            border: '1px solid #bbf7d0',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: '4px',
-                          }}
-                        >
-                          <strong style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            Cọc qua ví
-                          </strong>
-                          <span>
-                            {kind === 'store'
-                              ? 'Hệ thống giữ cọc đến khi bạn nhận hàng.'
-                              : 'Cọc được chuyển vào ví khi giao hàng thành công.'}
-                          </span>
-                          <strong style={{ color: '#1f2937', marginTop: '2px' }}>
-                            Còn phải trả: {money(orderPaymentSummary(order).remaining)}
-                          </strong>
-                        </div>
+                        <small style={{ color: '#047857' }}>
+                          {kind === 'store'
+                            ? 'Hệ thống tạm giữ tiền cọc qua ví đến khi nhận hàng thành công.'
+                            : 'Tiền cọc qua ví được giải ngân sau khi đơn hoàn tất.'}
+                        </small>
                       ) : (
                         <>
                           {order.depositBankAccountNumber && (
@@ -1680,21 +1939,23 @@ export default function OrderList({
                       <Icon name="shield" /> Báo sự cố:{' '}
                       {REASON_LABELS[order.complaint.reason] || order.complaint.reason}
                     </strong>
-                    <span
-                      style={{
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        padding: '3px 10px',
-                        borderRadius: '12px',
-                        color: COMPLAINT_STATUS_MAP[order.complaint.status]?.color || '#c2410c',
-                        backgroundColor:
-                          COMPLAINT_STATUS_MAP[order.complaint.status]?.bg || '#fff7ed',
-                        border: `1px solid ${COMPLAINT_STATUS_MAP[order.complaint.status]?.color || '#c2410c'}40`,
-                      }}
-                    >
-                      {COMPLAINT_STATUS_MAP[order.complaint.status]?.label ||
-                        order.complaint.status}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          padding: '3px 10px',
+                          borderRadius: '12px',
+                          color: COMPLAINT_STATUS_MAP[order.complaint.status]?.color || '#c2410c',
+                          backgroundColor:
+                            COMPLAINT_STATUS_MAP[order.complaint.status]?.bg || '#fff7ed',
+                          border: `1px solid ${COMPLAINT_STATUS_MAP[order.complaint.status]?.color || '#c2410c'}40`,
+                        }}
+                      >
+                        {COMPLAINT_STATUS_MAP[order.complaint.status]?.label ||
+                          order.complaint.status}
+                      </span>
+                    </div>
                   </div>
 
                   {(() => {
@@ -1809,55 +2070,237 @@ export default function OrderList({
                     );
                   })()}
 
-                  {order.complaint.response ? (
-                    <div
-                      style={{
-                        marginTop: '10px',
-                        padding: '10px 12px',
-                        borderRadius: '6px',
-                        backgroundColor: '#f0fdf4',
-                        border: '1px solid #bbf7d0',
-                        color: '#166534',
-                      }}
-                    >
-                      <strong style={{ display: 'block', marginBottom: '3px' }}>
-                        Chủ vựa trả lời:
-                      </strong>
-                      <span>{order.complaint.response}</span>
-                    </div>
-                  ) : (
-                    <small
-                      style={{
-                        color: '#9a3412',
-                        fontStyle: 'italic',
-                        display: 'block',
-                        marginTop: '6px',
-                      }}
-                    >
-                      {kind === 'store'
-                        ? 'Đang chờ nhà cung cấp tiếp nhận và phản hồi.'
-                        : 'Chưa có phản hồi cho cửa hàng.'}
-                    </small>
-                  )}
+                  {(() => {
+                    const wf = order.complaint?.workflow || null;
+                    const st = order.complaint?.status || 'OPEN';
+                    const isOpenComplaint = ['OPEN', 'IN_REVIEW', 'REJECTED', 'ESCALATED'].includes(st);
+                    const pendingParty = wf?.pendingParty || (st === 'OPEN' ? 'SUPPLIER' : isOpenComplaint ? 'STORE_OWNER' : null);
+                    const rawHistory = Array.isArray(wf?.history) ? wf.history : [];
+                    const cleanHistory = dedupeComplaintHistory(rawHistory);
+                    const complaintId = order.complaint!.id;
+                    const showHistory = expandedHistoryIds[complaintId] ?? isOpenComplaint;
+                    const finalSummary = (wf?.finalSummary || order.complaint?.response || '').trim();
+                    const closedReason = (wf?.closedReason || '').trim();
+                    const showClosedReason =
+                      Boolean(closedReason) &&
+                      closedReason.toLowerCase() !== finalSummary.toLowerCase();
 
-                  {kind === 'supplier' && (
-                    <div
-                      style={{
-                        marginTop: '10px',
-                        display: 'flex',
-                        justifyContent: 'flex-end',
-                      }}
-                    >
-                      <button
-                        className="table-button"
-                        type="button"
-                        disabled={busy}
-                        onClick={() => openSupplierComplaint(order)}
-                      >
-                        Xử lý khiếu nại
-                      </button>
-                    </div>
-                  )}
+                    return (
+                      <>
+                        {isOpenComplaint && wf && wf.proposedAction && (
+                          <div
+                            style={{
+                              marginTop: '10px',
+                              padding: '10px 12px',
+                              borderRadius: '6px',
+                              backgroundColor: '#f0fdf4',
+                              border: '1px solid #bbf7d0',
+                              color: '#166534',
+                            }}
+                          >
+                            <strong style={{ display: 'block', marginBottom: '3px' }}>
+                              Đề xuất gần nhất của Chủ vựa:
+                            </strong>
+                            <div>
+                              {SUPPLIER_RESOLUTIONS.find((p) => p.code === wf.proposedAction)?.label ||
+                                wf.proposedAction}
+                              {wf.proposedAction === 'DEDUCT_COD' &&
+                                Number(wf.proposedDeductAmount || 0) > 0 && (
+                                  <strong style={{ marginLeft: '6px', color: '#dc2626' }}>
+                                    (-{money(Number(wf.proposedDeductAmount))})
+                                  </strong>
+                                )}
+                            </div>
+                            {wf.proposedNote && (
+                              <div style={{ marginTop: '3px', fontSize: '12.5px', color: '#14532d' }}>
+                                {wf.proposedNote}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {isOpenComplaint && !wf?.proposedAction && order.complaint?.response && (
+                          <div
+                            style={{
+                              marginTop: '10px',
+                              padding: '10px 12px',
+                              borderRadius: '6px',
+                              backgroundColor: '#f0fdf4',
+                              border: '1px solid #bbf7d0',
+                              color: '#166534',
+                            }}
+                          >
+                            <strong style={{ display: 'block', marginBottom: '3px' }}>
+                              Chủ vựa phản hồi:
+                            </strong>
+                            <span>{order.complaint.response}</span>
+                          </div>
+                        )}
+
+                        {!isOpenComplaint && finalSummary && (
+                          <div
+                            style={{
+                              marginTop: '10px',
+                              padding: '10px 12px',
+                              borderRadius: '6px',
+                              backgroundColor: ['CLOSED_TIMEOUT', 'CLOSED_UNRESOLVED'].includes(st)
+                                ? '#fff7ed'
+                                : '#f0fdf4',
+                              border: `1px solid ${['CLOSED_TIMEOUT', 'CLOSED_UNRESOLVED'].includes(st) ? '#fdba74' : '#86efac'}`,
+                              fontSize: '13px',
+                              color: '#0f172a',
+                            }}
+                          >
+                            <strong>Kết quả thống nhất:</strong> {finalSummary}
+                            {showClosedReason && (
+                              <div style={{ marginTop: '4px', color: '#475569', fontSize: '12px' }}>
+                                Ghi chú: {closedReason}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {cleanHistory.length > 0 && (
+                          <div style={{ marginTop: '8px' }}>
+                            <button
+                              type="button"
+                              className="complaint-history-toggle"
+                              onClick={() =>
+                                setExpandedHistoryIds((prev) => ({
+                                  ...prev,
+                                  [complaintId]: !showHistory,
+                                }))
+                              }
+                            >
+                              {showHistory
+                                ? `Ẩn lịch sử trao đổi (${cleanHistory.length} bước)`
+                                : `Xem lịch sử trao đổi (${cleanHistory.length} bước)`}
+                            </button>
+                            {showHistory && (
+                              <div
+                                style={{
+                                  marginTop: '6px',
+                                  padding: '8px 10px',
+                                  borderRadius: '6px',
+                                  backgroundColor: '#f8fafc',
+                                  border: '1px solid #e2e8f0',
+                                  fontSize: '12px',
+                                }}
+                              >
+                                <div style={{ display: 'grid', gap: '4px' }}>
+                                  {cleanHistory.map((h, i) => (
+                                    <div key={`${complaintId}-h-${i}`} style={{ color: '#475569' }}>
+                                      <span style={{ fontWeight: 600, color: '#0f172a' }}>{h.label}:</span>{' '}
+                                      {h.note}{' '}
+                                      {h.at && (
+                                        <span style={{ color: '#94a3b8' }}>({formatComplaintTime(h.at)})</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {kind === 'store' && order.complaint && isOpenComplaint && (
+                          <div
+                            style={{
+                              marginTop: '10px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              gap: '8px',
+                              flexWrap: 'wrap',
+                              paddingTop: '8px',
+                              borderTop: '1px dashed #fed7aa',
+                            }}
+                          >
+                            <span style={{ fontSize: '12px', color: '#9a3412' }}>
+                              {pendingParty === 'STORE_OWNER'
+                                ? 'Chủ vựa đã gửi phương án xử lý. Vui lòng kiểm tra và xác nhận đồng ý hoặc rút khiếu nại.'
+                                : 'Đang chờ Chủ vựa kiểm tra và đề xuất phương án xử lý.'}
+                            </span>
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                              {pendingParty === 'STORE_OWNER' && (
+                                <button
+                                  className="table-button"
+                                  type="button"
+                                  style={{ background: '#16a34a', color: '#fff', borderColor: '#15803d', fontWeight: 600 }}
+                                  disabled={busy}
+                                  onClick={() => void handleBuyerDecision(order.complaint!.id, 'ACCEPT')}
+                                >
+                                  {wf?.proposedAction && !['REJECT', 'DISCUSS'].includes(wf.proposedAction)
+                                    ? 'Đồng ý phương án & Hoàn thành'
+                                    : 'Chấp nhận giải trình & Hoàn thành'}
+                                </button>
+                              )}
+                              <button
+                                className="table-button"
+                                type="button"
+                                disabled={busy}
+                                onClick={() => void handleBuyerDecision(order.complaint!.id, 'WITHDRAW')}
+                              >
+                                Rút khiếu nại
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {kind === 'supplier' && (
+                          <div
+                            style={{
+                              marginTop: '10px',
+                              display: 'flex',
+                              justifyContent: 'flex-end',
+                              alignItems: 'center',
+                              gap: '8px',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            {isOpenComplaint && pendingParty !== 'STORE_OWNER' ? (
+                              <button
+                                className="table-button"
+                                type="button"
+                                disabled={busy}
+                                onClick={() => openSupplierComplaint(order)}
+                              >
+                                Đề xuất phương án xử lý
+                              </button>
+                            ) : isOpenComplaint && pendingParty === 'STORE_OWNER' ? (
+                              <span
+                                style={{
+                                  fontSize: '12px',
+                                  color: '#1d4ed8',
+                                  fontWeight: 600,
+                                  background: '#eff6ff',
+                                  padding: '4px 10px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #bfdbfe',
+                                }}
+                              >
+                                Đã gửi phương án · Chờ Tiệm tạp hóa xác nhận kết quả.
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  fontSize: '12px',
+                                  color: '#15803d',
+                                  fontWeight: 600,
+                                  background: '#f0fdf4',
+                                  padding: '4px 10px',
+                                  borderRadius: '4px',
+                                  border: '1px solid #bbf7d0',
+                                }}
+                              >
+                                Khiếu nại đã hoàn thành và ghi nhận kết quả.
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -2077,7 +2520,7 @@ export default function OrderList({
                       </span>
                     </div>
 
-                    {kind === 'store' && !(order.complaint && ['OPEN', 'IN_REVIEW'].includes(order.complaint.status)) && (
+                    {kind === 'store' && !(order.complaint && ['OPEN', 'IN_REVIEW', 'ESCALATED'].includes(order.complaint.status)) && (
                       <button
                         type="button"
                         className="table-button primary-small"
@@ -2109,7 +2552,7 @@ export default function OrderList({
                 </div>
               )}
 
-              {kind === 'store' && ['ISSUE_HANDLING', 'DELIVERED', 'COMPLETED'].includes(order.status) && (
+              {kind === 'store' && order.status === 'COMPLETED' && (
                 <div className="order-inventory-import">
                   <button
                     type="button"
@@ -2136,11 +2579,11 @@ export default function OrderList({
               )}
 
               {(() => {
-                const loss = order.driverInfo?.incidentReport?.action === 'DEDUCT_COD' ? computeOrderLossAmount(order) : 0;
+                const loss = getOrderTotalDeduction(order);
                 const adjustedSubtotal = Math.max(0, order.subtotal - loss);
                 const depositPaid = order.depositStatus === 'PAID' ? order.depositAmount : 0;
 
-                return loss > 0 && order.driverInfo?.incidentReport?.action === 'DEDUCT_COD' ? (
+                return loss > 0 ? (
                   <div style={{ margin: '8px 0', fontSize: '12.5px', color: '#475569' }}>
                     <div>
                       Tiền hàng gốc: <strong>{money(order.subtotal)}</strong>
@@ -2169,8 +2612,8 @@ export default function OrderList({
                   :{' '}
                   {money(
                     orderPaymentSummary(order).paid || ['COMPLETED', 'REJECTED'].includes(order.status)
-                      ? orderPaymentSummary(order, order.driverInfo?.incidentReport?.action === 'DEDUCT_COD' ? computeOrderLossAmount(order) : 0).total
-                      : orderPaymentSummary(order, order.driverInfo?.incidentReport?.action === 'DEDUCT_COD' ? computeOrderLossAmount(order) : 0).remaining,
+                      ? orderPaymentSummary(order, getOrderTotalDeduction(order)).total
+                      : orderPaymentSummary(order, getOrderTotalDeduction(order)).remaining,
                   )}
                 </strong>
                 {kind === 'supplier' && (
@@ -2270,9 +2713,24 @@ export default function OrderList({
                               type="button"
                               className="table-button primary-small"
                               style={{ backgroundColor: '#0284c7', fontWeight: 700 }}
-                              onClick={() => setPaymentOrder(order)}
+                              onClick={() => {
+                                if (Number(order.total) === 0) {
+                                  setActionModalError('');
+                                  setActionModalInput('');
+                                  setActionModal({
+                                    type: 'complete-supplementary',
+                                    orderId: order.id,
+                                    title: `Hoàn tất đơn giao bù #${order.id}`,
+                                    message: 'Xác nhận đã nhận đủ hàng giao bù và hoàn tất đơn hàng này?',
+                                    confirmLabel: 'Xác nhận hoàn tất',
+                                    tone: 'primary',
+                                  });
+                                  return;
+                                }
+                                setPaymentOrder(order);
+                              }}
                             >
-                              Trả tiền
+                              {Number(order.total) === 0 ? 'Nhận đủ hàng bù & Hoàn tất' : 'Trả tiền'}
                             </button>
                           )}
                       </div>
@@ -2285,7 +2743,24 @@ export default function OrderList({
                 <p className="order-rejection">Lý do từ chối: {order.rejectReason}</p>
               )}
 
-              {kind === 'store' && order.status === 'PENDING' && order.depositStatus !== 'SUBMITTED' && (
+              {kind === 'store' && order.status === 'PENDING' && (
+                <div style={{ marginTop: '8px', display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="table-button danger"
+                    style={{ padding: '4px 10px', fontSize: '13px' }}
+                    onClick={() => handleCancelOrder(order)}
+                  >
+                    Hủy đơn hàng
+                  </button>
+                  <p className="catalog-hint" style={{ margin: 0 }}>
+                    {order.depositStatus === 'PENDING'
+                      ? 'Chưa chuyển cọc. Bạn có thể hủy đơn nếu đổi ý.'
+                      : 'Đơn đang chờ chủ vựa duyệt. Hủy đơn sẽ tự động hoàn lại tiền cọc về Ví.'}
+                  </p>
+                </div>
+              )}
+              {false && kind === 'store' && order.status === 'PENDING' && order.depositStatus !== 'SUBMITTED' && (
                 <p className="catalog-hint">
                   {order.depositStatus === 'PENDING'
                     ? 'Chuyển cọc rồi bấm báo đã chuyển.'
@@ -2295,24 +2770,34 @@ export default function OrderList({
 
 
               {/* Nút báo cáo đơn hàng khi đã giao (DELIVERED) */}
-              {kind === 'store' && order.status === 'DELIVERED' && !order.complaint && (
-                <div
-                  className="order-card-bottom"
-                  style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #e8eee7' }}
-                >
-                  <p className="catalog-hint" style={{ margin: 0 }}>
-                    Kiểm tra hàng thực nhận rồi cập nhật kho. Nếu có sự cố, bạn có thể gửi báo cáo
-                    khiếu nại.
-                  </p>
-                  <button
-                    className="table-button complaint-card-report-btn"
-                    type="button"
-                    onClick={() => openStoreComplaint(order)}
+              {kind === 'store' && order.status === 'DELIVERED' && !order.complaint && (() => {
+                const isExpired = order.deliveredAt && (Date.now() - new Date(order.deliveredAt).getTime() > 24 * 60 * 60 * 1000);
+                return (
+                  <div
+                    className="order-card-bottom"
+                    style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #e8eee7' }}
                   >
-                    Báo cáo sự cố
-                  </button>
-                </div>
-              )}
+                    {isExpired ? (
+                      <p className="catalog-hint" style={{ margin: 0, color: '#dc2626', fontWeight: 600 }}>
+                        Đã hết thời hạn khiếu nại (24 giờ kể từ khi nhận hàng lúc {new Date(order.deliveredAt!).toLocaleString('vi-VN')}).
+                      </p>
+                    ) : (
+                      <>
+                        <p className="catalog-hint" style={{ margin: 0 }}>
+                          Kiểm tra hàng thực nhận rồi cập nhật kho. Khiếu nại có hiệu lực trong vòng 24 giờ kể từ khi nhận hàng.
+                        </p>
+                        <button
+                          className="table-button complaint-card-report-btn"
+                          type="button"
+                          onClick={() => openStoreComplaint(order)}
+                        >
+                          Báo cáo sự cố
+                        </button>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </article>
           ))}
         </div>
@@ -2382,18 +2867,18 @@ export default function OrderList({
                   ? submitComplaint
                   : (e) => {
                     e.preventDefault();
-                    void updateComplaint('RESOLVED');
+                    void submitSupplierProposal();
                   }
               }
             >
               <div className="complaint-dialog-body">
                 {kind === 'store' ? (
                   <div className="complaint-section-group">
-                    {/* 1. Danh sách mặt hàng gặp sự cố (Chọn nhiều món) */}
+                    {/* 1. Chọn mặt hàng gặp sự cố */}
                     <div className="complaint-field">
                       <label className="complaint-label">
-                        <span>Danh sách mặt hàng gặp sự cố</span>
-                        <span className="complaint-label-hint">Tích chọn các món bị hỏng, lỗi, thiếu</span>
+                        <span>Mặt hàng gặp sự cố</span>
+                        <span className="complaint-label-hint">Chọn sản phẩm và số thùng/kiện bị lỗi hoặc thiếu</span>
                       </label>
 
                       <div className="complaint-checklist-box">
@@ -2413,21 +2898,24 @@ export default function OrderList({
                                 const nextMap: Record<number, number> = {};
                                 if (isAll) {
                                   complaintOrder.items.forEach((it) => {
-                                    nextMap[it.id] = it.quantity;
+                                    const intact = getIntactItemArrived(complaintOrder, it);
+                                    if (intact.remainingLoose > 0) {
+                                      nextMap[it.id] = Math.max(1, intact.intactCartons || it.quantity);
+                                    }
                                   });
                                 }
                                 setComplaintSelectedItems(nextMap);
                               }}
                             />
-                            <span>Chọn tất cả ({complaintOrder.items.length} mặt hàng)</span>
+                            <span>Chọn tất cả ({complaintOrder.items.length})</span>
                           </label>
                           <span className="complaint-label-hint">
                             Đã chọn{' '}
                             {
                               Object.values(complaintSelectedItems).filter((q) => q > 0)
                                 .length
-                            }{' '}
-                            / {complaintOrder.items.length} món
+                            }
+                            /{complaintOrder.items.length}
                           </span>
                         </div>
 
@@ -2436,21 +2924,8 @@ export default function OrderList({
                             const intact = getIntactItemArrived(complaintOrder, item);
                             const isAllDamagedInTransit = intact.remainingLoose <= 0;
                             const isChecked = (complaintSelectedItems[item.id] || 0) > 0;
-                            const looseState = complaintLooseItems[item.id] || { isLoose: false, looseQty: 1 };
-                            const hasLooseUnits = intact.packInfo.multiplier > 1;
-
-                            let itemDamageValue = 0;
-                            if (isChecked) {
-                              if (looseState.isLoose && hasLooseUnits) {
-                                const effLoose = typeof looseState.looseQty === 'number' && looseState.looseQty > 0
-                                  ? Math.min(looseState.looseQty, intact.remainingLoose)
-                                  : (typeof looseState.looseQty === 'string' && parseInt(looseState.looseQty, 10) > 0 ? Math.min(parseInt(looseState.looseQty, 10), intact.remainingLoose) : 1);
-                                itemDamageValue = (effLoose / intact.totalLoose) * item.lineTotal;
-                              } else {
-                                const currentQty = complaintSelectedItems[item.id] || 1;
-                                itemDamageValue = currentQty * item.unitPrice;
-                              }
-                            }
+                            const currentQty = complaintSelectedItems[item.id] || 1;
+                            const itemDamageValue = isChecked ? currentQty * item.unitPrice : 0;
 
                             return (
                               <div
@@ -2482,110 +2957,52 @@ export default function OrderList({
                                       {item.productName}
                                     </span>
                                     <span className="complaint-item-meta">
-                                      Đơn giá: {money(item.unitPrice)} / {item.packaging || 'phần'} (Tổng mua: {item.quantity})
+                                      Đặt mua: {item.quantity} {item.packaging || 'thùng'} · Đơn giá: {money(item.unitPrice)}
                                     </span>
                                     {isAllDamagedInTransit ? (
                                       <div style={{ fontSize: '11.5px', color: '#dc2626', fontWeight: 600, marginTop: '2px' }}>
-                                        Toàn bộ {intact.totalLoose} {intact.packInfo.unit} đã được tài xế báo hỏng khi đang giao (đã trừ tiền / giao bù 0đ).
+                                        Đã báo hỏng toàn bộ khi vận chuyển.
                                       </div>
                                     ) : intact.transitDamagedLoose > 0 ? (
                                       <div style={{ fontSize: '11.5px', color: '#b45309', fontWeight: 600, marginTop: '2px' }}>
-                                        Đã báo hỏng khi giao: {intact.transitDamagedLoose} {intact.packInfo.unit} · Số lượng nguyên vẹn khi nhận: {intact.remainingLoose}/{intact.totalLoose} {intact.packInfo.unit}
+                                        Tài xế đã báo hỏng khi giao: còn {intact.intactCartons}/{item.quantity} {item.packaging || 'thùng'}
                                       </div>
-                                    ) : (
-                                      <div style={{ fontSize: '11.5px', color: '#166534', fontWeight: 500, marginTop: '2px' }}>
-                                        Nguyên vẹn khi nhận: {intact.totalLoose} {intact.packInfo.unit} ({item.quantity} {item.packaging || 'thùng'})
-                                      </div>
-                                    )}
+                                    ) : null}
                                   </div>
                                 </div>
 
                                 <div className="complaint-row-right">
                                   {isChecked ? (
                                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
-                                      {hasLooseUnits && (
-                                        <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#166534', cursor: 'pointer' }}>
-                                          <input
-                                            type="checkbox"
-                                            checked={looseState.isLoose}
-                                            onChange={() => {
-                                              setComplaintLooseItems((prev) => ({
-                                                ...prev,
-                                                [item.id]: { isLoose: !prev[item.id]?.isLoose, looseQty: prev[item.id]?.looseQty || 1 },
-                                              }));
-                                            }}
-                                          />
-                                          Chỉ hỏng lẻ {intact.packInfo.unit}
-                                        </label>
-                                      )}
-
                                       <div className="complaint-qty-control">
                                         <span style={{ fontSize: '11.5px', color: '#55725e' }}>
                                           SL lỗi:
                                         </span>
-                                        {looseState.isLoose && hasLooseUnits ? (
-                                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                            <input
-                                              type="text"
-                                              inputMode="numeric"
-                                              pattern="[0-9]*"
-                                              className="complaint-qty-input"
-                                              value={looseState.looseQty === '' ? '' : looseState.looseQty}
-                                              onChange={(e) => {
-                                                let digits = e.target.value.replace(/\D/g, '');
-                                                if (digits.startsWith('0')) digits = digits.replace(/^0+/, '');
-                                                let qty: number | string = digits;
-                                                if (digits !== '') {
-                                                  const num = parseInt(digits, 10);
-                                                  if (num > intact.remainingLoose) qty = intact.remainingLoose;
-                                                  else qty = num;
-                                                }
-                                                setComplaintLooseItems((prev) => ({
-                                                  ...prev,
-                                                  [item.id]: { isLoose: true, looseQty: qty },
-                                                }));
-                                              }}
-                                              onBlur={() => {
-                                                if (looseState.looseQty === '' || looseState.looseQty === 0) {
-                                                  setComplaintLooseItems((prev) => ({
-                                                    ...prev,
-                                                    [item.id]: { isLoose: true, looseQty: 1 },
-                                                  }));
-                                                }
-                                              }}
-                                              style={{ width: '54px', textAlign: 'center' }}
-                                            />
-                                            <span style={{ fontSize: '11px', color: '#728477' }}>
-                                              /{intact.remainingLoose} {intact.packInfo.unit}
-                                            </span>
-                                          </div>
-                                        ) : (
-                                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                            <input
-                                              type="text"
-                                              inputMode="numeric"
-                                              pattern="[0-9]*"
-                                              className="complaint-qty-input"
-                                              value={complaintSelectedItems[item.id] || ''}
-                                              onChange={(e) => {
-                                                let digits = e.target.value.replace(/\D/g, '');
-                                                if (digits.startsWith('0')) digits = digits.replace(/^0+/, '');
-                                                let val = 1;
-                                                if (digits !== '') {
-                                                  val = Math.max(1, Math.min(intact.intactCartons || item.quantity, parseInt(digits, 10)));
-                                                }
-                                                setComplaintSelectedItems((prev) => ({
-                                                  ...prev,
-                                                  [item.id]: val,
-                                                }));
-                                              }}
-                                              style={{ width: '54px', textAlign: 'center' }}
-                                            />
-                                            <span style={{ fontSize: '11px', color: '#728477' }}>
-                                              /{intact.intactCartons || item.quantity}
-                                            </span>
-                                          </div>
-                                        )}
+                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                          <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            pattern="[0-9]*"
+                                            className="complaint-qty-input"
+                                            value={complaintSelectedItems[item.id] || ''}
+                                            onChange={(e) => {
+                                              let digits = e.target.value.replace(/\D/g, '');
+                                              if (digits.startsWith('0')) digits = digits.replace(/^0+/, '');
+                                              let val = 1;
+                                              if (digits !== '') {
+                                                val = Math.max(1, Math.min(intact.intactCartons || item.quantity, parseInt(digits, 10)));
+                                              }
+                                              setComplaintSelectedItems((prev) => ({
+                                                ...prev,
+                                                [item.id]: val,
+                                              }));
+                                            }}
+                                            style={{ width: '54px', textAlign: 'center' }}
+                                          />
+                                          <span style={{ fontSize: '11px', color: '#728477' }}>
+                                            /{intact.intactCartons || item.quantity}
+                                          </span>
+                                        </div>
                                       </div>
 
                                       <span className="complaint-row-subtotal">
@@ -2604,21 +3021,13 @@ export default function OrderList({
                         </div>
 
                         <div className="complaint-checklist-footer">
-                          <span>Tổng thiệt hại ước tính:</span>
+                          <span>Giá trị hàng lỗi ước tính:</span>
                           <span className="complaint-total-badge">
                             {money(
                               Math.round(
                                 Object.entries(complaintSelectedItems).reduce((sum, [idStr, qty]) => {
                                   const item = complaintOrder.items.find((i) => i.id === Number(idStr));
                                   if (!item) return sum;
-                                  const intact = getIntactItemArrived(complaintOrder, item);
-                                  const loose = complaintLooseItems[item.id];
-                                  if (loose?.isLoose && intact.packInfo.multiplier > 1) {
-                                    const eff = typeof loose.looseQty === 'number' && loose.looseQty > 0
-                                      ? Math.min(loose.looseQty, intact.remainingLoose)
-                                      : (typeof loose.looseQty === 'string' && parseInt(loose.looseQty, 10) > 0 ? Math.min(parseInt(loose.looseQty, 10), intact.remainingLoose) : 1);
-                                    return sum + (eff / intact.totalLoose) * item.lineTotal;
-                                  }
                                   return sum + qty * item.unitPrice;
                                 }, 0)
                               )
@@ -2628,41 +3037,23 @@ export default function OrderList({
                       </div>
                     </div>
 
-                    {/* 2. Lý do & Phương án mong muốn */}
-                    <div className="complaint-grid-2">
-                      <div className="complaint-field">
-                        <label className="complaint-label">
-                          <span>Lý do khiếu nại</span>
-                        </label>
-                        <select
-                          className="complaint-select"
-                          value={complaintReason}
-                          onChange={(e) => setComplaintReason(e.target.value)}
-                        >
-                          {COMPLAINT_REASONS.map((r) => (
-                            <option key={r.code} value={r.code}>
-                              {r.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="complaint-field">
-                        <label className="complaint-label">
-                          <span>Phương án mong muốn</span>
-                        </label>
-                        <select
-                          className="complaint-select"
-                          value={complaintResolution}
-                          onChange={(e) => setComplaintResolution(e.target.value)}
-                        >
-                          {DESIRED_RESOLUTIONS.map((res) => (
-                            <option key={res.code} value={res.code}>
-                              {res.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                    {/* 2. Lý do khiếu nại */}
+                    <div className="complaint-field">
+                      <label className="complaint-label">
+                        <span>Lý do khiếu nại</span>
+                        <span className="complaint-label-hint">Chủ vựa sẽ kiểm tra và đề xuất phương án xử lý</span>
+                      </label>
+                      <select
+                        className="complaint-select"
+                        value={complaintReason}
+                        onChange={(e) => setComplaintReason(e.target.value)}
+                      >
+                        {COMPLAINT_REASONS.map((r) => (
+                          <option key={r.code} value={r.code}>
+                            {r.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     {/* 3. Đính kèm ảnh bằng chứng (Cho phép nhiều ảnh) */}
@@ -2865,7 +3256,7 @@ export default function OrderList({
 
                     <div className="complaint-field">
                       <label className="complaint-label">
-                        <span>Phương án giải quyết (Chủ vựa xác nhận)</span>
+                        <span>Phương án đề xuất gửi Tiệm tạp hóa</span>
                       </label>
                       <select
                         className="complaint-select"
@@ -2880,6 +3271,36 @@ export default function OrderList({
                       </select>
                     </div>
 
+                    {supplierPlan === 'DEDUCT_COD' && (
+                      <div className="complaint-field">
+                        <label className="complaint-label">
+                          <span>Số tiền đề xuất giảm trừ vào COD (VNĐ)</span>
+                        </label>
+                        <input
+                          type="number"
+                          min={1000}
+                          step={1000}
+                          className="complaint-select"
+                          value={supplierDeductAmount}
+                          onChange={(e) => setSupplierDeductAmount(e.target.value)}
+                          placeholder="Ví dụ: 150000"
+                        />
+                      </div>
+                    )}
+
+                    <div
+                      style={{
+                        padding: '10px 12px',
+                        borderRadius: '8px',
+                        background: '#eff6ff',
+                        border: '1px solid #bfdbfe',
+                        fontSize: '12.5px',
+                        color: '#1e3a8a',
+                      }}
+                    >
+                      Phương án bạn gửi sẽ chuyển tới Tiệm tạp hóa để xác nhận đồng ý trước khi hoàn thành và ghi nhận kết quả.
+                    </div>
+
                     <div className="complaint-field">
                       <label className="complaint-label">
                         <span>Phản hồi chi tiết gửi đến cửa hàng</span>
@@ -2892,7 +3313,7 @@ export default function OrderList({
                         rows={3}
                         value={complaintResponse}
                         onChange={(e) => setComplaintResponse(e.target.value)}
-                        placeholder="Ghi rõ phương án giải quyết, thời gian hoàn cọc hoặc lịch giao bù..."
+                        placeholder="Ghi rõ phương án giải quyết, số lượng bù, số tiền giảm hoặc thời gian xử lý..."
                       />
                     </div>
                   </div>
@@ -2901,7 +3322,7 @@ export default function OrderList({
                 {complaintMessage && (
                   <p
                     className={
-                      complaintMessage.includes('Lỗi') || complaintMessage.includes('không')
+                      complaintMessage.includes('Lỗi') || complaintMessage.includes('không') || complaintMessage.includes('Vui lòng')
                         ? 'error-notice'
                         : 'supplier-success'
                     }
@@ -2917,7 +3338,7 @@ export default function OrderList({
                   className="complaint-btn-ghost"
                   onClick={() => setComplaintOrder(null)}
                 >
-                  Hủy bỏ
+                  Đóng
                 </button>
                 {kind === 'store' ? (
                   <button
@@ -2929,32 +3350,119 @@ export default function OrderList({
                   </button>
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      className="complaint-btn-danger"
-                      disabled={complaintActionBusy}
-                      onClick={() => void updateComplaint('REJECTED')}
-                    >
-                      Từ chối
-                    </button>
-                    <button
-                      type="button"
-                      className="complaint-btn-ghost"
-                      disabled={complaintActionBusy}
-                      onClick={() => void updateComplaint('IN_REVIEW')}
-                    >
-                      Đang kiểm hàng
-                    </button>
-                    <button
-                      type="button"
-                      className="complaint-btn-primary"
-                      disabled={complaintActionBusy}
-                      onClick={() => void updateComplaint('RESOLVED')}
-                    >
-                      Xác nhận giải quyết
-                    </button>
+                    {['OPEN', 'IN_REVIEW', 'REJECTED', 'ESCALATED'].includes(
+                      complaintOrder?.complaint?.status || '',
+                    ) && complaintOrder?.complaint?.workflow?.pendingParty !== 'STORE_OWNER' ? (
+                      <button
+                        type="submit"
+                        className="complaint-btn-primary"
+                        disabled={complaintActionBusy}
+                      >
+                        {complaintActionBusy
+                          ? 'Đang gửi…'
+                          : 'Gửi phương án cho Tiệm xác nhận'}
+                      </button>
+                    ) : (
+                      <span style={{ fontSize: '13px', color: '#64748b', fontStyle: 'italic', padding: '6px 12px' }}>
+                        {complaintOrder?.complaint?.workflow?.pendingParty === 'STORE_OWNER'
+                          ? 'Đang chờ Tiệm tạp hóa xác nhận hoặc đề xuất lại.'
+                          : `Khiếu nại đang ở trạng thái ${COMPLAINT_STATUS_MAP[complaintOrder?.complaint?.status || '']?.label || complaintOrder?.complaint?.status}, không thể cập nhật thêm.`}
+                      </span>
+                    )}
                   </>
                 )}
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {actionModal && (
+        <div
+          className="complaint-dialog-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="order-action-modal-title"
+          onClick={() => {
+            if (!actionModalBusy) setActionModal(null);
+          }}
+        >
+          <div className="complaint-dialog-card" style={{ maxWidth: '480px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="complaint-dialog-header">
+              <div>
+                <div className="complaint-dialog-eyebrow">Xác nhận thao tác</div>
+                <h2 id="order-action-modal-title" className="complaint-dialog-title">
+                  {actionModal.title}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="complaint-dialog-close"
+                aria-label="Đóng hộp thoại"
+                disabled={actionModalBusy}
+                onClick={() => setActionModal(null)}
+              >
+                ×
+              </button>
+            </div>
+            <form onSubmit={submitActionModal}>
+              <div className="complaint-dialog-body">
+                <p style={{ margin: '0 0 12px', color: '#334155', fontSize: '14px', lineHeight: 1.55 }}>
+                  {actionModal.message}
+                </p>
+
+                {'inputLabel' in actionModal && actionModal.inputLabel && (
+                  <div className="complaint-form-group" style={{ marginBottom: 0 }}>
+                    <label className="complaint-field-label" htmlFor="order-action-modal-input">
+                      {actionModal.inputLabel}
+                      {actionModal.type === 'buyer-decision' && actionModal.requireInput && (
+                        <span style={{ color: '#dc2626', marginLeft: '4px' }}>*</span>
+                      )}
+                    </label>
+                    <textarea
+                      id="order-action-modal-input"
+                      rows={3}
+                      value={actionModalInput}
+                      placeholder={actionModal.inputPlaceholder || ''}
+                      disabled={actionModalBusy}
+                      onChange={(e) => {
+                        setActionModalInput(e.target.value);
+                        if (actionModalError) setActionModalError('');
+                      }}
+                    />
+                  </div>
+                )}
+
+                {actionModalError && (
+                  <p className="error-notice" role="alert" style={{ marginTop: '10px', marginBottom: 0 }}>
+                    {actionModalError}
+                  </p>
+                )}
+              </div>
+
+              <div className="complaint-dialog-footer">
+                <button
+                  type="button"
+                  className="complaint-btn-ghost"
+                  disabled={actionModalBusy}
+                  onClick={() => setActionModal(null)}
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="complaint-btn-primary"
+                  disabled={actionModalBusy}
+                  style={
+                    actionModal.tone === 'danger'
+                      ? { backgroundColor: '#dc2626' }
+                      : actionModal.tone === 'warning'
+                        ? { backgroundColor: '#d97706' }
+                        : undefined
+                  }
+                >
+                  {actionModalBusy ? 'Đang xử lý…' : actionModal.confirmLabel}
+                </button>
               </div>
             </form>
           </div>
@@ -3069,15 +3577,11 @@ export default function OrderList({
                       <span style={{ fontSize: '12px', fontWeight: 650, color: '#334155', display: 'block', marginBottom: '5px' }}>
                         Chọn ngày nhận hàng:
                       </span>
-                      <input
-                        type="date"
+                      <DatePicker
                         required
                         min={init.minDate}
                         value={rescheduleDate}
-                        lang="vi"
-                        autoFocus
-                        onChange={(e) => {
-                          const newDate = e.target.value;
+                        onChange={(newDate) => {
                           setRescheduleDate(newDate);
                           let nextH = rescheduleHour;
                           const nextAvailH = newDate !== init.todayStr
@@ -3264,9 +3768,7 @@ function PaymentDialog({
   const [walletBalance, setWalletBalance] = useState<number | null>(null);
   const [loadingWallet, setLoadingWallet] = useState(true);
 
-  const lossAmount = order.driverInfo?.incidentReport?.action === 'DEDUCT_COD'
-    ? computeOrderLossAmount(order)
-    : 0;
+  const lossAmount = getOrderTotalDeduction(order);
   const depositPaid = order.depositStatus === 'PAID' ? order.depositAmount : 0;
   const remainingAmount = orderPaymentSummary(order, lossAmount).remaining;
 
@@ -3512,7 +4014,7 @@ function PaymentDialog({
                   Số dư ví đủ để thanh toán. Số dư còn lại sau thanh toán: <strong>{money((walletBalance ?? 0) - remainingAmount)}</strong>.
                 </p>
                 <div style={{ fontSize: '12px', color: '#15803d', marginTop: '6px' }}>
-                  Đơn hàng sẽ được chuyển sang hoàn tất ngay lập tức và tự động nhập kho hàng đầy đủ.
+                  Đơn hàng sẽ được ghi nhận đã thanh toán. Sau khi hoàn tất đơn, bạn có thể bấm Nhập kho.
                 </div>
               </div>
             ) : (
