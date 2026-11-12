@@ -12,6 +12,14 @@ import java.util.concurrent.*;
 /** Reads the existing authenticated API. Cookies never cross into page JavaScript or logs. */
 public final class NotificationSync {
     static final String ORIGIN="https://supplymind-demo.vercel.app";
+    interface Api {
+        JSONObject get(String path,String cookie) throws Exception;
+        String cookie();
+    }
+    private static final Api API=new Api() {
+        public JSONObject get(String path,String cookie)throws Exception {return NotificationSync.get(path,cookie);}
+        public String cookie(){return CookieManager.getInstance().getCookie(ORIGIN);}
+    };
     static final ExecutorService EXECUTOR=Executors.newSingleThreadExecutor();
     private static long lastRequested;
     static synchronized void request(Context context, boolean force) {
@@ -35,11 +43,11 @@ public final class NotificationSync {
             }
         }finally{connection.disconnect();}
     }
-    static JSONArray pages(String path,String key,String cookie,long afterId,boolean firstOnly) throws Exception {
+    static JSONArray pages(Api api,String path,String key,String cookie,long afterId,boolean firstOnly) throws Exception {
         JSONArray out=new JSONArray();long deadline=System.currentTimeMillis()+90000;
         for(int page=1;page<=100;page++) {
             if(System.currentTimeMillis()>deadline)throw new IOException("Chưa tải đủ danh sách; thử đồng bộ lại.");
-            JSONObject response=get(path+"?page="+page,cookie);JSONArray rows=response.optJSONArray(key);
+            JSONObject response=api.get(path+"?page="+page,cookie);JSONArray rows=response.optJSONArray(key);
             if(rows==null)throw new IOException("Dữ liệu chưa đúng định dạng.");
             boolean reached=false;
             for(int i=0;i<rows.length();i++) {JSONObject row=rows.getJSONObject(i);out.put(row);if(afterId>0&&row.optLong("id")<=afterId)reached=true;}
@@ -48,14 +56,17 @@ public final class NotificationSync {
         throw new IOException("Danh sách quá dài; lịch cũ được giữ lại."); // Never replace schedules with a truncated page.
     }
     static void sync(Context c) {
+        sync(c,API);
+    }
+    static void sync(Context c,Api api) {
         if(NotificationCenter.prefs(c).getBoolean("auth_paused",false))return;
         long generation;
         synchronized(NotificationCenter.LOCK){generation=NotificationCenter.state(c).optLong("generation");}
-        String cookie=CookieManager.getInstance().getCookie(ORIGIN);
+        String cookie=api.cookie();
         if(cookie==null||cookie.isEmpty()) {clearIfCurrent(c,generation);return;}
         try {
-            JSONObject user=get("/api/auth/me",cookie).optJSONObject("user");
-            if(user==null)throw new IOException("Chưa lấy được tài khoản.");
+            JSONObject user=api.get("/api/auth/me",cookie).optJSONObject("user");
+            if(user==null||user.optLong("id")<=0)throw new IOException("Chưa lấy được tài khoản.");
             String owner=user.optString("id"),role=user.optString("role");
             if(!Arrays.asList("STORE_OWNER","SUPPLIER","ADMIN").contains(role))throw new IOException("Vai trò chưa được hỗ trợ.");
             JSONObject initial;boolean baseline;long after;
@@ -66,23 +77,25 @@ public final class NotificationSync {
             JSONArray orders=null,transactions=null,holidays=null;
             List<String> warnings=new ArrayList<>();
             if(!"ADMIN".equals(role)) {
-                try {orders=pages("SUPPLIER".equals(role)?"/api/supplier/orders":"/api/orders","orders",cookie,0,false);}
+                try {orders=pages(api,"SUPPLIER".equals(role)?"/api/supplier/orders":"/api/orders","orders",cookie,0,false);}
                 catch(ApiError e){if(e.status==401)throw e;warnings.add("Chưa cập nhật được đơn hàng");}
                 catch(IOException e){warnings.add("Chưa tải đủ đơn hàng");}
-                try {transactions=pages("/api/wallet/transactions","transactions",cookie,after,baseline);}
+                try {transactions=pages(api,"/api/wallet/transactions","transactions",cookie,after,baseline);}
                 catch(ApiError e){if(e.status==401)throw e;warnings.add("Chưa cập nhật được ví");}
                 catch(IOException e){warnings.add("Chưa tải đủ giao dịch ví");}
             }
             try {
-                if("STORE_OWNER".equals(role))holidays=get("/api/advisor/calendar",cookie).optJSONArray("upcomingHolidays");
+                if("STORE_OWNER".equals(role))holidays=api.get("/api/advisor/calendar",cookie).optJSONArray("upcomingHolidays");
                 else if("ADMIN".equals(role)) {
-                    JSONArray all=get("/api/admin/holidays",cookie).optJSONArray("holidays");holidays=new JSONArray();
+                    JSONArray all=api.get("/api/admin/holidays",cookie).optJSONArray("holidays");
+                    if(all==null)throw new IOException("Dữ liệu ngày lễ chưa đúng định dạng.");
+                    holidays=new JSONArray();
                     if(all!=null)for(int i=0;i<all.length();i++){JSONObject h=all.getJSONObject(i);if(h.optBoolean("isActive")){String date=h.optString("startDate");if(date.length()>=10)h.put("startDate",date.substring(0,10));holidays.put(h);}}
                 }
             }catch(ApiError e){if(e.status==401)throw e;warnings.add("Ngày lễ đang dùng lịch dương có sẵn");}
             catch(IOException e){warnings.add("Ngày lễ đang dùng lịch đã lưu");}
             // A logout/login may have happened while network requests were in flight.
-            if(!cookie.equals(CookieManager.getInstance().getCookie(ORIGIN)))return;
+            if(!cookie.equals(api.cookie()))return;
             synchronized(NotificationCenter.LOCK) {
                 JSONObject s=NotificationCenter.state(c);if(s.optLong("generation")!=generation)return;
                 if(!owner.equals(s.optString("owner"))||!role.equals(s.optString("role"))) {
@@ -93,12 +106,8 @@ public final class NotificationSync {
                 if(orders!=null) {
                     List<NotificationRules.Notice> notices=NotificationRules.orders(orders,NotificationRules.object(s,"orders"),!s.optBoolean("ordersReady"),role,NotificationCenter.prefs(c).getInt("lead",60),now);
                     NotificationCenter.retireDeliveryNotifications(c,orders,notices);
-                    NotificationCenter.replaceCategory(s,"delivery",notices);
-                    // Preserve pending ledger alerts; order payment notices are rebuilt from the full snapshot.
-                    JSONArray pending=s.optJSONArray("pending"), retained=new JSONArray();
-                    if(pending!=null)for(int i=0;i<pending.length();i++){JSONObject n=pending.optJSONObject(i);if(n!=null&&!n.optString("key").startsWith("deposit-due:"))retained.put(n);}
-                    for(NotificationRules.Notice n:notices)if("payment".equals(n.category))retained.put(n.json());
-                    NotificationCenter.put(s,"pending",retained);NotificationCenter.put(s,"orders",NotificationRules.orderState(orders));NotificationCenter.put(s,"ordersReady",true);
+                    NotificationCenter.put(s,"pending",NotificationRules.mergeOrderNotices(s.optJSONArray("pending"),orders,notices));
+                    NotificationCenter.put(s,"orders",NotificationRules.orderState(orders));NotificationCenter.put(s,"ordersReady",true);
                 }
                 if(transactions!=null) {
                     JSONArray pending=s.optJSONArray("pending");if(pending==null)pending=new JSONArray();

@@ -18,9 +18,11 @@
       window.dispatchEvent(new PopStateEvent('popstate'));
     }
   }
+  function apiPath(url) {
+    try { const parsed = new URL(url, window.location.href); return parsed.origin === window.location.origin ? parsed.pathname : ''; } catch { return ''; }
+  }
   function observed(method, url, status) {
-    let path;
-    try { const parsed = new URL(url, window.location.href); if (parsed.origin !== window.location.origin) return; path = parsed.pathname; } catch { return; }
+    const path = apiPath(url);
     if (!path.startsWith('/api/')) return;
     if (path === '/api/auth/logout') { call('session', { action: 'logout' }); return; }
     if (status === 401 && path !== '/api/auth/login') { call('session', { action: 'logout' }); return; }
@@ -33,13 +35,15 @@
   const xhrOpen = XMLHttpRequest.prototype.open;
   XMLHttpRequest.prototype.open = function (method, url, ...args) {
     this.addEventListener('loadend', () => observed(String(method).toUpperCase(), url, this.status), { once: true });
-    if (String(url).includes('/api/auth/logout')) call('session', { action: 'logout' });
+    if (apiPath(url) === '/api/auth/logout') call('session', { action: 'logout' });
     return xhrOpen.call(this, method, url, ...args);
   };
   const originalFetch = window.fetch;
   if (originalFetch) window.fetch = async function (input, init) {
+    const url = typeof input === 'string' || input instanceof URL ? String(input) : input.url;
+    if (apiPath(url) === '/api/auth/logout') call('session', { action: 'logout' });
     const response = await originalFetch.call(this, input, init);
-    observed(String(init?.method || input?.method || 'GET').toUpperCase(), typeof input === 'string' ? input : input.url, response.status);
+    observed(String(init?.method || input?.method || 'GET').toUpperCase(), url, response.status);
     return response;
   };
   function mount() {

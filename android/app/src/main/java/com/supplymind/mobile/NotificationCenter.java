@@ -129,27 +129,35 @@ public final class NotificationCenter {
             JSONArray rows=s.optJSONArray("pending"),history=s.optJSONArray("history"),keep=new JSONArray();
             if(history==null)history=new JSONArray();
             long now=System.currentTimeMillis(); int posted=0;
+            Map<String,List<JSONObject>> overflow=new LinkedHashMap<>();
             if(rows!=null)for(int i=0;i<rows.length();i++) {
                 JSONObject o=rows.optJSONObject(i);if(o==null)continue;
                 String key=o.optString("key");
                 if(o.optLong("expires")<=now||seen.has(key))continue;
                 if(o.optLong("at")<=now&&channelAllowed(c,o.optString("category"))) {
                     NotificationRules.Notice n=NotificationRules.Notice.read(o);
-                    // Keep all items in the history, coalesce a large catch-up into five tray entries.
-                    if(posted<5)post(c,n); posted++;
-                    put(seen,key,now); put(o,"shownAt",now); history.put(o);
+                    // Coalesce only through a channel the user actually enabled.
+                    if(posted>=5) {overflow.computeIfAbsent(n.category,k->new ArrayList<>()).add(o);continue;}
+                    if(post(c,n)) {posted++;put(seen,key,now);put(o,"shownAt",now);history.put(o);}
+                    else keep.put(o);
                 } else keep.put(o);
             }
-            if(posted>5)post(c,new NotificationRules.Notice("catchup","payment","Có "+posted+" cập nhật mới",
-                "Mở Thông báo để xem đầy đủ cập nhật giao hàng và thanh toán.","",now,now+NotificationRules.DAY));
+            for(Map.Entry<String,List<JSONObject>> entry:overflow.entrySet()) {
+                boolean delivered=post(c,new NotificationRules.Notice("catchup:"+entry.getKey(),entry.getKey(),"Có thêm "+entry.getValue().size()+" thông báo",
+                    "Mở Thông báo để xem đầy đủ các cập nhật.","",now,now+NotificationRules.DAY));
+                for(JSONObject o:entry.getValue()) {
+                    if(delivered) {put(seen,o.optString("key"),now);put(o,"shownAt",now);history.put(o);}
+                    else keep.put(o);
+                }
+            }
             JSONArray recent=new JSONArray();for(int i=Math.max(0,history.length()-100);i<history.length();i++)recent.put(history.opt(i));
             List<String> remove=new ArrayList<>();Iterator<String> keys=seen.keys();while(keys.hasNext()){String k=keys.next();if(seen.optLong(k)<now-30*NotificationRules.DAY)remove.add(k);}
             for(String k:remove)seen.remove(k);
             put(s,"seen",seen);put(s,"pending",keep);put(s,"history",recent);save(c,s);schedule(c,s);
         }
     }
-    static void post(Context c,NotificationRules.Notice n) {
-        if(!channelAllowed(c,n.category))return;
+    static boolean post(Context c,NotificationRules.Notice n) {
+        if(!channelAllowed(c,n.category))return false;
         Intent open;
         if(n.path.isEmpty())open=new Intent(c,NotificationSettingsActivity.class);
         else open=new Intent(c,MainActivity.class).putExtra("notification_path",n.path);
@@ -160,7 +168,7 @@ public final class NotificationCenter {
             .setContentTitle(n.title).setContentText(n.body).setStyle(new NotificationCompat.BigTextStyle().bigText(n.body))
             .setContentIntent(tap).setAutoCancel(true).setOnlyAlertOnce(true).setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setColor(0xff287245).setCategory("delivery".equals(n.category)?NotificationCompat.CATEGORY_REMINDER:NotificationCompat.CATEGORY_STATUS).build();
-        try{NotificationManagerCompat.from(c).notify(n.key,1,notification);}catch(SecurityException ignored){}
+        try{NotificationManagerCompat.from(c).notify(n.key,1,notification);return true;}catch(SecurityException ignored){return false;}
     }
     static void test(Context c,String category) {
         String title="Thông báo thử • "+("delivery".equals(category)?"Giao hàng":"payment".equals(category)?"Thanh toán":"Ngày lễ");

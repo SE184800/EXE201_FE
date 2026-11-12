@@ -66,9 +66,9 @@ public final class NotificationRules {
             String id=o.optString("id"), status=o.optString("status"), order="Đơn #"+id;
             JSONObject old=previous.optJSONObject(id), driver=object(o,"driverInfo");
             long delivery=deliveryAt(driver.optString("estimatedDeliveryTime"));
-            if(ACTIVE.contains(status) && delivery>=now && delivery<now+91*DAY) {
+            if(ACTIVE.contains(status) && delivery>0 && delivery+2*3600000>now && delivery<now+91*DAY) {
                 long before=delivery-leadMinutes*60000L;
-                result.add(new Notice("delivery:"+id+":"+delivery+":before","delivery","Sắp đến giờ giao • "+order,
+                if(delivery>now)result.add(new Notice("delivery:"+id+":"+delivery+":before","delivery","Sắp đến giờ giao • "+order,
                     "Dự kiến "+CLOCK.format(Instant.ofEpochMilli(delivery))+". "+(supplier?"Chuẩn bị giao hàng đúng lịch.":"Chuẩn bị nhận và kiểm tra hàng."),path,Math.max(now,before),delivery));
                 result.add(new Notice("delivery:"+id+":"+delivery+":due","delivery","Đến giờ giao • "+order,
                     "Giờ hẹn "+CLOCK.format(Instant.ofEpochMilli(delivery))+". Mở đơn để kiểm tra tiến độ thực tế.",path,delivery,delivery+2*3600000));
@@ -77,11 +77,17 @@ public final class NotificationRules {
                 result.add(new Notice("shipping:"+id+":"+driver.optString("assignedAt"),"delivery",order+" đang được giao",
                     supplier?"Đơn đã chuyển sang trạng thái đang giao.":"Chủ vựa đã bàn giao đơn cho vận chuyển.",path,now,now+DAY));
             if(!baseline && (old==null || !fingerprint(o).equals(old.optString("payment")))) {
+                String[] prior=(old==null?"":old.optString("payment")).split(":",-1);
+                String previousDeposit=prior.length>0?prior[0]:"";
+                String previousPayment=prior.length>1?prior[1]:"";
+                String previousWallet=prior.length>2?prior[2]:"";
+                boolean previousRefund=prior.length>3&&"true".equals(prior[3]);
+                JSONObject payment=object(driver,"paymentInfo"),wallet=object(o,"walletPayment");
                 String message=null;
-                if(paid(o)) message="Thanh toán đã được xác nhận";
-                else if("REFUNDED".equals(o.optString("depositStatus")) || object(o,"walletPayment").optBoolean("refunded")) message="Khoản thanh toán đã được hoàn";
-                else if("PAID".equals(o.optString("depositStatus"))) message="Tiền cọc đã được xác nhận";
-                else if(supplier && ("SUBMITTED".equals(o.optString("depositStatus")) || "PENDING_SUPPLIER_CONFIRM".equals(object(driver,"paymentInfo").optString("status")))) message="Có thanh toán cần đối chiếu";
+                if(("REFUNDED".equals(o.optString("depositStatus"))&&!"REFUNDED".equals(previousDeposit)) || (wallet.optBoolean("refunded")&&!previousRefund)) message="Khoản thanh toán đã được hoàn";
+                else if(paid(o) && (("CONFIRMED".equals(payment.optString("status"))&&!"CONFIRMED".equals(previousPayment)) || (!Arrays.asList("PAID","SETTLED").contains(previousWallet)&&Arrays.asList("PAID","SETTLED").contains(wallet.optString("status"))))) message="Thanh toán đã được xác nhận";
+                else if(supplier && (("SUBMITTED".equals(o.optString("depositStatus"))&&!"SUBMITTED".equals(previousDeposit)) || ("PENDING_SUPPLIER_CONFIRM".equals(payment.optString("status"))&&!"PENDING_SUPPLIER_CONFIRM".equals(previousPayment)))) message="Có thanh toán cần đối chiếu";
+                else if("PAID".equals(o.optString("depositStatus"))&&!"PAID".equals(previousDeposit)) message="Tiền cọc đã được xác nhận";
                 if(message!=null) result.add(new Notice("payment:"+id+":"+fingerprint(o)+":"+o.optString("updatedAt"),"payment",message,
                     order+" • Mở đơn để xem chi tiết.",path,now,now+DAY));
             }
@@ -96,6 +102,27 @@ public final class NotificationRules {
             state.put(o.optString("id"),new JSONObject().put("status",o.optString("status")).put("payment",fingerprint(o))); } }
         catch(Exception e) { throw new IllegalArgumentException(e); }
         return state;
+    }
+    // Event notices must survive a sync while notification permission is disabled.
+    // Scheduled reminders and action-required notices are rebuilt from the current snapshot.
+    static JSONArray mergeOrderNotices(JSONArray pending,JSONArray orders,List<Notice> notices) {
+        Set<String> shipping=new HashSet<>(),payments=new HashSet<>();
+        for(int i=0;i<orders.length();i++) {
+            JSONObject o=orders.optJSONObject(i);if(o==null)continue;
+            String id=o.optString("id");
+            if("SHIPPING".equals(o.optString("status")))shipping.add("shipping:"+id+":"+object(o,"driverInfo").optString("assignedAt"));
+            payments.add("payment:"+id+":"+fingerprint(o)+":");
+        }
+        Map<String,JSONObject> merged=new LinkedHashMap<>();
+        if(pending!=null)for(int i=0;i<pending.length();i++) {
+            JSONObject n=pending.optJSONObject(i);if(n==null)continue;String key=n.optString("key");
+            if(key.startsWith("delivery:")||key.startsWith("deposit-due:"))continue;
+            if(key.startsWith("shipping:")&&!shipping.contains(key))continue;
+            if(key.startsWith("payment:")&&payments.stream().noneMatch(key::startsWith))continue;
+            merged.put(key,n);
+        }
+        for(Notice n:notices)merged.put(n.key,n.json());
+        JSONArray out=new JSONArray();for(JSONObject n:merged.values())out.put(n);return out;
     }
     static List<Notice> transactions(JSONArray rows, long afterId, boolean baseline, String role, long now) {
         List<Notice> out=new ArrayList<>(); if(baseline)return out;
@@ -118,7 +145,12 @@ public final class NotificationRules {
             dates.put(y+"-11-20","Ngày Nhà giáo Việt Nam"); dates.put(y+"-12-25","Giáng sinh");
         }
         if(server!=null)for(int i=0;i<server.length();i++) {
-            JSONObject h=server.optJSONObject(i); if(h!=null)dates.put(h.optString("startDate"),h.optString("name"));
+            JSONObject h=server.optJSONObject(i);if(h==null)continue;
+            String date=h.optString("startDate"),name=h.optString("name").trim();
+            if(date.length()>=10)date=date.substring(0,10);
+            if(name.isEmpty())continue;
+            final String title=name;
+            dates.merge(date,title,(existing,added)->Arrays.asList(existing.split(" / ")).contains(added)?existing:existing+" / "+added);
         }
         List<Notice> out=new ArrayList<>();
         for(Map.Entry<String,String> row:dates.entrySet())try {

@@ -63,4 +63,13 @@ public class NotificationDeviceTest {
         NotificationCenter.save(c,new JSONObject().put("seen",seen));NotificationCenter.clearAccount(c);NotificationCenter.clearAccount(c);
         JSONObject kept=NotificationCenter.state(c).getJSONObject("seen");assertTrue(kept.has("holiday:2026-11-20:7"));assertFalse(kept.has("payment:old"));
     }
+    @Test public void allThreeCategoriesPostOnIndependentAndroidChannels()throws Exception {
+        long now=System.currentTimeMillis();JSONArray pending=new JSONArray();
+        for(String category:new String[]{"delivery","payment","holiday"})
+            pending.put(new NotificationRules.Notice("category-test:"+category,category,"Thông báo thử • "+category,"Dữ liệu kiểm thử","",now,now+60000).json());
+        NotificationCenter.save(c,new JSONObject().put("pending",pending));NotificationCenter.fire(c);
+        Set<String> channels=new HashSet<>();
+        for(StatusBarNotification n:c.getSystemService(NotificationManager.class).getActiveNotifications())channels.add(n.getNotification().getChannelId());
+        assertEquals(new HashSet<>(Arrays.asList("sm_delivery","sm_payment","sm_holiday")),channels);
+    }
 }

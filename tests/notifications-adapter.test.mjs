@@ -4,15 +4,16 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const source = fs.readFileSync(new URL('../public/supplymind-notifications.js', import.meta.url), 'utf8');
-function setup(native = true) {
+function setup(native = true, options = {}) {
   const calls = [], timers = [];
   class Xhr extends EventTarget { open(method, url) { this.url = url; } }
   const document = new EventTarget(); document.readyState = 'loading';
   const window = new EventTarget(); window.location = { href: 'https://supplymind-demo.vercel.app/store', origin: 'https://supplymind-demo.vercel.app' };
+  window.fetch = options.fetch;
   window.Capacitor = native ? { Plugins: { SupplyMindNotifications: Object.fromEntries(['session','sync','open','target'].map(name => [name, async data => { calls.push([name, data]); }])) } } : {};
   vm.runInNewContext(source, { window, document, XMLHttpRequest: Xhr, URL, Promise, setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout() {}, setInterval() {}, sessionStorage: { getItem: () => null } });
   async function response(method, url, status) { const req = new Xhr(); req.open(method, url); req.status=status;req.dispatchEvent(new Event('loadend'));await new Promise(resolve=>setImmediate(resolve)); }
-  return { calls, timers, response };
+  return { calls, timers, response, window };
 }
 test('notification bridge observes successful login and logout without passing credentials', async () => {
   const s=setup();await s.response('POST','/api/auth/login',200);
@@ -27,4 +28,29 @@ test('ordinary website remains usable when the APK plugin is absent', async () =
 });
 test('authenticated API expiry clears native account schedules', async () => {
   const s=setup();await s.response('GET','/api/orders',401);assert.equal(s.calls.at(-1)[1].action,'logout');
+});
+
+test('foreign and lookalike logout URLs cannot clear native account reminders', async () => {
+  const s=setup();
+  await s.response('POST','https://other.example/api/auth/logout',200);
+  await s.response('POST','/api/auth/logout-lookalike',200);
+  assert.equal(s.calls.filter(([method])=>method==='session').length,0);
+});
+
+test('fetch URL objects are observed and a failed logout still clears local reminders', async () => {
+  const s=setup(true,{fetch:async input=>{if(String(input).includes('logout'))throw Error('offline');return {status:200};}});
+  await s.window.fetch(new URL('https://supplymind-demo.vercel.app/api/auth/me'));
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(s.calls.at(-1)[1].action,'ready');
+  await assert.rejects(s.window.fetch('/api/auth/logout',{method:'POST'}),/offline/);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(s.calls.at(-1)[1].action,'logout');
+});
+
+test('fetch requests outside the app cannot pause account notifications', async () => {
+  const s=setup(true,{fetch:async()=>({status:401})});
+  await s.window.fetch('https://other.example/api/auth/logout',{method:'POST'});
+  await s.window.fetch('/api/auth/login',{method:'POST'});
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(s.calls.length,0);
 });

@@ -66,4 +66,39 @@ public class NotificationRulesTest {
         NotificationCenter.replaceCategory(state,"delivery",result);assertEquals(2,state.getJSONArray("pending").length());
         NotificationCenter.replaceCategory(state,"delivery",Collections.emptyList());assertEquals(0,state.getJSONArray("pending").length());
     }
+    @Test public void delayedSyncKeepsDueReminderDuringItsGracePeriod()throws Exception {
+        JSONObject o=order("SHIPPING","10:00 ngày 06/11/2026");
+        long justLate=now+7200000+1000;
+        List<NotificationRules.Notice> notices=NotificationRules.orders(new JSONArray().put(o),NotificationRules.orderState(new JSONArray().put(o)),false,"STORE_OWNER",60,justLate);
+        assertEquals(1,notices.size());assertTrue(notices.get(0).key.endsWith(":due"));
+        assertTrue(NotificationRules.orders(new JSONArray().put(o),new JSONObject(),true,"STORE_OWNER",60,now+4*3600000).isEmpty());
+    }
+    @Test public void paidDepositDoesNotHideNewSupplierPaymentReview()throws Exception {
+        JSONObject before=order("ISSUE_HANDLING","").put("depositStatus","PAID");
+        JSONObject after=new JSONObject(before.toString());
+        after.getJSONObject("driverInfo").put("paymentInfo",new JSONObject().put("status","PENDING_SUPPLIER_CONFIRM"));
+        List<NotificationRules.Notice> notices=NotificationRules.orders(new JSONArray().put(after),NotificationRules.orderState(new JSONArray().put(before)),false,"SUPPLIER",60,now);
+        assertEquals(1,notices.size());assertEquals("Có thanh toán cần đối chiếu",notices.get(0).title);
+    }
+    @Test public void changedPaymentRequestDoesNotRepeatPreviouslyConfirmedDepositForBuyer()throws Exception {
+        JSONObject before=order("ISSUE_HANDLING","").put("depositStatus","PAID");
+        JSONObject after=new JSONObject(before.toString());
+        after.getJSONObject("driverInfo").put("paymentInfo",new JSONObject().put("status","PENDING_SUPPLIER_CONFIRM"));
+        assertTrue(NotificationRules.orders(new JSONArray().put(after),NotificationRules.orderState(new JSONArray().put(before)),false,"STORE_OWNER",60,now).isEmpty());
+    }
+    @Test public void refundTakesPrecedenceOverPreviouslyConfirmedCashPayment()throws Exception {
+        JSONObject before=order("DELIVERED","").put("depositStatus","PAID");
+        before.getJSONObject("driverInfo").put("paymentInfo",new JSONObject().put("status","CONFIRMED"));
+        JSONObject after=new JSONObject(before.toString()).put("depositStatus","REFUNDED");
+        List<NotificationRules.Notice> notices=NotificationRules.orders(new JSONArray().put(after),NotificationRules.orderState(new JSONArray().put(before)),false,"STORE_OWNER",60,now);
+        assertEquals(1,notices.size());assertEquals("Khoản thanh toán đã được hoàn",notices.get(0).title);
+    }
+    @Test public void isoCalendarDatesAndSameDayHolidaysAreAllRetained()throws Exception {
+        JSONArray holidays=new JSONArray()
+            .put(new JSONObject().put("name","Lễ A").put("startDate","2026-11-16T00:00:00.000Z"))
+            .put(new JSONObject().put("name","Lễ B").put("startDate","2026-11-16"));
+        List<NotificationRules.Notice> notices=NotificationRules.holidays(holidays,now);
+        NotificationRules.Notice n=notices.stream().filter(x->x.key.equals("holiday:2026-11-16:7")).findFirst().get();
+        assertTrue(n.title.contains("Lễ A"));assertTrue(n.title.contains("Lễ B"));
+    }
 }

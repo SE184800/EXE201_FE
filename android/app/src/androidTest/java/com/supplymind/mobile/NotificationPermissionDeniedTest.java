@@ -15,6 +15,10 @@ public class NotificationPermissionDeniedTest {
         NotificationCenter.fire(c);
         assertEquals(0,c.getSystemService(NotificationManager.class).getActiveNotifications().length);
         assertEquals(1,NotificationCenter.state(c).getJSONArray("pending").length());
+        if(android.os.Build.VERSION.SDK_INT>=33)NotificationSyncTest.shell("pm grant "+c.getPackageName()+" android.permission.POST_NOTIFICATIONS");
+        NotificationCenter.fire(c);
+        assertEquals(1,c.getSystemService(NotificationManager.class).getActiveNotifications().length);
+        assertEquals(0,NotificationCenter.state(c).getJSONArray("pending").length());
         NotificationCenter.clearAccount(c);
     }
 }
