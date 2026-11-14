@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import '../catalog.css';
-import '../wallet.css';
 import './wallet.css';
 import Icon from '../../components/Icon';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
@@ -25,35 +23,37 @@ const TYPE_META: Record<
   string,
   { label: string; tagClass: string; category: 'ESCROW' | 'DEPOSIT' | 'WITHDRAW' | 'MOCK' | 'OTHER' }
 > = {
-  SUBSCRIPTION_PAYMENT: { label: 'Mua gói Basic', tagClass: 'tag-info', category: 'OTHER' },
+  SUBSCRIPTION_PAYMENT: { label: 'Mua gói dịch vụ', tagClass: 'tag-info', category: 'OTHER' },
   INITIAL_MOCK: { label: 'Khởi tạo thử nghiệm', tagClass: 'tag-info', category: 'MOCK' },
   MOCK_ADD: { label: 'Cộng tiền thử nghiệm', tagClass: 'tag-success', category: 'MOCK' },
   MOCK_RESET: { label: 'Đặt lại thử nghiệm', tagClass: 'tag-warning', category: 'MOCK' },
   SANDBOX_DEPOSIT: { label: 'Nạp tiền thử nghiệm', tagClass: 'tag-info', category: 'MOCK' },
   SANDBOX_WITHDRAWAL: { label: 'Rút tiền thử nghiệm', tagClass: 'tag-warning', category: 'MOCK' },
-  DEPOSIT: { label: 'Nạp tiền', tagClass: 'tag-success', category: 'DEPOSIT' },
-  QR_DEPOSIT: { label: 'Nạp tiền qua QR', tagClass: 'tag-success', category: 'DEPOSIT' },
+  DEPOSIT: { label: 'Nạp tiền vào ví', tagClass: 'tag-success', category: 'DEPOSIT' },
+  QR_DEPOSIT: { label: 'Nạp tiền qua VietQR', tagClass: 'tag-success', category: 'DEPOSIT' },
   WITHDRAWAL_HOLD: { label: 'Tạm giữ tiền rút', tagClass: 'tag-warning', category: 'WITHDRAW' },
   WITHDRAWAL_RELEASE: { label: 'Hoàn lại tiền rút', tagClass: 'tag-info', category: 'WITHDRAW' },
   WITHDRAWAL_PAYOUT: { label: 'Chuyển khoản rút tiền', tagClass: 'tag-danger', category: 'WITHDRAW' },
-  ESCROW_LOCK: { label: 'Tạm khóa cọc đơn hàng', tagClass: 'tag-danger', category: 'ESCROW' },
+  ESCROW_LOCK: { label: 'Tạm khóa cọc đơn sỉ (10%)', tagClass: 'tag-warning', category: 'ESCROW' },
   ESCROW_RELEASE: { label: 'Giải phóng cọc đơn hàng', tagClass: 'tag-info', category: 'ESCROW' },
   ESCROW_RECEIVED: { label: 'Nhận cọc đơn giao xong', tagClass: 'tag-success', category: 'ESCROW' },
   ESCROW_REFUND: { label: 'Hoàn trả cọc đơn hàng', tagClass: 'tag-success', category: 'ESCROW' },
   PENALTY_CONFISCATION: { label: 'Khấu trừ cọc vi phạm', tagClass: 'tag-danger', category: 'ESCROW' },
   COMPENSATION_RECEIVED: { label: 'Nhận bồi thường cọc', tagClass: 'tag-success', category: 'ESCROW' },
-  ORDER_PAYMENT: { label: 'Thanh toán đơn hàng', tagClass: 'tag-danger', category: 'OTHER' },
-  ORDER_RECEIVE: { label: 'Nhận tiền đơn hàng', tagClass: 'tag-success', category: 'OTHER' },
-  COMMISSION_FEE: { label: 'Phí hoa hồng nền tảng', tagClass: 'tag-warning', category: 'OTHER' },
-  REFUND: { label: 'Hoàn tiền', tagClass: 'tag-success', category: 'OTHER' },
+  ORDER_PAYMENT: { label: 'Thanh toán tiền hàng', tagClass: 'tag-danger', category: 'OTHER' },
+  ORDER_RECEIVE: { label: 'Nhận thanh toán đơn', tagClass: 'tag-success', category: 'OTHER' },
+  COMMISSION_FEE: { label: 'Phí dịch vụ nền tảng', tagClass: 'tag-warning', category: 'OTHER' },
+  REFUND: { label: 'Hoàn tiền vào ví', tagClass: 'tag-success', category: 'OTHER' },
   REFUND_RECEIVED: { label: 'Thu hồi tiền hoàn', tagClass: 'tag-danger', category: 'OTHER' },
 };
 
-type FilterCategory = 'ALL' | 'ESCROW' | 'DEPOSIT' | 'WITHDRAW';
+type FilterCategory = 'ALL' | 'ESCROW' | 'DEPOSIT' | 'WITHDRAW' | 'OTHER';
+
+const QUICK_AMOUNTS = [200000, 500000, 1000000, 2000000, 5000000, 10000000];
 
 export default function WalletPage({
   onLogout,
-  role,
+  role = 'STORE_OWNER',
 }: {
   onLogout: () => void;
   role?: 'STORE_OWNER' | 'SUPPLIER';
@@ -67,8 +67,10 @@ export default function WalletPage({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  // Transaction filter
+  // Transaction filter & search
   const [filter, setFilter] = useState<FilterCategory>('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [copiedTxId, setCopiedTxId] = useState<number | null>(null);
 
   // Deposit modal state
   const [showDepositModal, setShowDepositModal] = useState(searchParams.get('tab') === 'deposit');
@@ -77,6 +79,7 @@ export default function WalletPage({
   const [qrLoading, setQrLoading] = useState(false);
   const [qr, setQr] = useState<QrCode | null>(null);
   const [qrTicketId, setQrTicketId] = useState<number | null>(null);
+  const [copiedStk, setCopiedStk] = useState(false);
 
   // Withdraw modal state
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -91,12 +94,13 @@ export default function WalletPage({
 
   useEffect(() => {
     if (!notice) return;
-    const timer = setTimeout(() => setNotice(''), 4000);
+    const timer = setTimeout(() => setNotice(''), 4500);
     return () => clearTimeout(timer);
   }, [notice]);
 
   const load = useCallback(async () => {
     try {
+      setLoading(true);
       const [walletRes, txRes, depositRes] = await Promise.all([
         getWallet(),
         getWalletTransactions({ page: 1 }),
@@ -105,7 +109,14 @@ export default function WalletPage({
       setError('');
       setOverview(walletRes);
       setTransactions(txRes.transactions || []);
-      setDeposits(depositRes.requests.filter((request) => request.method === 'VIET_QR' && request.status !== 'AWAITING_TRANSFER' && !request.isSandbox));
+      setDeposits(
+        depositRes.requests.filter(
+          (request) =>
+            request.method === 'VIET_QR' &&
+            request.status !== 'AWAITING_TRANSFER' &&
+            !request.isSandbox
+        )
+      );
     } catch (e) {
       setError(getApiError(e));
       if (isUnauthenticated(e)) onLogout();
@@ -116,8 +127,12 @@ export default function WalletPage({
 
   useEffect(() => {
     let cancelled = false;
-    queueMicrotask(() => { if (!cancelled) void load(); });
-    return () => { cancelled = true; };
+    queueMicrotask(() => {
+      if (!cancelled) void load();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [load]);
 
   // Load bank info from profile if available
@@ -159,7 +174,7 @@ export default function WalletPage({
           }));
         }
       })
-      .catch(() => { });
+      .catch(() => {});
   }, []);
 
   // Create QR for official deposit
@@ -193,7 +208,7 @@ export default function WalletPage({
     setBusy(true);
     try {
       await confirmQrDeposit(qrTicketId);
-      setNotice('Đã gửi yêu cầu. Tiền sẽ vào ví sau khi quản trị viên đối soát.');
+      setNotice('Đã gửi yêu cầu nạp tiền. Hệ thống sẽ tự động đối soát và cộng tiền vào ví trong giây lát.');
       setShowDepositModal(false);
       setQr(null);
       setQrTicketId(null);
@@ -234,7 +249,7 @@ export default function WalletPage({
         bankAccountHolder: withdrawForm.bankAccountHolder.trim(),
         note: withdrawForm.note || undefined,
       });
-      setNotice(`Đã gửi yêu cầu rút ${money(parsedAmount)}. Hệ thống sẽ xử lý giải ngân.`);
+      setNotice(`Đã gửi yêu cầu rút ${money(parsedAmount)}. Hệ thống sẽ xử lý giải ngân về tài khoản.`);
       setShowWithdrawModal(false);
       setWithdrawForm((prev) => ({ ...prev, amount: '', note: '' }));
       await load();
@@ -246,11 +261,31 @@ export default function WalletPage({
     }
   }
 
+  async function copyText(text: string, txId?: number) {
+    try {
+      await navigator.clipboard.writeText(text);
+      if (txId !== undefined) {
+        setCopiedTxId(txId);
+        setTimeout(() => setCopiedTxId(null), 1800);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   // Filter transactions
   const filteredTransactions = transactions.filter((t) => {
-    if (filter === 'ALL') return true;
     const meta = TYPE_META[t.type];
-    return meta?.category === filter;
+    if (filter !== 'ALL' && meta?.category !== filter) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const refMatch = (t.reference || `TRX-${t.id}`).toLowerCase().includes(q);
+      const noteMatch = (t.note || '').toLowerCase().includes(q);
+      const labelMatch = (meta?.label || t.typeLabel || '').toLowerCase().includes(q);
+      const amountMatch = String(Math.abs(t.amount)).includes(q);
+      return refMatch || noteMatch || labelMatch || amountMatch;
+    }
+    return true;
   });
 
   const availableBalance = overview?.wallet?.balance ?? 0;
@@ -258,213 +293,341 @@ export default function WalletPage({
   const totalBalance = overview?.wallet?.total ?? 0;
 
   return (
-    <section className="wallet-page" aria-label="Ví tiền và Ký quỹ hệ thống">
+    <section className="wallet-page" aria-label="Ví tiền và Ký quỹ hệ thống SupplyMind">
       {searchParams.get('from') === 'subscription' && (
-        <Link className="ghost-button" to={`${role === 'SUPPLIER' ? '/supplier' : '/store'}/subscription`}>Quay lại mua gói Basic</Link>
+        <div style={{ marginBottom: '16px' }}>
+          <Link
+            className="wallet-btn-secondary"
+            to={`${role === 'SUPPLIER' ? '/supplier' : '/store'}/subscription`}
+          >
+            ← Quay lại mua gói dịch vụ
+          </Link>
+        </div>
       )}
-      {/* Catalog Hero Banner */}
-      <div
-        className="catalog-hero wallet-hero"
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: '16px',
-        }}
-      >
-        <div>
-          <p className="form-eyebrow">TÀI CHÍNH & KÝ QUỸ AN TOÀN</p>
-          <h1>Ví tiền & Ký quỹ hệ thống SupplyMind</h1>
-          <p>
-            Quản lý số dư khả dụng, tiền cọc đơn hàng đang được bảo hộ qua tài khoản trung gian (Escrow)
-            và kiểm tra chi tiết lịch sử biến động số dư.
+
+      {/* 1. Hero Header Banner */}
+      <div className="wallet-hero-card">
+        <div className="wallet-hero-info">
+          <div className="wallet-hero-badge">
+            <Icon name="shield" />
+            <span>
+              {role === 'STORE_OWNER'
+                ? 'KÝ QUỸ AN TOÀN · BẢO HỘ 100% TIỀN CỌC'
+                : 'DOANH THU & KÝ QUỸ CHỦ VỰA'}
+            </span>
+          </div>
+          <h1 className="wallet-hero-title">
+            {role === 'STORE_OWNER'
+              ? 'Ví Tiền & Ký Quỹ Đơn Hàng'
+              : 'Ví Tiền & Ký Quỹ Bán Sỉ'}
+          </h1>
+          <p className="wallet-hero-desc">
+            {role === 'STORE_OWNER'
+              ? 'Nạp tiền để đặt cọc 10% đơn hàng sỉ. Tiền cọc được hệ thống bảo hộ trung gian (Escrow) an toàn, chỉ thanh toán cho chủ vựa khi bạn đã nhận đủ hàng.'
+              : 'Quản lý tiền cọc từ các tiệm tạp hóa, đối soát doanh thu bán sỉ và rút tiền về tài khoản ngân hàng dễ dàng 24/7.'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+
+        <div className="wallet-hero-actions">
           <button
             type="button"
-            className="dash-primary"
+            className="wallet-btn-primary"
             onClick={() => {
               setShowDepositModal(true);
               setQr(null);
               setDepositAmount('500000');
             }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              backgroundColor: '#059669',
-              borderColor: '#059669',
-              color: '#ffffff',
-              padding: '10px 18px',
-              fontWeight: 650,
-              borderRadius: '8px',
-              cursor: 'pointer',
-            }}
           >
-            <Icon name="sparkle" /> + Nạp tiền ví (VietQR)
+            <Icon name="sparkle" />
+            <span>+ Nạp tiền (VietQR)</span>
           </button>
+
           <button
             type="button"
-            className="secondary-button"
+            className="wallet-btn-secondary"
             onClick={() => {
               setShowWithdrawModal(true);
               setWithdrawError('');
             }}
-            style={{
-              backgroundColor: '#ffffff',
-              color: '#1e293b',
-              border: '1px solid #cbd5e1',
-              padding: '10px 18px',
-              fontWeight: 600,
-              borderRadius: '8px',
-              cursor: 'pointer',
-            }}
           >
-            Rút tiền về tài khoản
+            <Icon name="download" />
+            <span>Rút tiền về ngân hàng</span>
           </button>
+
           <button
             type="button"
-            className="text-button"
+            className="wallet-btn-refresh"
             onClick={load}
             disabled={loading || busy}
-            style={{
-              fontSize: '13px',
-              fontWeight: 600,
-              color: '#059669',
-              cursor: 'pointer',
-              background: 'none',
-              border: 'none',
-              padding: '8px 12px',
-            }}
+            title="Làm mới số dư và lịch sử giao dịch"
           >
-            ↻ Làm mới
+            <span style={{ display: 'inline-block', transform: loading ? 'rotate(180deg)' : 'none', transition: 'transform 0.4s ease' }}>
+              ↻
+            </span>
+            <span>{loading ? 'Đang tải…' : 'Làm mới'}</span>
           </button>
         </div>
       </div>
 
       {notice && (
-        <p className="supplier-success" role="status" style={{ marginBottom: '16px' }}>
-          {notice}
-        </p>
+        <div
+          style={{
+            padding: '12px 18px',
+            backgroundColor: '#ecfdf5',
+            border: '1px solid #a7f3d0',
+            borderRadius: '12px',
+            color: '#065f46',
+            fontWeight: 600,
+            fontSize: '13.5px',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}
+          role="status"
+        >
+          <span style={{ fontSize: '16px' }}>✓</span>
+          <span>{notice}</span>
+        </div>
       )}
 
       {error && (
-        <p className="error-notice" role="alert" style={{ marginBottom: '16px' }}>
-          {error}
-        </p>
+        <div
+          style={{
+            padding: '12px 18px',
+            backgroundColor: '#fef2f2',
+            border: '1px solid #fecaca',
+            borderRadius: '12px',
+            color: '#b91c1c',
+            fontWeight: 600,
+            fontSize: '13.5px',
+            marginBottom: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+          }}
+          role="alert"
+        >
+          <span style={{ fontSize: '16px' }}>⚠️</span>
+          <span>{error}</span>
+        </div>
       )}
 
-      {/* 3 Wallet Balance Cards (Signature Gradient Design) */}
+      {/* 2. Escrow Protection Explanation for Store Owner */}
+      {role === 'STORE_OWNER' && (
+        <div className="wallet-escrow-banner">
+          <div className="wallet-escrow-icon">
+            <Icon name="shield" />
+          </div>
+          <div className="wallet-escrow-content">
+            <div className="wallet-escrow-title">
+              <span>Bảo vệ quyền lợi Tiệm tạp hóa với SupplyMind Escrow</span>
+            </div>
+            <p className="wallet-escrow-text">
+              Khi tạo đơn sỉ, hệ thống chỉ tạm khóa <strong>10% cọc</strong> trong ví của bạn. Khoản cọc này được
+              giữ độc lập và <strong>chỉ chuyển giao cho Chủ vựa sau khi bạn đã kiểm tra và nhận đủ hàng hóa</strong>. Nếu
+              đơn hàng bị hủy hoặc có sự cố, tiền cọc sẽ được hoàn lại 100% về ví ngay lập tức.
+            </p>
+            <div className="wallet-escrow-tags">
+              <span className="wallet-escrow-tag">✓ Bảo đảm giao đúng số lượng</span>
+              <span className="wallet-escrow-tag">✓ Hoàn cọc tự động khi có sự cố</span>
+              <span className="wallet-escrow-tag">✓ Hỗ trợ đối soát VietQR 24/7</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Three Balance Cards */}
       <div className="wallet-grid">
+        {/* Card 1: Available Balance */}
         <div className="wallet-card wallet-card-primary">
-          <span className="wallet-card-title">Số dư khả dụng</span>
-          <strong className="wallet-card-amount">
-            {loading ? 'Đang tải…' : money(availableBalance)}
-          </strong>
-          <span className="wallet-card-desc">
-            Dùng để đặt cọc 10% cam kết đơn hàng sỉ hoặc thanh toán
-          </span>
+          <div>
+            <div className="wallet-card-header">
+              <span className="wallet-card-label">Số dư khả dụng</span>
+              <div className="wallet-card-icon-box">
+                <Icon name="leaf" />
+              </div>
+            </div>
+            <div className="wallet-card-value">
+              {loading ? 'Đang tải…' : money(availableBalance)}
+            </div>
+          </div>
+          <div className="wallet-card-footer">
+            <span>Dùng cọc đơn sỉ (10%) hoặc thanh toán</span>
+            <button
+              type="button"
+              className="wallet-card-action-link"
+              onClick={() => {
+                setShowDepositModal(true);
+                setQr(null);
+                setDepositAmount('500000');
+              }}
+            >
+              + Nạp nhanh
+            </button>
+          </div>
         </div>
 
+        {/* Card 2: Locked in Escrow */}
         <div className="wallet-card wallet-card-locked">
-          <span className="wallet-card-title">Đang ký quỹ (Tạm giữ cọc)</span>
-          <strong className="wallet-card-amount">
-            {loading ? 'Đang tải…' : money(lockedBalance)}
-          </strong>
-          <span className="wallet-card-desc">
-            Bảo đảm an toàn cho các đơn hàng đang giao hoặc xử lý sự cố
-          </span>
+          <div>
+            <div className="wallet-card-header">
+              <span className="wallet-card-label">Tiền đang ký quỹ (Cọc)</span>
+              <div className="wallet-card-icon-box">
+                <Icon name="lock" />
+              </div>
+            </div>
+            <div className="wallet-card-value">
+              {loading ? 'Đang tải…' : money(lockedBalance)}
+            </div>
+          </div>
+          <div className="wallet-card-footer">
+            <span>Đang cọc cho các đơn sỉ chờ giao</span>
+            <span className="wallet-card-badge">Bảo hộ 100%</span>
+          </div>
         </div>
 
+        {/* Card 3: Total Balance */}
         <div className="wallet-card wallet-card-total">
-          <span className="wallet-card-title">Tổng số dư ví</span>
-          <strong className="wallet-card-amount">
-            {loading ? 'Đang tải…' : money(totalBalance)}
-          </strong>
-          <span className="wallet-card-desc">Số dư khả dụng + Tiền cọc đang ký quỹ</span>
+          <div>
+            <div className="wallet-card-header">
+              <span className="wallet-card-label">Tổng số dư ví</span>
+              <div className="wallet-card-icon-box">
+                <Icon name="chart" />
+              </div>
+            </div>
+            <div className="wallet-card-value">
+              {loading ? 'Đang tải…' : money(totalBalance)}
+            </div>
+          </div>
+          <div className="wallet-card-footer">
+            <span>Khả dụng + Tiền cọc đang ký quỹ</span>
+            <span style={{ fontSize: '11px', color: '#94a3b8' }}>VND</span>
+          </div>
         </div>
       </div>
 
-      {/* Transaction History Section */}
+      {/* 4. Recent VietQR Deposit Requests */}
       {deposits.length > 0 && (
-        <section className="supplier-panel wallet-transactions-panel" aria-label="Phiếu nạp QR gần đây">
-          <h3>Phiếu nạp QR gần đây</h3>
-          <ul>
+        <section className="wallet-pending-panel" aria-label="Phiếu nạp VietQR gần đây">
+          <div className="wallet-pending-header">
+            <h3>
+              <Icon name="sparkle" />
+              <span>Phiếu nạp tiền VietQR gần đây</span>
+            </h3>
+            <span className="wallet-pending-count">{deposits.length} phiếu</span>
+          </div>
+          <div className="wallet-pending-grid">
             {deposits.map((request) => (
-              <li key={request.id}>
-                <strong>#{request.id} · {money(request.amount)}</strong>{' · '}
-                {request.status === 'PENDING' ? 'Chờ đối soát' : request.status === 'APPROVED' ? 'Đã duyệt' : 'Từ chối'}
-                {request.status === 'REJECTED' && request.adminNote ? ` · ${request.adminNote}` : ''}
-              </li>
+              <div key={request.id} className="wallet-pending-item">
+                <div className="wallet-pending-item-left">
+                  <span className="wallet-pending-code">Mã phiếu: #{request.id}</span>
+                  <span className="wallet-pending-time">{dateTime(request.createdAt)}</span>
+                </div>
+                <div className="wallet-pending-item-right">
+                  <span className="wallet-pending-amount">+{money(request.amount)}</span>
+                  {request.status === 'PENDING' && (
+                    <span className="wallet-status-pill wallet-status-pending">
+                      <span className="wallet-pulse-dot" />
+                      <span>Đang chờ đối soát</span>
+                    </span>
+                  )}
+                  {request.status === 'APPROVED' && (
+                    <span className="wallet-status-pill wallet-status-approved">
+                      <span>✓ Đã duyệt</span>
+                    </span>
+                  )}
+                  {request.status === 'REJECTED' && (
+                    <span className="wallet-status-pill wallet-status-rejected">
+                      <span>✕ Từ chối{request.adminNote ? `: ${request.adminNote}` : ''}</span>
+                    </span>
+                  )}
+                </div>
+              </div>
             ))}
-          </ul>
+          </div>
         </section>
       )}
-      <div className="supplier-panel wallet-transactions-panel">
-        <div
-          className="transactions-header"
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '12px',
-            marginBottom: '14px',
-          }}
-        >
-          <div>
-            <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a' }}>Lịch sử biến động số dư</h3>
-            <span style={{ fontSize: '13px', color: '#64748b' }}>
-              Tổng cộng {filteredTransactions.length} giao dịch
-            </span>
+
+      {/* 5. Transaction History Panel */}
+      <div className="wallet-history-card">
+        <div className="wallet-history-header">
+          <div className="wallet-history-title-group">
+            <h3>Lịch sử biến động số dư</h3>
+            <p>
+              Hiển thị {filteredTransactions.length} giao dịch biến động số dư ví và ký quỹ
+            </p>
           </div>
 
-          {/* Quick Filter Buttons */}
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-            {(
-              [
-                { id: 'ALL', label: 'Tất cả' },
-                { id: 'ESCROW', label: 'Ký quỹ cọc' },
-                { id: 'DEPOSIT', label: 'Nạp tiền' },
-                { id: 'WITHDRAW', label: 'Rút tiền' },
-              ] as const
-            ).map((btn) => (
-              <button
-                key={btn.id}
-                type="button"
-                onClick={() => setFilter(btn.id)}
-                style={{
-                  padding: '5px 12px',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  border: `1px solid ${filter === btn.id ? '#059669' : '#cbd5e1'}`,
-                  backgroundColor: filter === btn.id ? '#ecfdf5' : '#ffffff',
-                  color: filter === btn.id ? '#065f46' : '#475569',
-                }}
-              >
-                {btn.label}
-              </button>
-            ))}
+          <div className="wallet-history-controls">
+            {/* Search Box */}
+            <div className="wallet-search-box">
+              <input
+                type="text"
+                className="wallet-search-input"
+                placeholder="Tìm mã GD, nội dung..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            {/* Quick Filter Tabs */}
+            <div className="wallet-filter-tabs">
+              {(
+                [
+                  { id: 'ALL', label: 'Tất cả' },
+                  { id: 'ESCROW', label: 'Ký quỹ cọc' },
+                  { id: 'DEPOSIT', label: 'Nạp tiền' },
+                  { id: 'WITHDRAW', label: 'Rút tiền' },
+                  { id: 'OTHER', label: 'Thanh toán & Khác' },
+                ] as const
+              ).map((btn) => (
+                <button
+                  key={btn.id}
+                  type="button"
+                  className={`wallet-filter-tab ${filter === btn.id ? 'is-active' : ''}`}
+                  onClick={() => setFilter(btn.id)}
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {!filteredTransactions.length ? (
-          <p className="empty-text">Chưa có giao dịch biến động số dư nào trong danh mục này.</p>
+          <div className="wallet-empty-state">
+            <div className="wallet-empty-icon">
+              <Icon name="chart" />
+            </div>
+            <h4 className="wallet-empty-title">Không tìm thấy giao dịch nào</h4>
+            <p className="wallet-empty-text">
+              {searchQuery
+                ? `Không có giao dịch nào khớp với từ khóa "${searchQuery}".`
+                : 'Chưa có biến động số dư nào trong danh mục này.'}
+            </p>
+            {searchQuery && (
+              <button
+                type="button"
+                className="wallet-btn-secondary"
+                onClick={() => setSearchQuery('')}
+                style={{ padding: '8px 16px', fontSize: '13px' }}
+              >
+                Xóa bộ lọc tìm kiếm
+              </button>
+            )}
+          </div>
         ) : (
-          <div className="table-wrapper">
-            <table className="transactions-table">
+          <div className="wallet-table-container">
+            <table className="wallet-table">
               <thead>
                 <tr>
-                  <th style={{ width: '135px' }}>Thời gian</th>
-                  <th style={{ width: '115px' }}>Mã GD</th>
+                  <th style={{ width: '130px' }}>Thời gian</th>
+                  <th style={{ width: '135px' }}>Mã GD</th>
                   <th>Loại giao dịch</th>
-                  <th style={{ width: '130px' }}>Số tiền</th>
-                  <th style={{ width: '130px' }}>Số dư sau GD</th>
-                  <th style={{ width: '100px' }}>Kênh</th>
+                  <th style={{ width: '140px' }}>Biến động</th>
+                  <th style={{ width: '135px' }}>Số dư sau GD</th>
+                  <th style={{ width: '110px' }}>Kênh</th>
                   <th>Nội dung / Diễn giải</th>
                 </tr>
               </thead>
@@ -476,31 +639,44 @@ export default function WalletPage({
                   };
                   const isPositive = tx.direction === 'CREDIT';
                   const absAmount = Math.abs(tx.amount);
+                  const refCode = tx.reference || `TRX-${tx.id}`;
+
                   return (
                     <tr key={tx.id}>
-                      <td className="tx-time" style={{ fontSize: '12.5px', color: '#475569' }}>
-                        {dateTime(tx.createdAt)}
-                      </td>
-                      <td style={{ fontSize: '13px', fontWeight: 650, color: '#0f172a' }}>
-                        {tx.reference || `TRX-${tx.id}`}
+                      <td className="tx-time-cell">{dateTime(tx.createdAt)}</td>
+                      <td className="tx-ref-cell">
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                          <span>{refCode}</span>
+                          <button
+                            type="button"
+                            onClick={() => void copyText(refCode, tx.id)}
+                            title="Sao chép mã giao dịch"
+                            style={{
+                              border: 'none',
+                              background: 'transparent',
+                              cursor: 'pointer',
+                              padding: '2px',
+                              color: '#94a3b8',
+                              fontSize: '11px',
+                            }}
+                          >
+                            {copiedTxId === tx.id ? '✓' : '📋'}
+                          </button>
+                        </span>
                       </td>
                       <td>
                         <span className={`tx-tag ${meta.tagClass}`}>{meta.label}</span>
                       </td>
-                      <td className={`tx-amount ${isPositive ? 'positive' : 'negative'}`}>
+                      <td className={`tx-amount-cell ${isPositive ? 'positive' : 'negative'}`}>
                         {isPositive ? `+${money(absAmount)}` : `-${money(absAmount)}`}
                       </td>
-                      <td className="tx-balance">{money(tx.balanceAfter)}</td>
+                      <td className="tx-balance-cell">{money(tx.balanceAfter)}</td>
                       <td>
-                        <span
-                          className={`wallet-status wallet-status-${tx.method === 'SANDBOX' ? 'approved' : 'settled'
-                            }`}
-                          style={{ fontSize: '11px', padding: '3px 8px' }}
-                        >
-                          {tx.method === 'SANDBOX' ? 'Thử nghiệm' : 'Chính thức'}
+                        <span className="tx-channel-badge">
+                          {tx.method === 'SANDBOX' ? 'Thử nghiệm' : 'VietQR / Ví'}
                         </span>
                       </td>
-                      <td className="tx-desc" style={{ fontSize: '13px', color: '#334155' }}>
+                      <td className="tx-desc-cell">
                         {tx.note || 'Giao dịch qua hệ thống SupplyMind Escrow'}
                       </td>
                     </tr>
@@ -514,177 +690,115 @@ export default function WalletPage({
 
       {/* Modal Nạp Tiền Qua VietQR */}
       {showDepositModal && (
-        <div
-          className="wallet-modal-backdrop"
-          onClick={() => setShowDepositModal(false)}
-        >
-          <div
-            className="wallet-modal-card"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '520px' }}
-          >
-            <div
-              className="wallet-modal-header"
-              style={{
-                padding: '16px 20px',
-                borderBottom: '1px solid #e2e8f0',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                backgroundColor: '#f8fafc',
-              }}
-            >
-              <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a' }}>
-                Nạp Tiền Vào Ví Hệ Thống
+        <div className="wallet-modal-backdrop" onClick={() => setShowDepositModal(false)}>
+          <div className="wallet-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="wallet-modal-header">
+              <h3>
+                <Icon name="sparkle" />
+                <span>Nạp Tiền Vào Ví Hệ Thống</span>
               </h3>
               <button
                 type="button"
+                className="wallet-modal-close"
                 onClick={() => setShowDepositModal(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '18px',
-                  cursor: 'pointer',
-                  color: '#64748b',
-                }}
+                title="Đóng"
               >
                 ✕
               </button>
             </div>
 
-            <div className="wallet-modal-body" style={{ padding: '20px' }}>
+            <div className="wallet-modal-body">
               {!qr ? (
                 <form onSubmit={(e) => void handleGenerateQr(e)}>
-                  <div style={{ marginBottom: '16px' }}>
-                    <label
-                      style={{
-                        display: 'block',
-                        fontSize: '13px',
-                        fontWeight: 650,
-                        color: '#1e293b',
-                        marginBottom: '8px',
-                      }}
-                    >
-                      Chọn nhanh số tiền nạp:
-                    </label>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-                      {[200000, 500000, 1000000, 2000000, 5000000, 10000000].map((amt) => (
-                        <button
-                          key={amt}
-                          type="button"
-                          onClick={() => setDepositAmount(String(amt))}
-                          style={{
-                            padding: '8px 6px',
-                            borderRadius: '6px',
-                            border: `1.5px solid ${depositAmount === String(amt) ? '#059669' : '#cbd5e1'}`,
-                            backgroundColor: depositAmount === String(amt) ? '#ecfdf5' : '#ffffff',
-                            color: depositAmount === String(amt) ? '#065f46' : '#334155',
-                            fontWeight: 600,
-                            fontSize: '13px',
-                            cursor: 'pointer',
-                          }}
-                        >
-                          {money(amt)}
-                        </button>
-                      ))}
+                  <div className="wallet-form-group">
+                    <label className="wallet-form-label">Chọn nhanh số tiền nạp:</label>
+                    <div className="wallet-amount-grid">
+                      {QUICK_AMOUNTS.map((amt) => {
+                        const isSelected = depositAmount === String(amt);
+                        return (
+                          <button
+                            key={amt}
+                            type="button"
+                            className={`wallet-amount-chip ${isSelected ? 'is-active' : ''}`}
+                            onClick={() => setDepositAmount(String(amt))}
+                          >
+                            {money(amt)}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  <div style={{ marginBottom: '16px' }}>
-                    <label
-                      htmlFor="deposit-custom-amount"
-                      style={{
-                        display: 'block',
-                        fontSize: '13px',
-                        fontWeight: 650,
-                        color: '#1e293b',
-                        marginBottom: '6px',
-                      }}
-                    >
-                      Hoặc nhập số tiền tùy chọn (VNĐ):
+                  <div className="wallet-form-group">
+                    <label htmlFor="deposit-custom-amount" className="wallet-form-label">
+                      Hoặc nhập số tiền tùy ý (VNĐ):
                     </label>
                     <input
                       id="deposit-custom-amount"
                       type="number"
                       min="10000"
                       step="10000"
+                      className="wallet-form-input"
                       value={depositAmount}
                       onChange={(e) => setDepositAmount(e.target.value)}
                       placeholder="Ví dụ: 500000"
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '8px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '14px',
-                        boxSizing: 'border-box',
-                        outline: 'none',
-                      }}
+                      required
                     />
+                    {Number(depositAmount) > 0 && (
+                      <span style={{ display: 'block', marginTop: '6px', fontSize: '12px', color: '#059669', fontWeight: 600 }}>
+                        Số tiền nạp: {money(Number(depositAmount))}
+                      </span>
+                    )}
                   </div>
 
-                  <div style={{ marginBottom: '16px' }}>
-                    <label
-                      htmlFor="deposit-custom-note"
-                      style={{
-                        display: 'block',
-                        fontSize: '13px',
-                        fontWeight: 650,
-                        color: '#1e293b',
-                        marginBottom: '6px',
-                      }}
-                    >
-                      Ghi chú chuyển khoản (Tùy chọn):
+                  <div className="wallet-form-group">
+                    <label htmlFor="deposit-custom-note" className="wallet-form-label">
+                      Ghi chú nạp tiền (Tùy chọn):
                     </label>
                     <input
                       id="deposit-custom-note"
                       type="text"
                       maxLength={100}
+                      className="wallet-form-input"
                       value={depositNote}
                       onChange={(e) => setDepositNote(e.target.value)}
-                      placeholder="Nạp tiền cọc đơn hàng sỉ…"
-                      style={{
-                        width: '100%',
-                        padding: '10px 14px',
-                        borderRadius: '8px',
-                        border: '1px solid #cbd5e1',
-                        fontSize: '14px',
-                        boxSizing: 'border-box',
-                        outline: 'none',
-                      }}
+                      placeholder="Ví dụ: Nạp cọc đơn mua sỉ…"
                     />
                   </div>
 
-                  <div
-                    style={{
-                      padding: '12px',
-                      backgroundColor: '#f0fdf4',
-                      border: '1px solid #bbf7d0',
-                      borderRadius: '8px',
-                      fontSize: '12.5px',
-                      color: '#166534',
-                      lineHeight: 1.5,
-                      marginBottom: '16px',
-                    }}
-                  >
-                    <strong>Tài khoản nhận tiền ký quỹ:</strong> Sacombank · STK <code>050138052378</code>{' '}
-                    (LE TRAN MINH DUC). Tiền nạp sẽ được ghi nhận vào ví ngay khi quét mã VietQR.
+                  <div className="wallet-bank-badge-box">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <strong>Tài khoản nhận tiền ký quỹ:</strong>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void copyText('050138052378');
+                          setCopiedStk(true);
+                          setTimeout(() => setCopiedStk(false), 2000);
+                        }}
+                        style={{
+                          border: 'none',
+                          background: '#e2e8f0',
+                          borderRadius: '4px',
+                          padding: '2px 8px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          color: '#1e293b',
+                        }}
+                      >
+                        {copiedStk ? '✓ Đã chép' : 'Chép STK'}
+                      </button>
+                    </div>
+                    Sacombank · STK <code>050138052378</code> (LE TRAN MINH DUC). Tiền nạp sẽ được hệ thống
+                    tự động đối soát và cộng vào ví ngay sau khi quét mã VietQR.
                   </div>
 
                   <button
                     type="submit"
+                    className="wallet-btn-primary"
                     disabled={qrLoading || !Number(depositAmount)}
-                    style={{
-                      width: '100%',
-                      padding: '12px',
-                      backgroundColor: '#059669',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: 650,
-                      cursor: qrLoading || !Number(depositAmount) ? 'not-allowed' : 'pointer',
-                    }}
+                    style={{ width: '100%', padding: '13px', fontSize: '14.5px' }}
                   >
                     {qrLoading ? 'Đang tạo mã VietQR…' : `Tạo mã VietQR nạp ${money(Number(depositAmount) || 0)}`}
                   </button>
@@ -701,7 +815,7 @@ export default function WalletPage({
                     onConfirm={handleConfirmQr}
                     busy={busy}
                   />
-                  <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                  <div style={{ textAlign: 'center', marginTop: '16px' }}>
                     <button
                       type="button"
                       onClick={() => setQr(null)}
@@ -712,9 +826,10 @@ export default function WalletPage({
                         fontSize: '13px',
                         cursor: 'pointer',
                         textDecoration: 'underline',
+                        fontWeight: 600,
                       }}
                     >
-                      ← Đổi số tiền khác
+                      ← Đổi số tiền nạp khác
                     </button>
                   </div>
                 </div>
@@ -726,63 +841,39 @@ export default function WalletPage({
 
       {/* Modal Yêu Cầu Rút Tiền Về Ngân Hàng */}
       {showWithdrawModal && (
-        <div
-          className="wallet-modal-backdrop"
-          onClick={() => setShowWithdrawModal(false)}
-        >
-          <div
-            className="wallet-modal-card"
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '520px' }}
-          >
-            <div
-              className="wallet-modal-header"
-              style={{
-                padding: '16px 20px',
-                borderBottom: '1px solid #e2e8f0',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                backgroundColor: '#f8fafc',
-              }}
-            >
-              <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a' }}>
-                Rút Tiền Về Tài Khoản Ngân Hàng
+        <div className="wallet-modal-backdrop" onClick={() => setShowWithdrawModal(false)}>
+          <div className="wallet-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="wallet-modal-header">
+              <h3>
+                <Icon name="download" />
+                <span>Rút Tiền Về Tài Khoản Ngân Hàng</span>
               </h3>
               <button
                 type="button"
+                className="wallet-modal-close"
                 onClick={() => setShowWithdrawModal(false)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  fontSize: '18px',
-                  cursor: 'pointer',
-                  color: '#64748b',
-                }}
+                title="Đóng"
               >
                 ✕
               </button>
             </div>
 
-            <form
-              className="wallet-modal-body"
-              onSubmit={(e) => void handleSubmitWithdraw(e)}
-              style={{ padding: '20px' }}
-            >
+            <form className="wallet-modal-body" onSubmit={(e) => void handleSubmitWithdraw(e)}>
               <div
                 style={{
-                  padding: '12px 14px',
+                  padding: '12px 16px',
                   backgroundColor: '#f1f5f9',
-                  borderRadius: '8px',
+                  borderRadius: '12px',
                   fontSize: '13px',
                   color: '#334155',
-                  marginBottom: '16px',
+                  marginBottom: '18px',
                   display: 'flex',
                   justifyContent: 'space-between',
+                  alignItems: 'center',
                 }}
               >
                 <span>Số dư khả dụng hiện tại:</span>
-                <strong style={{ color: '#059669' }}>{money(availableBalance)}</strong>
+                <strong style={{ color: '#059669', fontSize: '15px' }}>{money(availableBalance)}</strong>
               </div>
 
               {withdrawError && (
@@ -791,7 +882,7 @@ export default function WalletPage({
                     padding: '10px 14px',
                     backgroundColor: '#fef2f2',
                     border: '1px solid #fecaca',
-                    borderRadius: '6px',
+                    borderRadius: '8px',
                     color: '#b91c1c',
                     fontSize: '13px',
                     marginBottom: '14px',
@@ -801,13 +892,29 @@ export default function WalletPage({
                 </div>
               )}
 
-              <div style={{ marginBottom: '14px' }}>
-                <label
-                  htmlFor="withdraw-amount"
-                  style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
-                >
-                  Số tiền muốn rút (VNĐ): <span style={{ color: '#dc2626' }}>*</span>
-                </label>
+              <div className="wallet-form-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label htmlFor="withdraw-amount" className="wallet-form-label" style={{ margin: 0 }}>
+                    Số tiền muốn rút (VNĐ): <span style={{ color: '#dc2626' }}>*</span>
+                  </label>
+                  {availableBalance >= 50000 && (
+                    <button
+                      type="button"
+                      onClick={() => setWithdrawForm({ ...withdrawForm, amount: String(availableBalance) })}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#059669',
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      Rút tối đa
+                    </button>
+                  )}
+                </div>
                 <input
                   id="withdraw-amount"
                   type="number"
@@ -815,42 +922,22 @@ export default function WalletPage({
                   max={availableBalance}
                   step="10000"
                   required
+                  className="wallet-form-input"
                   value={withdrawForm.amount}
                   onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })}
-                  placeholder="Ví dụ: 1000000"
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                  }}
+                  placeholder="Ví dụ: 1000000 (tối thiểu 50.000 ₫)"
                 />
               </div>
 
-              <div style={{ marginBottom: '14px' }}>
-                <label
-                  htmlFor="withdraw-bank"
-                  style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
-                >
+              <div className="wallet-form-group">
+                <label htmlFor="withdraw-bank" className="wallet-form-label">
                   Ngân hàng thụ hưởng:
                 </label>
                 <select
                   id="withdraw-bank"
+                  className="wallet-form-select"
                   value={withdrawForm.bankName}
                   onChange={(e) => setWithdrawForm({ ...withdrawForm, bankName: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                    backgroundColor: '#ffffff',
-                  }}
                 >
                   {POPULAR_BANKS.map((bank) => (
                     <option key={bank} value={bank}>
@@ -860,45 +947,32 @@ export default function WalletPage({
                 </select>
               </div>
 
-              <div style={{ marginBottom: '14px' }}>
-                <label
-                  htmlFor="withdraw-account-number"
-                  style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
-                >
+              <div className="wallet-form-group">
+                <label htmlFor="withdraw-account-number" className="wallet-form-label">
                   Số tài khoản nhận tiền: <span style={{ color: '#dc2626' }}>*</span>
                 </label>
                 <input
                   id="withdraw-account-number"
                   type="text"
                   required
+                  className="wallet-form-input"
                   value={withdrawForm.bankAccountNumber}
                   onChange={(e) =>
                     setWithdrawForm({ ...withdrawForm, bankAccountNumber: e.target.value })
                   }
                   placeholder="Nhập số tài khoản ngân hàng…"
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                  }}
                 />
               </div>
 
-              <div style={{ marginBottom: '14px' }}>
-                <label
-                  htmlFor="withdraw-account-holder"
-                  style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
-                >
+              <div className="wallet-form-group">
+                <label htmlFor="withdraw-account-holder" className="wallet-form-label">
                   Tên chủ tài khoản: <span style={{ color: '#dc2626' }}>*</span>
                 </label>
                 <input
                   id="withdraw-account-holder"
                   type="text"
                   required
+                  className="wallet-form-input"
                   value={withdrawForm.bankAccountHolder}
                   onChange={(e) =>
                     setWithdrawForm({
@@ -907,48 +981,39 @@ export default function WalletPage({
                     })
                   }
                   placeholder="NGUYEN VAN A"
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                    textTransform: 'uppercase',
-                  }}
+                  style={{ textTransform: 'uppercase' }}
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '8px' }}>
+              <div className="wallet-form-group">
+                <label htmlFor="withdraw-note" className="wallet-form-label">
+                  Ghi chú rút tiền (Tùy chọn):
+                </label>
+                <input
+                  id="withdraw-note"
+                  type="text"
+                  maxLength={100}
+                  className="wallet-form-input"
+                  value={withdrawForm.note}
+                  onChange={(e) => setWithdrawForm({ ...withdrawForm, note: e.target.value })}
+                  placeholder="Ví dụ: Rút tiền doanh thu tuần này…"
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '16px' }}>
                 <button
                   type="button"
+                  className="wallet-btn-secondary"
                   onClick={() => setShowWithdrawModal(false)}
-                  style={{
-                    padding: '9px 18px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    backgroundColor: '#ffffff',
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                  }}
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
+                  className="wallet-btn-primary"
                   disabled={busy || !Number(withdrawForm.amount)}
-                  style={{
-                    padding: '9px 20px',
-                    borderRadius: '8px',
-                    border: 'none',
-                    backgroundColor: '#059669',
-                    color: '#ffffff',
-                    cursor: busy || !Number(withdrawForm.amount) ? 'not-allowed' : 'pointer',
-                    fontWeight: 650,
-                  }}
                 >
-                  {busy ? 'Đang xử lý…' : 'Xác nhận rút tiền'}
+                  {busy ? 'Đang gửi yêu cầu…' : 'Xác nhận rút tiền'}
                 </button>
               </div>
             </form>
