@@ -3914,7 +3914,7 @@ function AiSystemConfig({ onLogout }: Props) {
 
             <div className="admin-config-grid">
               <div className="admin-config-field">
-                <label htmlFor="defaultDepositRate">Tỷ lệ ký quỹ chuẩn khuyến nghị (%)</label>
+                <label htmlFor="defaultDepositRate">Tỷ lệ cọc áp dụng cho báo giá mới (%)</label>
                 <input
                   id="defaultDepositRate"
                   type="number"

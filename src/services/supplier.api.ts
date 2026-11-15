@@ -435,12 +435,28 @@ export async function completeOrder(orderId: number): Promise<{ success: boolean
   return data;
 }
 
-export async function importOrderToInventory(orderId: number): Promise<{
+export type InventoryImportPreview = {
+  units: string[];
+  lines: Array<{ id: number; name: string; packaging: string; packs: number;
+    unit: string; quantity: number; multiplier: number; existingUnit: string | null;
+    canConvert: boolean; needsConversion: boolean; incompatible: boolean }>;
+};
+
+export async function previewOrderInventory(orderId: number): Promise<InventoryImportPreview> {
+  return (await api.get(`/orders/${orderId}/import-inventory`)).data;
+}
+
+export type InventoryImportOptions = {
+  conversions: Array<{ id: number; unit: string; unitsPerPack: number }>;
+  preview: Array<{ id: number; unit: string; quantity: number }>;
+};
+
+export async function importOrderToInventory(orderId: number, options?: InventoryImportOptions): Promise<{
   success: boolean;
   alreadyImported: boolean;
   count: number;
   order: SupplierOrder;
   message: string;
 }> {
-  return (await api.post(`/orders/${orderId}/import-inventory`)).data;
+  return (await api.post(`/orders/${orderId}/import-inventory`, options)).data;
 }
