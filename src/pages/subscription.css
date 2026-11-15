@@ -225,3 +225,28 @@
   color: #7d8c7f;
   background: #f8faf5;
 }
+
+.subscription-confirm {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  max-height: calc(100% - 32px);
+  overflow-y: auto;
+  box-sizing: border-box;
+  width: min(440px, calc(100% - 32px));
+  padding: clamp(16px, 5vw, 26px);
+  border: 1px solid #d9e4d9;
+  border-radius: 16px;
+  background: #fff;
+  color: #223c33;
+}
+.subscription-confirm::backdrop { background: rgb(15 35 27 / 58%); }
+.subscription-confirm h2 { margin: 0; font-size: 22px; }
+.subscription-confirm p { margin: 8px 0; line-height: 1.5; }
+.subscription-confirm dl { padding: 12px; border-radius: 8px; background: #f0f6ef; }
+.subscription-confirm dl div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }
+.subscription-confirm dl div + div { margin-top: 8px; }
+.subscription-confirm dd { margin: 0; font-weight: 700; }
+.subscription-confirm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.subscription-confirm-actions button { min-height: 44px; }
+.subscription-confirm-actions .subscription-renew { width: auto; margin: 0; }
