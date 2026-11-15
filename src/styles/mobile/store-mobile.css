@@ -613,6 +613,18 @@
     min-height: 46px;
   }
 
+  .dashboard-title-actions.overview-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .dashboard-title-actions.overview-actions > button {
+    min-height: 44px;
+    padding: 8px;
+    font-size: 13px;
+    line-height: 1.25;
+  }
+
   .metric-grid {
     gap: 10px;
   }

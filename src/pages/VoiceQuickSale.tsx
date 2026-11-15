@@ -46,7 +46,10 @@ export default function VoiceQuickSale({
   const speechTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [message, setMessage] = useState('');
   const [heardText, setHeardText] = useState('');
-  const [pending, setPending] = useState<{ item: Product; quantity: number }[]>([]);
+  const [pending, setPending] = useState<{ item: Product; quantity: number; requestId: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [retryOnly, setRetryOnly] = useState(false);
+  const savingRef = useRef(false);
   useEffect(
     () => () => {
       if (speechTimer.current) clearTimeout(speechTimer.current);
@@ -65,20 +68,31 @@ export default function VoiceQuickSale({
     [],
   );
   async function confirm() {
+    if (savingRef.current || !pending.length || pending.some(row => !Number.isInteger(row.quantity) || row.quantity < 1)) return;
+    savingRef.current = true;
+    setSaving(true);
     try {
-      for (const row of pending)
-        await api.post(`/inventory/${row.item.id}/movements`, {
-          type: 'SALE',
+      await api.post('/inventory/sales/batch', {
+        rows: pending.map(row => ({
+          itemId: row.item.id,
+          unit: row.item.unit,
           quantity: row.quantity,
           unitSalePrice: row.item.sellingPrice ?? 0,
-          note: 'Bán nhanh bằng giọng nói',
-          requestId: crypto.randomUUID(),
-        });
+          requestId: row.requestId,
+        })),
+      });
+      setRetryOnly(false);
       setMessage(`Đã lưu: ${pending.map((row) => `${row.item.name} ${row.quantity}`).join(', ')}`);
       setPending([]);
-      await onSaved();
+      await onSaved().catch(() => setMessage('Đã lưu lượt bán. Tải lại kho để xem số tồn mới.'));
     } catch (error) {
-      setMessage(getApiError(error));
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      const uncertain = !status || status >= 500;
+      setRetryOnly(current => current || uncertain);
+      setMessage(uncertain ? 'Chưa nhận được kết quả. Bấm xác nhận lại để kiểm tra lượt bán này.' : getApiError(error));
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
     }
   }
   function start() {
@@ -143,6 +157,11 @@ export default function VoiceQuickSale({
       finish();
       const text = String(event.results?.[0]?.[0]?.transcript || '');
       const normalized = cleanVoice(text);
+      if (/(?:^|\s)(?:thung|ket|loc|khay|kien|bao)(?=\s+\d|$)|\b\d+\s+(?:thung|ket|loc|khay|kien|bao)\b/.test(normalized)) {
+        setHeardText(text);
+        setMessage('Hãy nói số lượng theo đơn vị bán lẻ trong kho, ví dụ 24 lon.');
+        return;
+      }
       const segments = [...normalized.matchAll(/(.+?)\s+(\d+)(?=\s|$)/g)].map((match) => ({
         phrase: match[1].trim(),
         quantity: Number(match[2]),
@@ -183,7 +202,7 @@ export default function VoiceQuickSale({
         return;
       }
       setHeardText(text);
-      setPending(matched);
+      setPending(matched.map(row => ({ ...row, requestId: crypto.randomUUID() })));
       setMessage('Kiểm tra nội dung đã nghe rồi bấm Xác nhận lưu.');
     };
     recognition.onerror = (event: { error?: string; message?: string }) => {
@@ -214,24 +233,24 @@ export default function VoiceQuickSale({
   }
   return (
     <section className="dashboard-card voice-quick-sale">
-      <div className="card-heading">
+      <div className="voice-heading">
         <div>
-          <span className="section-kicker">BÁN NHANH</span>
-          <h2>Nói để cập nhật cuối ca</h2>
+          <h2>Bán nhanh bằng giọng nói</h2>
+          <p>Ví dụ “Coca 12, Sting 8, mì Hảo Hảo 5”.</p>
         </div>
         <button
           className="dash-primary"
           type="button"
           onClick={start}
-          disabled={speechState !== 'idle'}
+          disabled={speechState !== 'idle' || saving || retryOnly}
         >
           {speechState === 'starting'
             ? 'Đang mở mic…'
             : speechState === 'listening'
-              ? '🎙️ Đang nghe…'
+              ? 'Đang nghe…'
               : speechState === 'processing'
                 ? 'Đang xử lý…'
-                : '🎙️ Bắt đầu nói'}
+                : 'Bắt đầu nói'}
         </button>
         {speechState !== 'idle' && (
           <button type="button" onClick={() => speech.current?.abort()}>
@@ -239,37 +258,57 @@ export default function VoiceQuickSale({
           </button>
         )}
       </div>
-      <p className="stock-help">
-        Ví dụ: “Coca 12, Sting 8, mì Hảo Hảo 5”. Hệ thống sẽ hiện lại nội dung trước khi lưu.
-      </p>
       {heardText && (
-        <div className="voice-preview" role="status">
-          <strong>Đã nghe:</strong> “{heardText}”
+        <div className="voice-preview">
+          <p className="voice-transcript"><strong>Đã nghe</strong> “{heardText}”</p>
+          {pending.length > 0 && <h3>Kiểm tra số lượng</h3>}
           <ul>
             {pending.map((row) => (
-              <li key={row.item.id}>
-                {row.item.name}: {row.quantity} {row.item.unit}
+              <li key={row.requestId}>
+                <label>
+                  <strong>{row.item.name}</strong>
+                  <span className="voice-quantity">
+                  <input
+                    aria-label={`Số lượng ${row.item.name}`}
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={row.quantity || ''}
+                    disabled={saving || retryOnly}
+                    onChange={event => {
+                      const quantity = Number(event.target.value);
+                      setPending(rows => rows.map(item => item.requestId === row.requestId ? { ...item, quantity } : item));
+                    }}
+                  />{' '}
+                  {row.item.unit}
+                  </span>
+                </label>
               </li>
             ))}
           </ul>
+          {pending.length > 0 && (
+            <div className="voice-actions">
           <button
             className="dash-primary"
             type="button"
-            disabled={!pending.length || speechState !== 'idle'}
+            disabled={!pending.length || speechState !== 'idle' || saving || pending.some(row => !Number.isInteger(row.quantity) || row.quantity < 1)}
             onClick={() => void confirm()}
           >
-            Xác nhận lưu
+            {saving ? 'Đang lưu…' : 'Xác nhận lưu'}
           </button>
           <button
             type="button"
+            disabled={saving || retryOnly}
             onClick={() => {
               setPending([]);
               setHeardText('');
-              setMessage('Đã hủy, bạn có thể nói lại.');
+              setMessage('Đã hủy lượt bán.');
             }}
           >
-            Nói lại
+            Hủy lượt bán
           </button>
+            </div>
+          )}
         </div>
       )}
       {message && (

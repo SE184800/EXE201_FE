@@ -199,7 +199,6 @@ export default function OverviewRestockSuggestions({
             <Icon name="sparkle" />
           </span>
           <strong>Chưa có dịp bán hàng nào sắp tới.</strong>
-          <p>Khi Admin bật lịch ngày lễ, gợi ý sẽ tự động hiện tại đây.</p>
           <button type="button" onClick={onOpen}>
             Xem dự báo thường
           </button>

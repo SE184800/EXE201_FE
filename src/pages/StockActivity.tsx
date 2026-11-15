@@ -128,14 +128,12 @@ function groupMovementsIntoBatches(movements: Movement[]): StockBatch[] {
       }
     }
 
-    const uniqueNames = Array.from(new Set(batchMovements.map((m) => m.productName)));
-    const previewNames = uniqueNames.slice(0, 3).join(', ') + (uniqueNames.length > 3 ? ` và ${uniqueNames.length - 3} món khác` : '');
 
     batches.push({
       id: `batch-${isInbound ? 'in' : 'out'}-${dayKey}-${row.id}`,
       batchType: isInbound ? 'DAILY_IMPORT' : 'DAILY_EXPORT',
       title: isInbound ? `Nhập kho ngày ${dayDisplay}` : `Xuất kho ngày ${dayDisplay}`,
-      subtitle: `${batchMovements.length} giao dịch · ${previewNames}`,
+      subtitle: `${batchMovements.length} giao dịch`,
       occurredAt: row.createdAt,
       totalItems: batchMovements.length,
       totalQuantity: batchMovements.reduce((sum, m) => sum + Math.abs(m.quantityChange), 0),
@@ -172,6 +170,11 @@ export default function StockActivity({
   const request = useRef<{ signature: string; id: string } | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchDate, setSearchDate] = useState('');
+  const [searchProduct, setSearchProduct] = useState('');
+  const [filters, setFilters] = useState({ date: '', product: '' });
+  const hasFilters = Boolean(filters.date || filters.product);
   const [historyError, setHistoryError] = useState('');
   const [rows, setRows] = useState<Movement[]>([]);
   const [page, setPage] = useState(1);
@@ -188,7 +191,7 @@ export default function StockActivity({
   useEffect(() => {
     let active = true;
     api
-      .get<{ movements: Movement[]; hasMore: boolean }>('/inventory/history', { params: { page, limit: 100 } })
+      .get<{ movements: Movement[]; hasMore: boolean }>('/inventory/history', { params: { page, limit: 100, from: filters.date || undefined, to: filters.date || undefined, product: filters.product || undefined } })
       .then(({ data }) => {
         if (active) {
           setRows(data.movements);
@@ -208,24 +211,13 @@ export default function StockActivity({
     return () => {
       active = false;
     };
-  }, [page, reload, revision, onLogout]);
+  }, [page, reload, revision, onLogout, filters]);
 
   // Gom các biến động thành từng đợt
   const batches = useMemo(() => groupMovementsIntoBatches(rows), [rows]);
 
   function toggleBatch(batchId: string) {
     setExpandedBatches((prev) => ({ ...prev, [batchId]: !prev[batchId] }));
-  }
-
-  function toggleExpandAll() {
-    const allExpanded = batches.every((b) => expandedBatches[b.id]);
-    if (allExpanded) {
-      setExpandedBatches({});
-    } else {
-      const next: Record<string, boolean> = {};
-      batches.forEach((b) => (next[b.id] = true));
-      setExpandedBatches(next);
-    }
   }
 
   async function submit(event: FormEvent) {
@@ -367,84 +359,59 @@ export default function StockActivity({
       </div>
 
       <div hidden={mode !== 'history'}>
-        <div className="inventory-heading" style={{ flexWrap: 'wrap', gap: '12px' }}>
-          <div>
-            <h3 style={{ margin: 0 }}>Lịch sử nhập / xuất kho</h3>
-            <span style={{ fontSize: '12.5px', color: '#64748b' }}>
-              Theo dõi và phân biệt chi tiết từng đợt nhập hàng và các biến động kho
-            </span>
-          </div>
-
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <div
-              style={{
-                display: 'inline-flex',
-                borderRadius: '8px',
-                border: '1px solid #cbd5e1',
-                padding: '2px',
-                backgroundColor: '#f8fafc',
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setViewMode('batch')}
-                style={{
-                  padding: '6px 14px',
-                  fontSize: '12.5px',
-                  fontWeight: viewMode === 'batch' ? 700 : 500,
-                  borderRadius: '6px',
-                  border: 'none',
-                  backgroundColor: viewMode === 'batch' ? '#0284c7' : 'transparent',
-                  color: viewMode === 'batch' ? '#ffffff' : '#475569',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                Theo từng đợt nhập hàng ({batches.length})
+        <div className="inventory-heading stock-history-heading">
+          <h3>Lịch sử nhập / xuất kho</h3>
+          <div className="stock-history-tools">
+            <div className="stock-history-modes" role="group" aria-label="Cách xem lịch sử">
+              <button type="button" aria-pressed={viewMode === 'batch'} onClick={() => setViewMode('batch')}>
+                Theo nhóm
               </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('flat')}
-                style={{
-                  padding: '6px 14px',
-                  fontSize: '12.5px',
-                  fontWeight: viewMode === 'flat' ? 700 : 500,
-                  borderRadius: '6px',
-                  border: 'none',
-                  backgroundColor: viewMode === 'flat' ? '#0284c7' : 'transparent',
-                  color: viewMode === 'flat' ? '#ffffff' : '#475569',
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                }}
-              >
-                Tất cả biến động ({rows.length})
+              <button type="button" aria-pressed={viewMode === 'flat'} onClick={() => setViewMode('flat')}>
+                Tất cả
               </button>
             </div>
-
-            {viewMode === 'batch' && batches.length > 0 && (
-              <button
-                type="button"
-                onClick={toggleExpandAll}
-                className="secondary-button"
-                style={{ padding: '6px 12px', fontSize: '12px' }}
-              >
-                {batches.every((b) => expandedBatches[b.id]) ? 'Thu gọn tất cả' : 'Mở rộng tất cả'}
-              </button>
-            )}
-
-            <button
-              className="inventory-refresh"
-              disabled={loading}
-              onClick={() => {
-                setLoading(true);
-                setReload((value) => value + 1);
-              }}
-            >
+            <button type="button" aria-expanded={searchOpen} aria-controls="stock-history-search"
+              onClick={() => setSearchOpen((open) => !open)}>
+              Tìm kiếm
+            </button>
+            <button type="button" disabled={loading} onClick={() => {
+              setLoading(true);
+              setReload((value) => value + 1);
+            }}>
               Tải lại
             </button>
           </div>
         </div>
-
+        <form id="stock-history-search" className="stock-history-search" hidden={!searchOpen} onSubmit={(event) => {
+          event.preventDefault();
+          setLoading(true);
+          setPage(1);
+          setExpandedBatches({});
+          setFilters({ date: searchDate, product: searchProduct.trim() });
+        }}>
+          <label>
+            Tên sản phẩm
+            <input type="search" value={searchProduct} maxLength={100} onChange={(event) => setSearchProduct(event.target.value)} />
+          </label>
+          <label>
+            Ngày giao dịch
+            <input type="date" value={searchDate} min="1900-01-01" onChange={(event) => setSearchDate(event.target.value)} />
+          </label>
+          <button type="submit">Áp dụng</button>
+        </form>
+        {hasFilters && (
+          <div className="stock-history-active-filter">
+            <span>{[filters.date.split('-').reverse().join('/'), filters.product].filter(Boolean).join(' · ')}</span>
+            <button type="button" onClick={() => {
+              setSearchDate('');
+              setSearchProduct('');
+              setLoading(true);
+              setPage(1);
+              setExpandedBatches({});
+              setFilters({ date: '', product: '' });
+            }}>Bỏ lọc</button>
+          </div>
+        )}
         {historyError ? (
           <p role="alert" className="error-notice">
             {historyError}
@@ -452,153 +419,48 @@ export default function StockActivity({
         ) : loading ? (
           <p role="status">Đang tải lịch sử…</p>
         ) : !rows.length ? (
-          <p className="inventory-empty">Chưa có giao dịch ở trang này.</p>
+          <p className="inventory-empty">{hasFilters ? 'Không tìm thấy giao dịch phù hợp.' : 'Chưa có giao dịch ở trang này.'}</p>
         ) : viewMode === 'batch' ? (
-          /* Chế độ gom theo từng đợt nhập hàng */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '14px' }}>
-            {batches.map((batch) => {
+          <div className="stock-history-groups">
+            {batches.map(batch => {
               const isExpanded = Boolean(expandedBatches[batch.id]);
-              const isImport = batch.batchType === 'WHOLESALE_ORDER' || batch.batchType === 'DAILY_IMPORT';
-
               return (
-                <div
-                  key={batch.id}
-                  style={{
-                    borderRadius: '10px',
-                    border: `1px solid ${isImport ? '#bbf7d0' : '#fecaca'}`,
-                    backgroundColor: '#ffffff',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                    overflow: 'hidden',
-                  }}
-                >
-                  {/* Header nhóm theo ngày */}
-                  <div
-                    style={{
-                      padding: '12px 16px',
-                      backgroundColor: isImport ? '#f0fdf4' : '#fef2f2',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      flexWrap: 'wrap',
-                      gap: '10px',
-                      borderBottom: isExpanded ? '1px solid #e2e8f0' : 'none',
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '260px' }}>
-                      <span
-                        style={{
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          padding: '3px 8px',
-                          borderRadius: '4px',
-                          letterSpacing: '0.3px',
-                          backgroundColor: isImport ? '#16a34a' : '#dc2626',
-                          color: '#ffffff',
-                        }}
-                      >
-                        {isImport ? 'NHẬP KHO' : 'XUẤT KHO'}
-                      </span>
-
-                      <div>
-                        <strong style={{ fontSize: '14px', color: '#0f172a', display: 'block' }}>
-                          {batch.title}
-                        </strong>
-                        <span style={{ fontSize: '12.5px', color: '#64748b' }}>
-                          {batch.subtitle}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      <div style={{ textAlign: 'right' }}>
-                        <strong style={{ fontSize: '13px', color: isImport ? '#15803d' : '#b91c1c', display: 'block' }}>
-                          {summarizeBatchQuantities(batch.movements)}
-                        </strong>
-                        <span style={{ fontSize: '12px', color: '#64748b' }}>
-                          {toVnDateDisplay(batch.occurredAt)}
-                        </span>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => toggleBatch(batch.id)}
-                        style={{
-                          padding: '6px 14px',
-                          fontSize: '12.5px',
-                          fontWeight: 650,
-                          borderRadius: '6px',
-                          border: '1px solid #cbd5e1',
-                          backgroundColor: isExpanded ? '#0284c7' : '#ffffff',
-                          color: isExpanded ? '#ffffff' : '#0f172a',
-                          cursor: 'pointer',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                        }}
-                      >
-                        {isExpanded ? 'Thu gọn ▲' : 'Chi tiết ▼'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Chi tiết từng món trong ngày */}
+                <article className="stock-history-group" key={batch.id}>
+                  <button type="button" className="stock-history-summary" aria-expanded={isExpanded}
+                    onClick={() => toggleBatch(batch.id)}>
+                    <span>
+                      <strong>{batch.title}</strong>
+                      <small>{batch.subtitle}{batch.orderId ? ' · ' + toVnDateDisplay(batch.occurredAt) : ''}</small>
+                    </span>
+                    <strong className={batch.batchType === 'DAILY_EXPORT' ? 'stock-out' : 'stock-in'}>
+                      {summarizeBatchQuantities(batch.movements)}
+                    </strong>
+                    <span aria-hidden="true">{isExpanded ? '▴' : '▾'}</span>
+                  </button>
                   {isExpanded && (
-                    <div style={{ padding: '12px 16px', backgroundColor: '#ffffff' }}>
-                      <table className="inventory-table" style={{ margin: 0 }}>
-                        <thead>
-                          <tr style={{ backgroundColor: '#f8fafc' }}>
-                            <th style={{ fontSize: '12px' }}>Sản phẩm</th>
-                            <th style={{ fontSize: '12px' }}>Thao tác</th>
-                            <th style={{ fontSize: '12px' }}>Số lượng</th>
-                            <th style={{ fontSize: '12px' }}>Tồn trước → Sau</th>
-                            <th style={{ fontSize: '12px' }}>Ghi chú / Thời gian</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {batch.movements.map((m) => (
-                            <tr key={m.id}>
-                              <td>
-                                <strong style={{ color: '#0f172a' }}>{m.productName}</strong>
-                              </td>
-                              <td style={{ fontSize: '12.5px' }}>
-                                <span
-                                  style={{
-                                    padding: '2px 8px',
-                                    borderRadius: '4px',
-                                    fontSize: '11.5px',
-                                    fontWeight: 600,
-                                    backgroundColor: m.quantityChange > 0 ? '#dcfce7' : '#fee2e2',
-                                    color: m.quantityChange > 0 ? '#15803d' : '#b91c1c',
-                                  }}
-                                >
-                                  {labels[m.type] || m.type}
-                                </span>
-                              </td>
-                              <td
-                                className={m.quantityChange < 0 ? 'stock-out' : 'stock-in'}
-                                style={{ fontWeight: 700 }}
-                              >
-                                {m.quantityChange > 0 ? '+' : ''}
-                                {m.quantityChange} {m.unit}
-                              </td>
-                              <td style={{ fontSize: '12.5px', color: '#475569' }}>
-                                {m.quantityBefore} → <strong>{m.quantityAfter}</strong> {m.unit}
-                              </td>
-                              <td style={{ fontSize: '12px', color: '#64748b' }}>
-                                {m.note ? `${m.note} · ` : ''}
-                                {new Date(m.createdAt).toLocaleTimeString('vi-VN', {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                  timeZone: 'Asia/Ho_Chi_Minh',
-                                })}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <ul className="stock-history-rows">
+                      {batch.movements.map(m => (
+                        <li key={m.id}>
+                          <div>
+                            <strong>{m.productName}</strong>
+                            <small>
+                              {labels[m.type] || m.type} · {new Date(m.createdAt).toLocaleTimeString('vi-VN', {
+                                hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh',
+                              })}
+                            </small>
+                          </div>
+                          <div className="stock-history-quantity">
+                            <strong className={m.quantityChange < 0 ? 'stock-out' : 'stock-in'}>
+                              {m.quantityChange > 0 ? '+' : ''}{m.quantityChange} {m.unit}
+                            </strong>
+                            <small>Tồn {m.quantityBefore} → {m.quantityAfter}</small>
+                          </div>
+                          {m.note && <details><summary>Ghi chú</summary><p>{m.note}</p></details>}
+                        </li>
+                      ))}
+                    </ul>
                   )}
-                </div>
+                </article>
               );
             })}
           </div>
