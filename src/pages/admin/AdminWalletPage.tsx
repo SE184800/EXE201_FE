@@ -999,7 +999,7 @@ function OrderPayments({ onLogout }: Props) {
                   <th>Người mua</th>
                   <th>Chủ vựa</th>
                   <th>Số tiền</th>
-                  <th>Hoa hồng</th>
+                  {/* <th>Hoa hồng</th> */}
                   <th>Trạng thái</th>
                   <th>Ngày thanh toán</th>
                   <th>Thao tác</th>
@@ -1021,13 +1021,13 @@ function OrderPayments({ onLogout }: Props) {
                     <td>
                       <strong>{money(payment.amount)}</strong>
                     </td>
-                    <td>
+                    {/* <td>
                       <small>
                         {payment.commissionAmount === null
                           ? '—'
                           : money(payment.commissionAmount)}
                       </small>
-                    </td>
+                    </td> */}
                     <td>
                       <span className="admin-badge">{payment.statusLabel}</span>
                     </td>

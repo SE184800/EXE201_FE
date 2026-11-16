@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
-import Icon from '../../components/Icon';
 import { money } from './walletFormat';
 
 /**
@@ -14,8 +13,8 @@ export default function WalletQrCode({
   accountNumber,
   accountHolder,
   billNumber,
-  onConfirm,
-  busy,
+  onClose,
+  onChangeAmount,
 }: {
   payload: string;
   amount: number;
@@ -23,11 +22,12 @@ export default function WalletQrCode({
   accountNumber: string;
   accountHolder: string;
   billNumber: string;
-  onConfirm: () => void;
-  busy: boolean;
+  onClose?: () => void;
+  onChangeAmount?: () => void;
 }) {
   const [dataUrl, setDataUrl] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [copiedMemo, setCopiedMemo] = useState(false);
+  const [copiedAccount, setCopiedAccount] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -48,9 +48,9 @@ export default function WalletQrCode({
     };
   }, [payload]);
 
-  async function copyPayload() {
+  async function copyText(textToCopy: string, setCopied: (v: boolean) => void) {
     try {
-      await navigator.clipboard.writeText(payload);
+      await navigator.clipboard.writeText(textToCopy);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -59,7 +59,7 @@ export default function WalletQrCode({
   }
 
   return (
-    <div className="wallet-qr">
+    <div className="wallet-qr" style={{ width: '100%' }}>
       <div className="wallet-qr-code">
         {dataUrl ? (
           <img src={dataUrl} alt={`Mã QR nạp ${money(amount)}`} width={196} height={196} />
@@ -74,7 +74,17 @@ export default function WalletQrCode({
         </div>
         <div>
           <dt>Số tài khoản</dt>
-          <dd>{accountNumber}</dd>
+          <dd style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+            <span>{accountNumber}</span>
+            <button
+              type="button"
+              className="ghost-button"
+              style={{ padding: '2px 8px', fontSize: '11px', height: 'auto' }}
+              onClick={() => void copyText(accountNumber, setCopiedAccount)}
+            >
+              {copiedAccount ? 'Đã sao chép' : 'Sao chép'}
+            </button>
+          </dd>
         </div>
         <div>
           <dt>Chủ tài khoản</dt>
@@ -85,21 +95,86 @@ export default function WalletQrCode({
           <dd className="wallet-qr-amount">{money(amount)}</dd>
         </div>
         <div>
-          <dt>Mã phiếu</dt>
-          <dd>{billNumber}</dd>
+          <dt>Nội dung CK</dt>
+          <dd style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+            <span style={{ fontWeight: 700, color: '#166534' }}>{billNumber}</span>
+            <button
+              type="button"
+              className="ghost-button"
+              style={{ padding: '2px 8px', fontSize: '11px', height: 'auto' }}
+              onClick={() => void copyText(billNumber, setCopiedMemo)}
+            >
+              {copiedMemo ? 'Đã sao chép' : 'Sao chép'}
+            </button>
+          </dd>
         </div>
       </dl>
-      <p className="wallet-qr-hint">
-        Mở ứng dụng ngân hàng, chọn quét mã QR, kiểm tra số tiền và thông tin chuyển khoản rồi bấm
-        xác nhận bên dưới.
-      </p>
-      <div className="wallet-qr-actions">
-        <button className="primary-button" type="button" onClick={onConfirm} disabled={busy}>
-          <Icon name="check" /> {busy ? 'Đang xác nhận…' : 'Tôi đã chuyển khoản'}
-        </button>
-        <button className="ghost-button" type="button" onClick={() => void copyPayload()}>
-          {copied ? 'Đã sao chép' : 'Sao chép mã QR'}
-        </button>
+
+      <div
+        className="wallet-qr-actions"
+        style={{
+          marginTop: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px',
+          width: '100%',
+          justifySelf: 'stretch',
+          boxSizing: 'border-box',
+        }}
+      >
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '13px 20px',
+              backgroundColor: '#059669',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '10px',
+              fontSize: '15px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 4px 12px rgba(5, 150, 105, 0.28)',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              letterSpacing: '0.2px',
+            }}
+          >
+            Đóng cửa sổ
+          </button>
+        )}
+        {onChangeAmount && (
+          <button
+            type="button"
+            onClick={onChangeAmount}
+            style={{
+              width: '100%',
+              boxSizing: 'border-box',
+              padding: '12px 20px',
+              backgroundColor: '#f8fafc',
+              color: '#1e293b',
+              border: '1.5px solid #cbd5e1',
+              borderRadius: '10px',
+              fontSize: '14px',
+              fontWeight: 650,
+              cursor: 'pointer',
+              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.05)',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}
+          >
+            ← Đổi số tiền khác
+          </button>
+        )}
       </div>
     </div>
   );

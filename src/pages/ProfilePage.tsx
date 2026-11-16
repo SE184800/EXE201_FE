@@ -1243,7 +1243,7 @@ export default function ProfilePage({
                     <strong>Đã tìm thấy trên bản đồ số:</strong> {mapVerifiedAddress}
                     {form.latitude && form.longitude && (
                       <div style={{ fontSize: '11px', color: '#15803d', marginTop: '2px' }}>
-                        Tọa độ: {form.latitude.toFixed(6)}, {form.longitude.toFixed(6)} (Sẵn sàng đo khoảng cách đến chủ vựa)
+                        Tọa độ: {form.latitude.toFixed(6)}, {form.longitude.toFixed(6)}
                       </div>
                     )}
                   </div>

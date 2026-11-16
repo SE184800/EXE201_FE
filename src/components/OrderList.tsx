@@ -648,26 +648,6 @@ export default function OrderList({
     }
   }
 
-  async function submitSandboxDeposit(order: SupplierOrder) {
-    if (depositBusy !== null) return;
-    setDepositBusy(order.id);
-    setError('');
-    setDepositNotice('');
-    try {
-      await api.post(`/orders/${order.id}/deposit/sandbox`);
-      setDepositDraft(null);
-      setDepositNotice(
-        `Thanh toán sandbox cho đơn #${order.id} đã được ghi nhận. Không có tiền thật được chuyển; chủ vựa vẫn cần bấm xác nhận để hoàn tất bước cọc.`,
-      );
-      setReload((value) => value + 1);
-    } catch (issue) {
-      setError(getApiError(issue));
-      if (isUnauthenticated(issue)) onLogout();
-    } finally {
-      setDepositBusy(null);
-    }
-  }
-
   async function submitRefund(event: FormEvent, order: SupplierOrder) {
     event.preventDefault();
     const reference = refundDraft?.orderId === order.id ? refundDraft.reference.trim() : '';
@@ -1804,18 +1784,6 @@ export default function OrderList({
                             >
                               Tôi đã chuyển khoản ngoài
                             </button>
-                            {(import.meta.env.DEV || order.note?.includes('[DEMO')) && <details className="order-test-tools">
-                              <summary>Thử nghiệm · Không chuyển tiền</summary>
-                              <button
-                                className="ghost-button"
-                                disabled={depositBusy !== null}
-                                onClick={() => void submitSandboxDeposit(order)}
-                              >
-                                {depositBusy === order.id
-                                  ? 'Đang thử…'
-                                  : 'Thử báo chuyển cọc'}
-                              </button>
-                            </details>}
                           </div>
                         )}
                       </>

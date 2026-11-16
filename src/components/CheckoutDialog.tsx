@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import type { CatalogProduct } from '../services/catalog.api';
 import { api, getApiError, isUnauthenticated } from '../services/api';
-import { getWallet, addMockFunds, type WalletInfo } from '../services/wallet.api';
+import { getWallet, type WalletInfo } from '../services/wallet.api';
 import { calculateDeliveryFee, type DeliveryFeeResult } from '../utils/geo';
 import type { Profile } from '../pages/ProfilePage';
 import { checkoutRequestId } from '../utils/checkoutRequests';
@@ -102,7 +102,6 @@ export default function CheckoutDialog({
   }, [form]);
 
   const [wallet, setWallet] = useState<WalletInfo | null>(null);
-  const [mockAdding, setMockAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [createdOrders, setCreatedOrders] = useState<CreatedOrderSummary[]>([]);
@@ -157,18 +156,6 @@ export default function CheckoutDialog({
       setForm((prev: CheckoutFormState) => ({ ...prev, deliveryAddress: storeAddress }));
     } else {
       setForm((prev: CheckoutFormState) => ({ ...prev, deliveryAddress: customAddress }));
-    }
-  }
-
-  async function handleQuickAddMock() {
-    setMockAdding(true);
-    try {
-      const res = await addMockFunds(5000000);
-      setWallet(res.wallet);
-    } catch {
-      // ignore
-    } finally {
-      setMockAdding(false);
     }
   }
 
@@ -626,37 +613,28 @@ export default function CheckoutDialog({
                 {isInsufficientBalance && (
                   <div className="checkout-insufficient-banner">
                     <p>
-                      Số dư ví không đủ để cọc {money(totalDepositRequired)}. Bạn có thể nạp thử nghiệm ngay bên dưới.
+                      Số dư ví không đủ để cọc {money(totalDepositRequired)}. Vui lòng nạp tiền vào ví qua VietQR để tiếp tục.
                     </p>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
                       <button
                         type="button"
                         className="table-button primary-small"
-                        disabled={mockAdding}
-                        onClick={handleQuickAddMock}
-                        style={{ fontSize: '11.5px', padding: '5px 12px' }}
-                      >
-                        {mockAdding ? 'Đang cộng…' : '+ Nạp 5 triệu thử nghiệm (Mock)'}
-                      </button>
-                      <button
-                        type="button"
-                        className="table-button"
                         onClick={() => {
                           onClose();
                           navigate('/store/wallet');
                         }}
                         style={{
                           fontSize: '11.5px',
-                          padding: '5px 12px',
-                          backgroundColor: '#ffffff',
-                          color: '#214e39',
-                          border: '1px solid #214e39',
+                          padding: '5px 14px',
+                          backgroundColor: '#059669',
+                          color: '#ffffff',
+                          border: 'none',
                           borderRadius: '6px',
                           cursor: 'pointer',
                           fontWeight: 600,
                         }}
                       >
-                        Nạp tiền vào ví
+                        + Nạp tiền vào ví
                       </button>
                     </div>
                   </div>

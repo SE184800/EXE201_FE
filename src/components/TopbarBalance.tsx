@@ -37,7 +37,9 @@ export default function TopbarBalance({ onNavigateWallet, linkTo, className = ''
       });
     void refresh();
     window.addEventListener('supplymind:wallet-changed', refresh);
+    const interval = setInterval(refresh, 4000);
     return () => {
+      clearInterval(interval);
       window.removeEventListener('supplymind:wallet-changed', refresh);
       active = false;
     };

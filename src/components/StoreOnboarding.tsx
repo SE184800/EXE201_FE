@@ -808,7 +808,7 @@ export default function StoreOnboarding({
                     <strong>Đã tìm thấy trên bản đồ số:</strong> {mapVerifiedAddress}
                     {latitude && longitude && (
                       <div style={{ fontSize: '11px', color: '#15803d', marginTop: '2px' }}>
-                        Tọa độ: {latitude.toFixed(6)}, {longitude.toFixed(6)} (Sẵn sàng đo khoảng cách đến chủ vựa)
+                        Tọa độ: {latitude.toFixed(6)}, {longitude.toFixed(6)}
                       </div>
                     )}
                   </div>

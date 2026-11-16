@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import '../catalog.css';
 import '../wallet.css';
@@ -6,9 +6,9 @@ import './wallet.css';
 import Icon from '../../components/Icon';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
 import {
-  confirmQrDeposit,
   createQrDepositRequest,
   createWithdrawalRequest,
+  getQrDepositTicket,
   getWallet,
   getWalletTransactions,
   type QrCode,
@@ -70,7 +70,8 @@ export default function WalletPage({
   // Deposit modal state
   const [showDepositModal, setShowDepositModal] = useState(searchParams.get('tab') === 'deposit');
   const [depositAmount, setDepositAmount] = useState('500000');
-  const [depositNote, setDepositNote] = useState('');
+  const [depositNote, setDepositNote] = useState('Nạp tiền vào SupplyMind AI');
+  const [successToast, setSuccessToast] = useState('');
   const [qrLoading, setQrLoading] = useState(false);
   const [qr, setQr] = useState<QrCode | null>(null);
   const [qrTicketId, setQrTicketId] = useState<number | null>(null);
@@ -85,12 +86,20 @@ export default function WalletPage({
     note: '',
   });
   const [withdrawError, setWithdrawError] = useState('');
+  const depositBackdropMouseDown = useRef(false);
+  const withdrawBackdropMouseDown = useRef(false);
 
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(''), 4000);
     return () => clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (!successToast) return;
+    const timer = setTimeout(() => setSuccessToast(''), 4500);
+    return () => clearTimeout(timer);
+  }, [successToast]);
 
   const load = useCallback(async () => {
     try {
@@ -101,6 +110,7 @@ export default function WalletPage({
       setError('');
       setOverview(walletRes);
       setTransactions(txRes.transactions || []);
+      window.dispatchEvent(new CustomEvent('supplymind:wallet-changed'));
     } catch (e) {
       setError(getApiError(e));
       if (isUnauthenticated(e)) onLogout();
@@ -182,24 +192,41 @@ export default function WalletPage({
     }
   }
 
-  // Confirm QR transfer
-  async function handleConfirmQr() {
-    if (!qrTicketId || busy) return;
-    setBusy(true);
-    try {
-      await confirmQrDeposit(qrTicketId);
-      setNotice('Xác nhận nạp tiền thành công! Số dư ví đã được cập nhật.');
-      setShowDepositModal(false);
-      setQr(null);
-      setQrTicketId(null);
-      await load();
-    } catch (issue) {
-      setError(getApiError(issue));
-      if (isUnauthenticated(issue)) onLogout();
-    } finally {
-      setBusy(false);
-    }
-  }
+  // Polling for QR ticket approval via SePay Webhook
+  useEffect(() => {
+    if (!qrTicketId || !showDepositModal) return;
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      try {
+        const ticket = await getQrDepositTicket(qrTicketId);
+        if (cancelled) return;
+        if (ticket.status === 'APPROVED') {
+          clearInterval(interval);
+          setSuccessToast(`Nạp tiền thành công! Đã cộng +${money(ticket.amount)} vào ví SupplyMind AI.`);
+          setNotice(`Nạp tiền thành công! Đã cộng ${money(ticket.amount)} vào ví hệ thống.`);
+          setTimeout(async () => {
+            if (cancelled) return;
+            setShowDepositModal(false);
+            setQr(null);
+            setQrTicketId(null);
+            await load();
+          }, 1500);
+        } else if (ticket.status === 'REJECTED') {
+          clearInterval(interval);
+          setError('Phiếu nạp tiền đã bị từ chối.');
+          setShowDepositModal(false);
+          setQr(null);
+          setQrTicketId(null);
+        }
+      } catch {
+        // silent retry on network hiccups
+      }
+    }, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [qrTicketId, showDepositModal, load]);
 
   // Submit withdrawal request
   async function handleSubmitWithdraw(e: FormEvent) {
@@ -254,6 +281,45 @@ export default function WalletPage({
 
   return (
     <section className="wallet-page" aria-label="Ví tiền và Ký quỹ hệ thống">
+      {successToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            top: '24px',
+            right: '24px',
+            zIndex: 999999,
+            backgroundColor: '#10b981',
+            color: '#ffffff',
+            padding: '14px 22px',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            fontWeight: 600,
+            fontSize: '14.5px',
+          }}
+        >
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '24px',
+              height: '24px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(255, 255, 255, 0.25)',
+              fontSize: '13px',
+              fontWeight: 700,
+            }}
+          >
+            ✓
+          </span>
+          <span>{successToast}</span>
+        </div>
+      )}
       {searchParams.get('from') === 'subscription' && (
         <Link className="ghost-button" to={`${role === 'SUPPLIER' ? '/supplier' : '/store'}/subscription`}>Quay lại mua gói Basic</Link>
       )}
@@ -497,11 +563,18 @@ export default function WalletPage({
       {showDepositModal && (
         <div
           className="wallet-modal-backdrop"
-          onClick={() => setShowDepositModal(false)}
+          onMouseDown={(e) => {
+            depositBackdropMouseDown.current = e.target === e.currentTarget;
+          }}
+          onMouseUp={(e) => {
+            if (depositBackdropMouseDown.current && e.target === e.currentTarget) {
+              setShowDepositModal(false);
+            }
+            depositBackdropMouseDown.current = false;
+          }}
         >
           <div
             className="wallet-modal-card"
-            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: '520px' }}
           >
             <div
@@ -623,7 +696,7 @@ export default function WalletPage({
                       maxLength={100}
                       value={depositNote}
                       onChange={(e) => setDepositNote(e.target.value)}
-                      placeholder="Nạp tiền cọc đơn hàng sỉ…"
+                      placeholder="Nạp tiền vào SupplyMind AI"
                       style={{
                         width: '100%',
                         padding: '10px 14px',
@@ -634,22 +707,6 @@ export default function WalletPage({
                         outline: 'none',
                       }}
                     />
-                  </div>
-
-                  <div
-                    style={{
-                      padding: '12px',
-                      backgroundColor: '#f0fdf4',
-                      border: '1px solid #bbf7d0',
-                      borderRadius: '8px',
-                      fontSize: '12.5px',
-                      color: '#166534',
-                      lineHeight: 1.5,
-                      marginBottom: '16px',
-                    }}
-                  >
-                    <strong>Tài khoản nhận tiền ký quỹ:</strong> Sacombank · STK <code>050138052378</code>{' '}
-                    (LE TRAN MINH DUC). Tiền nạp sẽ được ghi nhận vào ví ngay khi quét mã VietQR.
                   </div>
 
                   <button
@@ -679,25 +736,13 @@ export default function WalletPage({
                     accountNumber={qr.accountNumber}
                     accountHolder={qr.accountHolder}
                     billNumber={qr.billNumber}
-                    onConfirm={handleConfirmQr}
-                    busy={busy}
+                    onClose={() => {
+                      setShowDepositModal(false);
+                      setQr(null);
+                      setQrTicketId(null);
+                    }}
+                    onChangeAmount={() => setQr(null)}
                   />
-                  <div style={{ textAlign: 'center', marginTop: '12px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setQr(null)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#64748b',
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                      }}
-                    >
-                      ← Đổi số tiền khác
-                    </button>
-                  </div>
                 </div>
               )}
             </div>
@@ -709,11 +754,18 @@ export default function WalletPage({
       {showWithdrawModal && (
         <div
           className="wallet-modal-backdrop"
-          onClick={() => setShowWithdrawModal(false)}
+          onMouseDown={(e) => {
+            withdrawBackdropMouseDown.current = e.target === e.currentTarget;
+          }}
+          onMouseUp={(e) => {
+            if (withdrawBackdropMouseDown.current && e.target === e.currentTarget) {
+              setShowWithdrawModal(false);
+            }
+            withdrawBackdropMouseDown.current = false;
+          }}
         >
           <div
             className="wallet-modal-card"
-            onClick={(e) => e.stopPropagation()}
             style={{ maxWidth: '520px' }}
           >
             <div

@@ -242,9 +242,10 @@
 }
 .wallet-qr-actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  justify-content: center;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  justify-self: stretch;
 }
 .wallet-qr-actions .primary-button {
   margin: 0;

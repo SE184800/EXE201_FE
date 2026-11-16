@@ -110,7 +110,7 @@ const navGroups: NavGroup[] = [
   {
     section: 'TÀI CHÍNH & VÍ TIỀN',
     items: [
-      { path: 'finance', label: 'Hoa hồng & Đối soát', icon: 'box' },
+      // { path: 'finance', label: 'Hoa hồng & Đối soát', icon: 'box' }, // Tạm thời ẩn cho môn WDP
       { path: 'wallet', label: 'Quản lý ví & Nạp rút', icon: 'chart' },
     ],
   },
@@ -382,7 +382,8 @@ function Overview({ onLogout }: Props) {
               value={data.completedOrders.toLocaleString('vi-VN')}
               note="Theo ngày giao trong kỳ"
             />
-            <Metric
+            {/* Tạm ẩn hoa hồng cho môn WDP */}
+            {/* <Metric
               label="Hoa hồng đã thu"
               value={money(data.commissionReceived)}
               note="Theo ngày xác nhận thu trong kỳ"
@@ -391,7 +392,7 @@ function Overview({ onLogout }: Props) {
               label="Hoa hồng chưa thu"
               value={money(data.commissionUnpaid)}
               note="Của các đơn đã giao trong kỳ"
-            />
+            /> */}
           </div>
           <div className="admin-overview-split">
             <Panel
@@ -448,9 +449,9 @@ function Overview({ onLogout }: Props) {
                   <strong>{data.pendingVerifications} →</strong>
                 </NavLink>
               </div>
-              <p className="admin-note">
+              {/* <p className="admin-note">
                 Phí phát sinh trong kỳ: <b>{money(data.commissionAccrued)}</b>
-              </p>
+              </p> */}
             </Panel>
           </div>
           {data.legacyOrders > 0 && (
