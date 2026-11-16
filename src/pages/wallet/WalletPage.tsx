@@ -321,11 +321,11 @@ export default function WalletPage({
               ? 'Ví Tiền & Ký Quỹ Đơn Hàng'
               : 'Ví Tiền & Ký Quỹ Bán Sỉ'}
           </h1>
-          <p className="wallet-hero-desc">
-            {role === 'STORE_OWNER'
-              ? 'Nạp tiền để đặt cọc 10% đơn hàng sỉ. Tiền cọc được hệ thống bảo hộ trung gian (Escrow) an toàn, chỉ thanh toán cho chủ vựa khi bạn đã nhận đủ hàng.'
-              : 'Quản lý tiền cọc từ các tiệm tạp hóa, đối soát doanh thu bán sỉ và rút tiền về tài khoản ngân hàng dễ dàng 24/7.'}
-          </p>
+          {role !== 'STORE_OWNER' && (
+            <p className="wallet-hero-desc">
+              Quản lý tiền cọc từ các tiệm tạp hóa, đối soát doanh thu bán sỉ và rút tiền về tài khoản ngân hàng dễ dàng 24/7.
+            </p>
+          )}
         </div>
 
         <div className="wallet-hero-actions">
@@ -413,30 +413,6 @@ export default function WalletPage({
         </div>
       )}
 
-      {/* 2. Escrow Protection Explanation for Store Owner */}
-      {role === 'STORE_OWNER' && (
-        <div className="wallet-escrow-banner">
-          <div className="wallet-escrow-icon">
-            <Icon name="shield" />
-          </div>
-          <div className="wallet-escrow-content">
-            <div className="wallet-escrow-title">
-              <span>Bảo vệ quyền lợi Tiệm tạp hóa với SupplyMind Escrow</span>
-            </div>
-            <p className="wallet-escrow-text">
-              Khi tạo đơn sỉ, hệ thống chỉ tạm khóa <strong>10% cọc</strong> trong ví của bạn. Khoản cọc này được
-              giữ độc lập và <strong>chỉ chuyển giao cho Chủ vựa sau khi bạn đã kiểm tra và nhận đủ hàng hóa</strong>. Nếu
-              đơn hàng bị hủy hoặc có sự cố, tiền cọc sẽ được hoàn lại 100% về ví ngay lập tức.
-            </p>
-            <div className="wallet-escrow-tags">
-              <span className="wallet-escrow-tag">✓ Bảo đảm giao đúng số lượng</span>
-              <span className="wallet-escrow-tag">✓ Hoàn cọc tự động khi có sự cố</span>
-              <span className="wallet-escrow-tag">✓ Hỗ trợ đối soát VietQR 24/7</span>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 3. Three Balance Cards */}
       <div className="wallet-grid">
         {/* Card 1: Available Balance */}
@@ -453,7 +429,6 @@ export default function WalletPage({
             </div>
           </div>
           <div className="wallet-card-footer">
-            <span>Dùng cọc đơn sỉ (10%) hoặc thanh toán</span>
             <button
               type="button"
               className="wallet-card-action-link"
@@ -481,10 +456,6 @@ export default function WalletPage({
               {loading ? 'Đang tải…' : money(lockedBalance)}
             </div>
           </div>
-          <div className="wallet-card-footer">
-            <span>Đang cọc cho các đơn sỉ chờ giao</span>
-            <span className="wallet-card-badge">Bảo hộ 100%</span>
-          </div>
         </div>
 
         {/* Card 3: Total Balance */}
@@ -499,10 +470,6 @@ export default function WalletPage({
             <div className="wallet-card-value">
               {loading ? 'Đang tải…' : money(totalBalance)}
             </div>
-          </div>
-          <div className="wallet-card-footer">
-            <span>Khả dụng + Tiền cọc đang ký quỹ</span>
-            <span style={{ fontSize: '11px', color: '#94a3b8' }}>VND</span>
           </div>
         </div>
       </div>
@@ -554,9 +521,6 @@ export default function WalletPage({
         <div className="wallet-history-header">
           <div className="wallet-history-title-group">
             <h3>Lịch sử biến động số dư</h3>
-            <p>
-              Hiển thị {filteredTransactions.length} giao dịch biến động số dư ví và ký quỹ
-            </p>
           </div>
 
           <div className="wallet-history-controls">
