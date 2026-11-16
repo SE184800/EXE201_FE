@@ -27,7 +27,7 @@ export default function WalletQrCode({
   busy: boolean;
 }) {
   const [dataUrl, setDataUrl] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [copiedType, setCopiedType] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -35,7 +35,7 @@ export default function WalletQrCode({
       width: 320,
       margin: 2,
       errorCorrectionLevel: 'M',
-      color: { dark: '#193f32', light: '#ffffff' },
+      color: { dark: '#14382c', light: '#ffffff' },
     })
       .then((url: string) => {
         if (active) setDataUrl(url);
@@ -48,13 +48,13 @@ export default function WalletQrCode({
     };
   }, [payload]);
 
-  async function copyPayload() {
+  async function copyToClipboard(text: string, type: string) {
     try {
-      await navigator.clipboard.writeText(payload);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      await navigator.clipboard.writeText(text);
+      setCopiedType(type);
+      window.setTimeout(() => setCopiedType(null), 2000);
     } catch {
-      setCopied(false);
+      setCopiedType(null);
     }
   }
 
@@ -62,43 +62,89 @@ export default function WalletQrCode({
     <div className="wallet-qr">
       <div className="wallet-qr-code">
         {dataUrl ? (
-          <img src={dataUrl} alt={`Mã QR nạp ${money(amount)}`} width={196} height={196} />
+          <img src={dataUrl} alt={`Mã VietQR nạp ${money(amount)}`} width={200} height={200} />
         ) : (
-          <div className="wallet-qr-placeholder">Đang tạo mã QR…</div>
+          <div className="wallet-qr-placeholder">Đang tạo mã VietQR…</div>
         )}
       </div>
+
       <dl className="wallet-qr-details">
         <div>
-          <dt>Ngân hàng</dt>
+          <dt>Ngân hàng nhận</dt>
           <dd>{bankName}</dd>
         </div>
         <div>
+          <dt>Số tiền nạp</dt>
+          <dd className="wallet-qr-amount">{money(amount)}</dd>
+        </div>
+        <div>
           <dt>Số tài khoản</dt>
-          <dd>{accountNumber}</dd>
+          <dd style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>{accountNumber}</span>
+            <button
+              type="button"
+              onClick={() => void copyToClipboard(accountNumber, 'acc')}
+              title="Sao chép số tài khoản"
+              style={{
+                border: 'none',
+                background: '#e2e8f0',
+                borderRadius: '4px',
+                padding: '2px 6px',
+                fontSize: '11px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                color: '#334155',
+              }}
+            >
+              {copiedType === 'acc' ? 'Đã chép' : 'Chép STK'}
+            </button>
+          </dd>
         </div>
         <div>
           <dt>Chủ tài khoản</dt>
           <dd>{accountHolder}</dd>
         </div>
-        <div>
-          <dt>Số tiền</dt>
-          <dd className="wallet-qr-amount">{money(amount)}</dd>
-        </div>
-        <div>
-          <dt>Mã phiếu</dt>
-          <dd>{billNumber}</dd>
+        <div style={{ gridColumn: 'span 2' }}>
+          <dt>Nội dung chuyển khoản (Bắt buộc để khớp tự động)</dt>
+          <dd style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <code style={{ background: '#ecfdf5', color: '#065f46', padding: '3px 8px', borderRadius: '6px', fontSize: '13px' }}>
+              {billNumber}
+            </code>
+            <button
+              type="button"
+              onClick={() => void copyToClipboard(billNumber, 'bill')}
+              title="Sao chép nội dung chuyển khoản"
+              style={{
+                border: 'none',
+                background: '#d1fae5',
+                borderRadius: '4px',
+                padding: '3px 8px',
+                fontSize: '11px',
+                cursor: 'pointer',
+                fontWeight: 700,
+                color: '#065f46',
+              }}
+            >
+              {copiedType === 'bill' ? '✓ Đã chép' : 'Sao chép'}
+            </button>
+          </dd>
         </div>
       </dl>
+
       <p className="wallet-qr-hint">
-        Mở ứng dụng ngân hàng, chọn quét mã QR, kiểm tra số tiền và thông tin chuyển khoản rồi bấm
-        xác nhận bên dưới.
+        Mở ứng dụng ngân hàng bất kỳ để quét mã VietQR. Sau khi ngân hàng báo chuyển tiền thành công,
+        bấm xác nhận bên dưới để hệ thống đối soát và cộng tiền vào ví.
       </p>
+
       <div className="wallet-qr-actions">
-        <button className="primary-button" type="button" onClick={onConfirm} disabled={busy}>
-          <Icon name="check" /> {busy ? 'Đang xác nhận…' : 'Tôi đã chuyển khoản'}
-        </button>
-        <button className="ghost-button" type="button" onClick={() => void copyPayload()}>
-          {copied ? 'Đã sao chép' : 'Sao chép mã QR'}
+        <button
+          className="wallet-btn-primary"
+          type="button"
+          onClick={onConfirm}
+          disabled={busy}
+          style={{ width: '100%', padding: '12px', fontSize: '14px' }}
+        >
+          <Icon name="check" /> {busy ? 'Đang gửi đối soát…' : 'Tôi đã chuyển khoản thành công'}
         </button>
       </div>
     </div>

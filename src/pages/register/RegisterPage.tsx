@@ -53,7 +53,6 @@ export default function RegisterPage() {
   const [serverError, setServerError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otpToken, setOtpToken] = useState('');
@@ -286,25 +285,14 @@ export default function RegisterPage() {
               </div>
             </Field>
             <Field label="Nhập lại mật khẩu" id="confirmPassword" error={errors.confirmPassword}>
-              <div className="register-password">
-                <input
-                  {...inputProps('confirmPassword')}
-                  type={showConfirm ? 'text' : 'password'}
-                  value={values.confirmPassword}
-                  onChange={(e) => update('confirmPassword', e.target.value)}
-                  placeholder="Nhập lại mật khẩu"
-                  autoComplete="new-password"
-                />
-                <button
-                  type="button"
-                  disabled={submitting}
-                  onClick={() => setShowConfirm(!showConfirm)}
-                  aria-label={showConfirm ? 'Ẩn mật khẩu nhập lại' : 'Hiện mật khẩu nhập lại'}
-                  aria-pressed={showConfirm}
-                >
-                  <Icon name={showConfirm ? 'eyeOff' : 'eye'} />
-                </button>
-              </div>
+              <input
+                {...inputProps('confirmPassword')}
+                type="password"
+                value={values.confirmPassword}
+                onChange={(e) => update('confirmPassword', e.target.value)}
+                placeholder="Nhập lại mật khẩu"
+                autoComplete="new-password"
+              />
             </Field>
           </div>
 

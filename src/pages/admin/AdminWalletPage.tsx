@@ -423,6 +423,9 @@ function DepositRequests({ onLogout }: Props) {
                 <dd>{dateTime(detail.createdAt)}</dd>
               </div>
             </dl>
+            {detail.method === 'VIET_QR' && detail.status === 'PENDING' && (
+              <p>Kiểm tra tài khoản nhận, số tiền và nội dung chuyển khoản <strong>NAP TIEN VI {detail.id}</strong> trên sao kê trước khi xác nhận.</p>
+            )}
             {detail.status === 'PENDING' && (
               <>
                 <label>

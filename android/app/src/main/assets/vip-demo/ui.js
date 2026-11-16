@@ -8,7 +8,6 @@
     write: value => { localStorage.setItem('supplymind-vip-demo', value); return true; },
   });
   let locked = false;
-  let action = 'purchase';
   const id = () => globalThis.crypto?.randomUUID?.() || Date.now() + '-' + Math.random().toString(36).slice(2);
   function notify(text, error = false) {
     $('message').textContent = text;
@@ -27,7 +26,7 @@
     $('expiry').textContent = date(state.expiresAt);
     $('days').textContent = Math.max(0, Math.ceil((new Date(state.expiresAt || 0).getTime() - Date.now()) / 86400000)) + ' ngày';
     const shortage = Math.max(0, VipDemo.PRICE - state.balance);
-    $('purchase-hint').textContent = shortage ? 'Cần nạp thêm ' + money(shortage) + ' để mua gói.' : 'Ví còn ' + money(state.balance - VipDemo.PRICE) + ' sau khi mua.';
+    $('purchase-hint').textContent = shortage ? 'Số dư demo chưa đủ để mua gói.' : 'Ví còn ' + money(state.balance - VipDemo.PRICE) + ' sau khi mua.';
     $('buy').textContent = active ? 'Gia hạn 1 tháng · 19.000đ' : 'Mua VIP Basic · 19.000đ';
     $('rights-status').textContent = active ? 'Gói demo đang hoạt động đến ' + date(state.expiresAt) : 'Chưa kích hoạt gói demo';
     $('history-empty').hidden = state.history.length > 0;
@@ -47,18 +46,16 @@
   function transact(operation, message) {
     if (locked) return;
     locked = true;
-    $('deposit').disabled = true; $('buy').disabled = true;
+    $('buy').disabled = true;
     try { const result = operation(); render(); notify(message(result)); }
     catch (error) { notify(error.message, true); }
-    finally { setTimeout(() => { locked = false; $('deposit').disabled = false; $('buy').disabled = false; }, 650); }
+    finally { setTimeout(() => { locked = false; $('buy').disabled = false; }, 650); }
   }
-  $('deposit').onclick = () => transact(() => store.deposit(id()), state => 'Đã nạp thử 5.000.000đ. Ví demo hiện có ' + money(state.balance) + '.');
   $('buy').onclick = () => {
     if (locked) return;
     try {
       const state = store.read();
-      if (state.balance < VipDemo.PRICE) { notify('Ví demo chưa đủ 19.000đ. Bấm “Nạp thử 5.000.000đ” để tiếp tục.', true); $('deposit').focus(); return; }
-      action = 'purchase';
+      if (state.balance < VipDemo.PRICE) { notify('Số dư demo chưa đủ để mua gói.', true); return; }
       $('confirm-eyebrow').textContent = 'XÁC NHẬN MUA GÓI';
       $('confirm-title').textContent = 'Kích hoạt thêm 1 tháng Basic?';
       $('confirm-description').textContent = 'Trừ 19.000đ từ ví demo. Số dư sau khi mua: ' + money(state.balance - VipDemo.PRICE) + '. Thời gian còn lại được giữ nguyên.';
@@ -66,20 +63,10 @@
       $('confirm').showModal();
     } catch (error) { notify(error.message, true); }
   };
-  $('reset').onclick = () => {
-    if (locked) return;
-    action = 'reset';
-    $('confirm-eyebrow').textContent = 'BẮT ĐẦU LẠI';
-    $('confirm-title').textContent = 'Đặt lại demo trên máy?';
-    $('confirm-description').textContent = 'Ví về 0đ, bỏ gói demo và lịch sử demo. Dữ liệu tài khoản online không thay đổi.';
-    $('confirm-action').textContent = 'Đặt lại demo';
-    $('confirm').showModal();
-  };
   $('confirm').addEventListener('close', () => {
     if ($('confirm').returnValue !== 'confirm') return;
     $('confirm').returnValue = '';
-    if (action === 'reset') transact(() => store.reset(), () => 'Đã đặt lại demo. Sẵn sàng trình bày từ đầu.');
-    else transact(() => store.purchase(id()), state => 'Đã trừ 19.000đ. VIP Basic hoạt động đến ' + date(state.expiresAt) + '.');
+    transact(() => store.purchase(id()), state => 'Đã trừ 19.000đ. VIP Basic hoạt động đến ' + date(state.expiresAt) + '.');
   });
   document.querySelectorAll('[data-tab]').forEach(button => {
     button.onclick = () => {
@@ -93,5 +80,5 @@
     else notify('Nút này mở app chính khi chạy bản APK trên Android.');
   };
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { try { render(); } catch (e) { notify(e.message, true); } } });
-  try { render(); } catch (error) { notify(error.message, true); $('deposit').disabled = true; $('buy').disabled = true; }
+  try { render(); } catch (error) { notify(error.message, true); $('buy').disabled = true; }
 })();

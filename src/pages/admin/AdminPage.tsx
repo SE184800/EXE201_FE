@@ -2994,7 +2994,7 @@ function ModerationDetailDialog({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <strong style={{ color: '#991B1B', fontSize: '14px' }}>
-                  Phân tích rủi ro từ AI Engine
+                  Kết quả kiểm duyệt
                 </strong>
               </div>
               <span
@@ -3010,17 +3010,11 @@ function ModerationDetailDialog({
                 Mức rủi ro: {item.moderation.riskScore}%
               </span>
             </div>
-            <p style={{ margin: 0, fontSize: '13px', color: '#7F1D1D', fontWeight: 500 }}>
-              Các điểm bất thường / cảnh báo vi phạm được AI gắn cờ:
-            </p>
             <ul style={{ margin: '6px 0 0 18px', padding: 0, fontSize: '13px', color: '#B91C1C', lineHeight: 1.6 }}>
               {item.moderation.reasons.map((r, idx) => (
                 <li key={idx}><strong>{r}</strong></li>
               ))}
             </ul>
-            <p style={{ margin: '10px 0 0 0', fontSize: '12px', color: '#991B1B', fontStyle: 'italic' }}>
-              * AI xếp loại sản phẩm vào Mức 2 (chưa cấm thẳng mà chờ Admin quyết định xem xét tính hợp pháp và bối cảnh kinh doanh).
-            </p>
           </div>
 
           {/* Product Details Grid */}
@@ -3276,7 +3270,7 @@ function ModerationQueue({ onLogout }: Props) {
       <Heading
         eyebrow="AI AUTO-MODERATION"
         title="Hàng chờ kiểm duyệt AI"
-        description="Kiểm soát các bài đăng bị cảnh báo nhẹ (Mức 2: thuốc lá, giá lệch nhẹ). Các bài vi phạm nghiêm trọng (Mức 3) đã được AI tự động cấm thẳng để giảm tải cho Admin."
+        description="Xem và xử lý các bài đăng cần duyệt."
         action={<button onClick={() => setRevision((n) => n + 1)}>↻ Làm mới hàng chờ</button>}
       />
       <LoadState loading={loading} error={error} />
@@ -3284,8 +3278,8 @@ function ModerationQueue({ onLogout }: Props) {
         <>
           <div className="admin-metrics three">
             <Metric label="Cần Admin duyệt (Mức 2)" value={data.summary.flaggedCount} note="Cảnh báo nhẹ / 1 lỗi" />
-            <Metric label="AI đã tự cấm (Mức 3)" value={data.summary.autoRejectedCount ?? 0} note="Vi phạm nặng / Giảm tải Admin" />
-            <Metric label="AI duyệt tự động (Mức 1)" value={data.summary.autoApprovedCount} note="Bài đăng sạch (Clean)" />
+            <Metric label="AI đã tự cấm (Mức 3)" value={data.summary.autoRejectedCount ?? 0} />
+            <Metric label="AI duyệt tự động (Mức 1)" value={data.summary.autoApprovedCount} />
           </div>
           <Panel title="Danh sách sản phẩm cần Admin duyệt (Mức 2: Cảnh báo nhẹ)">
             {data.queue.length ? (
@@ -3297,7 +3291,7 @@ function ModerationQueue({ onLogout }: Props) {
                       <th>Chủ vựa</th>
                       <th>Giá sỉ</th>
                       <th>Điểm rủi ro AI</th>
-                      <th>Lý do AI cảnh báo</th>
+                      <th>Lý do cảnh báo</th>
                       <th>Thao tác</th>
                     </tr>
                   </thead>
@@ -3920,7 +3914,7 @@ function AiSystemConfig({ onLogout }: Props) {
 
             <div className="admin-config-grid">
               <div className="admin-config-field">
-                <label htmlFor="defaultDepositRate">Tỷ lệ ký quỹ chuẩn khuyến nghị (%)</label>
+                <label htmlFor="defaultDepositRate">Tỷ lệ cọc áp dụng cho báo giá mới (%)</label>
                 <input
                   id="defaultDepositRate"
                   type="number"

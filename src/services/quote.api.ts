@@ -67,7 +67,7 @@ export type QuoteDraft = {
   validUntil: string;
   deliveryFee: number;
   depositRate: number;
-  note: string;
+  note?: string;
   isConsignment?: boolean;
   settlementPrice?: number;
   autoRestock?: boolean;

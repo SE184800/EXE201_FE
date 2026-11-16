@@ -943,8 +943,7 @@
     padding-left: 50px;
   }
 }
-.deposit-account-heading,
-.quote-bank-summary {
+.deposit-account-heading {
   display: grid;
   gap: 4px;
   padding: 12px 14px;
@@ -952,10 +951,35 @@
   border-radius: 8px;
   background: #f5f9f1;
 }
-.deposit-account-heading small,
-.quote-bank-summary span {
+.deposit-account-heading small {
   color: #687965;
   font-size: 11px;
+}
+.quote-form .quote-term-field {
+  align-content: start;
+  font-size: 13px;
+}
+.quote-form .quote-term-field .sm-dp-box,
+.quote-deposit-value {
+  min-height: 48px;
+  border-radius: 9px;
+}
+.quote-deposit-value {
+  align-items: center;
+  padding: 0 12px;
+  border: 1px solid #dce5da;
+  background: #f3f8f2;
+  color: #254839;
+}
+.quote-deposit-value span {
+  flex-shrink: 0;
+  font-size: 12px;
+}
+.quote-deposit-hint {
+  margin: 0;
+  color: #52665a;
+  font-size: 12px;
+  line-height: 1.45;
 }
 .quote-bank-note {
   padding: 10px 12px;
@@ -993,17 +1017,36 @@
 }
 .quote-line-builder {
   display: grid;
-  grid-template-columns: minmax(150px, 1.5fr) minmax(90px, 0.6fr) minmax(130px, 1fr) auto;
+  grid-template-columns: minmax(0, 1.7fr) minmax(0, 0.9fr) minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 0.95fr);
   gap: 10px;
-  align-items: end;
+  align-items: start;
   margin: 20px 0;
 }
 .quote-line-builder label {
+  min-width: 0;
   display: grid;
   gap: 7px;
   font-size: 11px;
   color: #53644f;
   font-weight: 650;
+}
+.quote-line-builder input,
+.quote-line-builder select {
+  height: 44px;
+}
+.quote-line-builder input[readonly] {
+  background: #f3f7f2;
+}
+.quote-line-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+.quote-line-actions small {
+  color: #53644f;
+  font-size: 13px;
 }
 .quote-draft-lines {
   display: grid;
@@ -1012,7 +1055,7 @@
 }
 .quote-draft-lines > div {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 10px;
   padding: 11px 12px;
@@ -1032,6 +1075,11 @@
   background: transparent;
   color: #a44f3d;
   font-size: 19px;
+}
+.quote-draft-lines .quote-edit-line {
+  color: #254839;
+  font-size: 13px;
+  font-weight: 650;
 }
 .quote-total {
   display: grid;

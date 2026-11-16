@@ -89,6 +89,8 @@ export async function rejectConsignmentRequest(requestId: string, reason: string
 }
 
 export type ConsignmentSettlement = {
+  lotId: number;
+  orderId: number | null;
   itemId: number;
   productName: string;
   unit: string;
@@ -110,7 +112,7 @@ export async function getStoreConsignmentSettlements() {
   return res.data.settlements;
 }
 
-export async function payConsignmentSettlement(itemId: number, payload: { qty?: number; method?: 'WALLET' } = {}) {
+export async function payConsignmentSettlement(lotId: number, payload: { qty: number; expectedSettledQty: number; method: 'WALLET' }) {
   const res = await api.post<{
     success: boolean;
     settledQty: number;
@@ -118,7 +120,7 @@ export async function payConsignmentSettlement(itemId: number, payload: { qty?: 
     remainingUnsettled: number;
     productName: string;
     message: string;
-  }>(`/inventory/consignment/settlements/${itemId}/pay`, payload);
+  }>(`/inventory/consignment/settlements/lots/${lotId}/pay`, payload);
   return res.data;
 }
 

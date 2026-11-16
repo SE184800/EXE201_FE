@@ -128,10 +128,16 @@ public final class NotificationRules {
         List<Notice> out=new ArrayList<>(); if(baseline)return out;
         for(int i=rows.length()-1;i>=0;i--) {
             JSONObject t=rows.optJSONObject(i); if(t==null || t.optLong("id")<=afterId)continue;
+            String path="SUPPLIER".equals(role)?"/supplier/wallet":"/store/wallet";
+            if("SUBSCRIPTION_PAYMENT".equals(t.optString("type")) && "DEBIT".equals(t.optString("direction"))) {
+                out.add(new Notice("transaction:"+t.optString("id"), "payment", "Đã mua gói Basic",
+                    "Đã trừ "+money(t.optDouble("amount"))+" từ ví. Mở ví để xem giao dịch.", path, now, now+DAY));
+                continue;
+            }
             String sign="CREDIT".equals(t.optString("direction"))?"+":"−";
             out.add(new Notice("transaction:"+t.optString("id"),"payment",t.optString("typeLabel","Cập nhật ví"),
                 sign+money(t.optDouble("amount"))+" • "+("SANDBOX".equals(t.optString("method"))?"Giao dịch thử nghiệm. ":"")+"Mở ví để xem chi tiết.",
-                "SUPPLIER".equals(role)?"/supplier/wallet":"/store/wallet",now,now+DAY));
+                path,now,now+DAY));
         }
         return out;
     }
