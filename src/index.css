@@ -965,6 +965,10 @@ input {
   background: transparent;
   padding: 12px 0;
 }
+/* Keep our toggle without Edge adding a second password reveal button. */
+.register-password input::-ms-reveal {
+  display: none;
+}
 .register-password button {
   border: 0;
   background: transparent;
