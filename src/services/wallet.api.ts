@@ -60,7 +60,7 @@ export type DepositRequest = {
   bankAccountNumber: string | null;
   bankAccountHolder: string | null;
   reference: string | null;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: 'AWAITING_TRANSFER' | 'PENDING' | 'APPROVED' | 'REJECTED';
   statusLabel: string;
   note: string | null;
   adminNote: string | null;

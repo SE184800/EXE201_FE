@@ -35,7 +35,7 @@ export default function WalletQrCode({
       width: 320,
       margin: 2,
       errorCorrectionLevel: 'M',
-      color: { dark: '#193f32', light: '#ffffff' },
+      color: { dark: '#14382c', light: '#ffffff' },
     })
       .then((url: string) => {
         if (active) setDataUrl(url);
@@ -54,7 +54,7 @@ export default function WalletQrCode({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      setCopied(false);
+      setCopiedType(null);
     }
   }
 
@@ -62,15 +62,20 @@ export default function WalletQrCode({
     <div className="wallet-qr" style={{ width: '100%' }}>
       <div className="wallet-qr-code">
         {dataUrl ? (
-          <img src={dataUrl} alt={`Mã QR nạp ${money(amount)}`} width={196} height={196} />
+          <img src={dataUrl} alt={`Mã VietQR nạp ${money(amount)}`} width={200} height={200} />
         ) : (
-          <div className="wallet-qr-placeholder">Đang tạo mã QR…</div>
+          <div className="wallet-qr-placeholder">Đang tạo mã VietQR…</div>
         )}
       </div>
+
       <dl className="wallet-qr-details">
         <div>
-          <dt>Ngân hàng</dt>
+          <dt>Ngân hàng nhận</dt>
           <dd>{bankName}</dd>
+        </div>
+        <div>
+          <dt>Số tiền nạp</dt>
+          <dd className="wallet-qr-amount">{money(amount)}</dd>
         </div>
         <div>
           <dt>Số tài khoản</dt>

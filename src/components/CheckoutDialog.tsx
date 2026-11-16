@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { CatalogProduct } from '../services/catalog.api';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import { getWallet, type WalletInfo } from '../services/wallet.api';
+import { getWallet, type WalletInfo } from '../services/wallet.api';
 import { calculateDeliveryFee, type DeliveryFeeResult } from '../utils/geo';
 import type { Profile } from '../pages/ProfilePage';
 import { checkoutRequestId } from '../utils/checkoutRequests';
@@ -126,7 +127,7 @@ export default function CheckoutDialog({
           totalBalance: total,
         });
       })
-      .catch(() => {});
+      .catch(() => { });
 
     api
       .get<{ profile: Profile }>('/profile')
@@ -147,7 +148,7 @@ export default function CheckoutDialog({
           deliveryAddress: prev.deliveryAddress || sAddr,
         }));
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   function handleAddressOptionChange(option: 'DEFAULT' | 'CUSTOM') {
@@ -236,7 +237,7 @@ export default function CheckoutDialog({
     }
     if (isInsufficientBalance) {
       setError(
-        `Số dư ví (${money(wallet?.availableBalance ?? 0)}) không đủ để đặt cọc ${money(totalDepositRequired)}. Vui lòng nạp thêm thử nghiệm để tiếp tục.`,
+        `Số dư ví (${money(wallet?.availableBalance ?? 0)}) không đủ để đặt cọc ${money(totalDepositRequired)}. Vui lòng nạp thêm vào ví để tiếp tục.`,
       );
       return;
     }
@@ -429,7 +430,7 @@ export default function CheckoutDialog({
                             Địa chỉ kho: <strong>{calc.supplier.warehouseAddress || '120 Lý Thường Kiệt, Q. Tân Bình, TP. Hồ Chí Minh'}</strong>
                           </div>
                         </div>
-                        
+
                       </div>
 
                       {/* Items in this group */}

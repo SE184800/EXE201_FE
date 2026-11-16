@@ -49,6 +49,7 @@ export default function SubscriptionPage({
   const [notice, setNotice] = useState('');
   const [requestId, setRequestId] = useState<string | null>(null);
   const locked = useRef(false);
+  const confirmation = useRef<HTMLDialogElement>(null);
   const workspace = role === 'SUPPLIER' ? '/supplier' : '/store';
 
   useEffect(() => {
@@ -77,13 +78,6 @@ export default function SubscriptionPage({
   async function renew() {
     if (locked.current || !data?.id || data.paymentSource !== 'WALLET') return;
     if (!requestId && (data.walletBalance ?? 0) < data.monthlyPrice) return;
-    if (
-      !requestId &&
-      !window.confirm(
-        `Trừ ${money(data.monthlyPrice)} từ ví để mua thêm 1 tháng Basic? Thời gian còn lại được giữ nguyên.`,
-      )
-    )
-      return;
     locked.current = true;
     const id = requestId || crypto.randomUUID();
     savePendingRenewal(data.id, id);
@@ -120,6 +114,28 @@ export default function SubscriptionPage({
   const walletReady = data?.paymentSource === 'WALLET';
   const content = (
     <section className="subscription-page">
+      {data && (
+        <dialog ref={confirmation} className="subscription-confirm" aria-labelledby="subscription-confirm-title">
+          <h2 id="subscription-confirm-title">Xác nhận thanh toán</h2>
+          <p>Mua thêm 1 tháng SupplyMind Basic bằng ví.</p>
+          <dl>
+            <div><dt>Số tiền thanh toán</dt><dd>{money(data.monthlyPrice)}</dd></div>
+            <div><dt>Số dư sau thanh toán</dt><dd>{money(balance - data.monthlyPrice)}</dd></div>
+          </dl>
+          <p>Thêm 1 tháng vào thời hạn sử dụng hiện tại nếu gói còn hiệu lực.</p>
+          <div className="subscription-confirm-actions">
+            <button type="button" className="ghost-button" autoFocus onClick={() => confirmation.current?.close()}>
+              Hủy
+            </button>
+            <button type="button" className="subscription-renew" onClick={() => {
+              confirmation.current?.close();
+              void renew();
+            }}>
+              Xác nhận thanh toán
+            </button>
+          </div>
+        </dialog>
+      )}
       <div className="subscription-hero">
         <div>
           <p>GÓI SỬ DỤNG</p>
@@ -204,7 +220,10 @@ export default function SubscriptionPage({
             <button
               className="subscription-renew"
               disabled={busy || !walletReady || (!requestId && shortage > 0)}
-              onClick={() => void renew()}
+              onClick={() => {
+                if (requestId) void renew();
+                else confirmation.current?.showModal();
+              }}
             >
               {busy
                 ? 'Đang xử lý…'

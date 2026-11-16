@@ -492,20 +492,6 @@ export default function SupplierDashboard({
                 setData((current) => (current ? { ...current, profile: saved } : current))
               }
             />
-            <section className="supplier-coming-grid">
-              <Coming
-                title="AI Retail Assistant"
-                text="Hỏi đáp và lập kế hoạch gom hàng theo ngân sách."
-              />
-              <Coming
-                title="Khuyến mãi & tiếp thị sỉ"
-                text="Đăng chương trình giảm giá và chiết khấu bậc thang."
-              />
-              <Coming
-                title="AI Trend Alert"
-                text="Cảnh báo nhu cầu thị trường theo thời tiết và khu vực."
-              />
-            </section>
           </>
         )}
       </div>
@@ -693,16 +679,6 @@ function ProfileForm({
         {busy ? 'Đang lưu…' : 'Lưu và bắt đầu quản lý hàng sỉ'} <Icon name="arrow" />
       </button>
     </form>
-  );
-}
-
-function Coming({ title, text }: { title: string; text: string }) {
-  return (
-    <article className="supplier-coming">
-      <span>SẮP CÓ</span>
-      <h3>{title}</h3>
-      <p>{text}</p>
-    </article>
   );
 }
 

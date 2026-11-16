@@ -164,13 +164,6 @@ function WalletOverview({ onLogout }: Props) {
         <Metric label="Tổng yêu cầu nạp" value={deposits.length} />
         <Metric label="Tổng yêu cầu rút" value={withdrawals.length} />
       </div>
-      <Panel title="Danh sách nhanh" note="Mở các mục con để xử lý từng yêu cầu.">
-        <div className="admin-quick-links">
-          <NavLink to="/admin/wallet/deposits">Yêu cầu nạp tiền →</NavLink>
-          <NavLink to="/admin/wallet/withdrawals">Yêu cầu rút tiền →</NavLink>
-          <NavLink to="/admin/wallet/payments">Thanh toán đơn hàng →</NavLink>
-        </div>
-      </Panel>
     </>
   );
 }
@@ -307,7 +300,7 @@ function DepositRequests({ onLogout }: Props) {
         </p>
       )}
       <LoadState loading={loading} error={error} />
-      <Panel title="Danh sách yêu cầu nạp tiền" note="Chỉ xác nhận khi tiền đã vào tài khoản hệ thống.">
+      <Panel title="Danh sách yêu cầu nạp tiền">
         {requests.length ? (
           <div className="admin-table-wrap">
             <table>
@@ -423,6 +416,9 @@ function DepositRequests({ onLogout }: Props) {
                 <dd>{dateTime(detail.createdAt)}</dd>
               </div>
             </dl>
+            {detail.method === 'VIET_QR' && detail.status === 'PENDING' && (
+              <p>Kiểm tra tài khoản nhận, số tiền và nội dung chuyển khoản <strong>NAP TIEN VI {detail.id}</strong> trên sao kê trước khi xác nhận.</p>
+            )}
             {detail.status === 'PENDING' && (
               <>
                 <label>
@@ -669,7 +665,7 @@ function WithdrawalRequests({ onLogout }: Props) {
         </p>
       )}
       <LoadState loading={loading} error={error} />
-      <Panel title="Danh sách yêu cầu rút tiền" note="Tiền đã được giữ lại trong ví khi gửi yêu cầu.">
+      <Panel title="Danh sách yêu cầu rút tiền">
         {requests.length ? (
           <div className="admin-table-wrap">
             <table>
@@ -989,7 +985,7 @@ function OrderPayments({ onLogout }: Props) {
         </p>
       )}
       <LoadState loading={loading} error={error} />
-      <Panel title="Lịch sử thanh toán bằng ví" note="Chỉ hoàn tiền được một lần cho mỗi đơn hàng.">
+      <Panel title="Lịch sử thanh toán bằng ví">
         {payments.length ? (
           <div className="admin-table-wrap">
             <table>

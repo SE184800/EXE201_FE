@@ -559,7 +559,7 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
       cancel();
       if (saved.moderation?.status === 'AUTO_REJECTED') {
         setNotice(
-          'Bài đăng vi phạm nghiêm trọng (từ cấm hoặc nhiều lỗi) và đã bị AI cấm thẳng. Vui lòng bấm "Sửa sản phẩm" để chỉnh sửa hợp lệ.',
+          'Bài đăng vi phạm nghiêm trọng (từ cấm hoặc nhiều lỗi) và đã bị từ chối đăng bán. Vui lòng bấm "Sửa sản phẩm" để chỉnh sửa hợp lệ.',
         );
       } else if (saved.moderation?.status === 'NEEDS_REVIEW') {
         setNotice(
@@ -600,7 +600,7 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
     const isViolated = item.moderation?.status === 'AUTO_REJECTED' || item.moderation?.status === 'NEEDS_REVIEW' || item.moderation?.status === 'FLAGGED';
     if (isViolated && !item.isActive) {
       const msg = item.moderation?.status === 'AUTO_REJECTED'
-        ? 'Sản phẩm vi phạm nghiêm trọng và đã bị AI cấm thẳng. Vui lòng bấm "Sửa sản phẩm" để chỉnh sửa nội dung hợp lệ.'
+        ? 'Sản phẩm vi phạm nghiêm trọng và đã bị từ chối đăng bán. Vui lòng bấm "Sửa sản phẩm" để chỉnh sửa nội dung hợp lệ.'
         : 'Sản phẩm đang chờ Quản trị viên duyệt (' + (item.moderation?.reasons?.join(', ') || 'Cảnh báo nhẹ') + '). Vui lòng chờ duyệt hoặc sửa thông tin.';
       setError(msg);
       return;
@@ -1674,7 +1674,7 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
                                         borderRadius: '12px',
                                       }}
                                     >
-                                      AI Tự Động Duyệt
+                                      Tự động duyệt
                                     </span>
                                   )}
                                 </>
@@ -1703,7 +1703,7 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
                           )}
                           {item.moderation?.reasons && item.moderation.reasons.length > 0 && (
                             <div style={{ fontSize: '12px', color: '#d93025', background: '#fce8e6', padding: '6px 10px', borderRadius: '6px', margin: '6px 0' }}>
-                              <strong>Lý do AI cảnh báo:</strong> {item.moderation.reasons.join(' · ')}
+                              <strong>Lý do cảnh báo:</strong> {item.moderation.reasons.join(' · ')}
                             </div>
                           )}
                           <p className="catalog-hint">
@@ -1731,7 +1731,7 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
                               onClick={() => void toggle(item)}
                               title={
                                 item.moderation?.status === 'AUTO_REJECTED'
-                                  ? 'Sản phẩm vi phạm nghiêm trọng và bị AI cấm thẳng. Bấm "Sửa sản phẩm" để chỉnh sửa.'
+                                  ? 'Sản phẩm vi phạm nghiêm trọng và bị từ chối đăng bán. Bấm "Sửa sản phẩm" để chỉnh sửa.'
                                   : item.moderation?.status === 'NEEDS_REVIEW'
                                     ? 'Sản phẩm đang chờ Quản trị viên duyệt trước khi mở bán.'
                                     : undefined
@@ -1982,7 +1982,7 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
                     color: '#274b37',
                   }}
                 >
-                  Mức độ kiểm duyệt (AI & Pháp lý)
+                  Mức kiểm duyệt
                 </label>
                 <select
                   value={tempModeration}
@@ -1997,7 +1997,7 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
                   }}
                 >
                   <option value="ALL">Tất cả mức độ</option>
-                  <option value="AUTO_APPROVED">Đã duyệt (AI Tự Động Duyệt - Hợp lệ)</option>
+                  <option value="AUTO_APPROVED">Đã duyệt (Tự động duyệt)</option>
                   <option value="NEEDS_REVIEW">Cần kiểm tra (Chờ Admin duyệt - Cảnh báo nhẹ)</option>
                   <option value="AUTO_REJECTED">Vi phạm (Vi phạm nghiêm trọng - Đã cấm)</option>
                 </select>

@@ -13,6 +13,9 @@ import {
   submitOrderPayment,
   completeOrder,
   importOrderToInventory,
+  previewOrderInventory,
+  type InventoryImportOptions,
+  type InventoryImportPreview,
   confirmSupplierPayment,
   savePackingChecklist,
   type SupplierOrder,
@@ -431,6 +434,8 @@ export default function OrderList({
 
   // Payment dialog state for Store Owner
   const [paymentOrder, setPaymentOrder] = useState<SupplierOrder | null>(null);
+  const [importDraft, setImportDraft] = useState<{ order: SupplierOrder; preview: InventoryImportPreview } | null>(null);
+  const [importUnits, setImportUnits] = useState<Record<number, { unit: string; count: string }>>({});
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
 
   const [complaintOrder, setComplaintOrder] = useState<SupplierOrder | null>(null);
@@ -482,12 +487,21 @@ export default function OrderList({
     }
   }
 
-  async function handleImportInventory(order: SupplierOrder) {
+  async function handleImportInventory(order: SupplierOrder, options?: InventoryImportOptions) {
     if (actionLoadingId !== null || order.inventoryImportedAt || !order.canImportInventory) return;
     setActionLoadingId(order.id);
     setError('');
     try {
-      const result = await importOrderToInventory(order.id);
+      if (!options) {
+        const preview = await previewOrderInventory(order.id);
+        setImportUnits(Object.fromEntries(preview.lines.map(line => [
+          line.id, { unit: line.needsConversion ? line.unit : '', count: '' },
+        ])));
+        setImportDraft({ order, preview });
+        return;
+      }
+      const result = await importOrderToInventory(order.id, options);
+      setImportDraft(null);
       setData(current => ({ ...current, orders: current.orders.map(row => row.id === order.id ? result.order : row) }));
       setDepositNotice(result.message);
       setReload(value => value + 1);
@@ -499,6 +513,17 @@ export default function OrderList({
       setActionLoadingId(null);
     }
   }
+
+  const importLines = importDraft?.preview.lines.map(line => {
+    const choice = importUnits[line.id];
+    const count = Number(choice?.count);
+    const unit = line.existingUnit ?? (choice?.unit || line.unit);
+    const quantity = choice?.unit ? line.packs * count : line.quantity;
+    return { ...line, choice, count, unit, quantity,
+      valid: !line.incompatible && (!line.needsConversion || Boolean(choice?.unit)) &&
+        Number.isInteger(quantity) && quantity > 0 && quantity <= 2147483647 &&
+        (!choice?.unit || Number.isInteger(count)) };
+  }) ?? [];
 
   async function handleSupplierConfirmPayment(order: SupplierOrder) {
     if (actionLoadingId !== null) return;
@@ -3709,6 +3734,57 @@ export default function OrderList({
         </div>
       )}
 
+      {importDraft && (
+        <div className="supplier-dialog-backdrop">
+          <form className="supplier-dialog" role="dialog" aria-modal="true" aria-labelledby="inventory-preview-title"
+            onSubmit={event => {
+              event.preventDefault();
+              if (!importLines.length || importLines.some(line => !line.valid)) return;
+              void handleImportInventory(importDraft.order, {
+                conversions: importLines.flatMap(line => line.choice?.unit
+                  ? [{ id: line.id, unit: line.choice.unit, unitsPerPack: line.count }] : []),
+                preview: importLines.map(({ id, unit, quantity }) => ({ id, unit, quantity })),
+              });
+            }}>
+            <h2 id="inventory-preview-title">Nhập kho đơn #{importDraft.order.id}</h2>
+            {importLines.map(line => (
+              <fieldset key={line.id} className="supplier-field" disabled={actionLoadingId !== null}>
+                <legend>{line.name}</legend>
+                <span>Đã mua {line.packs} × {line.packaging}</span>
+                {line.canConvert && !line.existingUnit && (
+                  <label className="supplier-field">
+                    Đơn vị nhập kho
+                    <select value={line.choice?.unit ?? ''} onChange={event => {
+                      const unit = event.target.value;
+                      setImportUnits(current => ({ ...current, [line.id]: { unit, count: '' } }));
+                    }}>
+                      <option value="">Chọn đơn vị bán lẻ</option>
+                      {importDraft.preview.units.filter(unit => unit !== line.packaging).map(unit => <option key={unit}>{unit}</option>)}
+                    </select>
+                  </label>
+                )}
+                {line.choice?.unit && (
+                  <label className="supplier-field">
+                    Số {line.choice.unit} trong mỗi {line.packaging}
+                    <input required type="number" min={1} step={1} value={line.choice.count} onChange={event => {
+                      const count = event.target.value;
+                      setImportUnits(current => ({ ...current, [line.id]: { ...current[line.id], count } }));
+                    }} />
+                  </label>
+                )}
+                {line.incompatible && <span>Kiểm tra đơn vị trong kho ({line.unit}) trước khi nhập mặt hàng này.</span>}
+                {line.valid && <strong>{line.multiplier > 1 || line.choice?.unit
+                  ? `${line.packs} × ${line.choice?.unit ? line.count : line.multiplier} = ` : 'Nhập '}{line.quantity} {line.unit}</strong>}
+              </fieldset>
+            ))}
+            {error && <p className="error-notice" role="alert">{error}</p>}
+            <div className="supplier-dialog-actions">
+              <button type="button" className="ghost-button" disabled={actionLoadingId !== null} onClick={() => setImportDraft(null)}>Hủy</button>
+              <button type="submit" className="primary-button" disabled={actionLoadingId !== null || !importLines.length || importLines.some(line => !line.valid)}>Xác nhận nhập kho</button>
+            </div>
+          </form>
+        </div>
+      )}
       {paymentOrder && (
         <PaymentDialog
           order={paymentOrder}
