@@ -283,7 +283,7 @@ function Heading({
 }: {
   eyebrow: string;
   title: string;
-  description: string;
+  description?: string;
   action?: ReactNode;
 }) {
   return (
@@ -291,7 +291,7 @@ function Heading({
       <div>
         <p>{eyebrow}</p>
         <h1>{title}</h1>
-        <span>{description}</span>
+        {description && <span>{description}</span>}
       </div>
       {action}
     </div>
@@ -375,28 +375,23 @@ function Overview({ onLogout }: Props) {
             <Metric
               label="Tổng giá trị hàng hóa (GMV)"
               value={money(data.gmv)}
-              note="Đơn đã giao · không gồm phí vận chuyển"
             />
             <Metric
               label="Đơn hàng hoàn tất"
               value={data.completedOrders.toLocaleString('vi-VN')}
-              note="Theo ngày giao trong kỳ"
             />
             <Metric
               label="Hoa hồng đã thu"
               value={money(data.commissionReceived)}
-              note="Theo ngày xác nhận thu trong kỳ"
             />
             <Metric
               label="Hoa hồng chưa thu"
               value={money(data.commissionUnpaid)}
-              note="Của các đơn đã giao trong kỳ"
             />
           </div>
           <div className="admin-overview-split">
             <Panel
               title="Giá trị giao dịch theo ngày"
-              note="Tiền hàng của đơn giao thành công · di chuột hoặc chạm vào cột để xem số liệu."
             >
               {data.daily.length ? (
                 <div className="admin-chart" role="img" aria-label="Biểu đồ GMV theo ngày">
@@ -428,7 +423,6 @@ function Overview({ onLogout }: Props) {
             </Panel>
             <Panel
               title="Mạng lưới đối tác"
-              note="Số tài khoản toàn hệ thống, không phụ thuộc bộ lọc báo cáo."
             >
               <div className="admin-network">
                 <div>
@@ -461,7 +455,6 @@ function Overview({ onLogout }: Props) {
           )}
           <Panel
             title="Mặt hàng bán sỉ nổi bật"
-            note="Xếp theo giá trị hàng hóa đã giao, phân nhóm theo sản phẩm, quy cách và khu vực kho vựa."
           >
             {data.topProducts.length ? (
               <div className="admin-table-wrap">
@@ -1943,7 +1936,6 @@ function Finance({ onLogout }: Props) {
           </div>
           <Panel
             title="Đối soát theo đơn"
-            note="Kỳ báo cáo theo ngày giao. Xác nhận thu là ghi nhận thủ công sau khi kiểm tra chứng từ, không tự trừ tiền ngân hàng."
           >
             {data.orders.length ? (
               <div className="admin-table-wrap">
@@ -2010,7 +2002,6 @@ function Finance({ onLogout }: Props) {
           </Panel>
           <Panel
             title="Tổng hợp từng chủ vựa"
-            note="Tổng hợp toàn bộ kết quả bộ lọc, không chỉ trang đang xem."
           >
             {data.suppliers.length ? (
               <div className="admin-table-wrap">
@@ -2257,7 +2248,6 @@ function HolidaySettings({ onLogout }: Props) {
       <Heading
         eyebrow="AI BUSINESS RULES"
         title="Ngày lễ & nhu cầu nhập hàng"
-        description="Admin quy định thời gian chuẩn bị, nhóm hàng và mức tăng nhu cầu để AI đưa vào dự báo nhập hàng."
         action={
           <button className="admin-primary" onClick={() => setSelected('new')}>
             + Thêm ngày lễ
@@ -2268,7 +2258,6 @@ function HolidaySettings({ onLogout }: Props) {
         <Metric
           label="Cấu hình đang dùng"
           value={active}
-          note={`${holidays.length} cấu hình trong hệ thống`}
         />
         <Metric
           label="Mức tăng cao nhất"
@@ -2277,7 +2266,6 @@ function HolidaySettings({ onLogout }: Props) {
               ? `+${Math.max(...holidays.map((item) => (item.demandMultiplier - 1) * 100)).toLocaleString('vi-VN')}%`
               : '—'
           }
-          note="Chỉ áp dụng cho nhóm hàng khớp từ khóa"
         />
         <Metric
           label="Thời gian chuẩn bị dài nhất"
@@ -2286,18 +2274,12 @@ function HolidaySettings({ onLogout }: Props) {
               ? `${Math.max(...holidays.map((item) => item.preparationDays))} ngày`
               : '—'
           }
-          note="AI bắt đầu tính ảnh hưởng trước ngày lễ"
         />
       </div>
-      <p className="admin-note">
-        Ví dụ: hệ số 1,30 nghĩa là nhu cầu nền được tăng tối đa 30%. Càng xa ngày lễ, hệ số được
-        giảm dần. Sản phẩm chỉ chịu ảnh hưởng khi tên có chứa một trong các từ khóa đã cấu hình.
-      </p>
       <LoadState loading={loading} error={error || actionError} />
       {!loading && data && (
         <Panel
           title="Lịch cấu hình của AI"
-          note="Tắt cấu hình nếu muốn giữ dữ liệu nhưng chưa cho AI sử dụng."
         >
           {holidays.length ? (
             <div className="admin-table-wrap">
@@ -2487,9 +2469,6 @@ function HolidayDialog({
               onChange={(event) => setForm({ ...form, categoryKeywords: event.target.value })}
               placeholder="bia, nước ngọt, bánh kẹo, hạt dưa"
             />
-            <small>
-              Cách nhau bằng dấu phẩy. AI đối chiếu các từ này với tên sản phẩm trong kho.
-            </small>
           </label>
           <label>
             Ghi chú cho quản trị viên
@@ -2509,11 +2488,6 @@ function HolidayDialog({
             />{' '}
             Cho phép AI sử dụng cấu hình này
           </label>
-          <p className="admin-note">
-            Với hệ số x{form.demandMultiplier.toLocaleString('vi-VN')}, nhu cầu được tăng tối đa{' '}
-            {Math.max(0, (form.demandMultiplier - 1) * 100).toLocaleString('vi-VN')}% khi gần ngày
-            lễ.
-          </p>
           {error && (
             <p className="error-notice" role="alert">
               {error}
@@ -2579,24 +2553,20 @@ function AiMonitoring({ onLogout }: Props) {
             <Metric
               label="Lượt gọi AI bên ngoài"
               value={external.reduce((sum, g) => sum + g.count, 0)}
-              note={`Cấu hình hiện tại: ${data.configuredProvider || 'Chưa bật AI'}`}
             />
             <Metric
               label="Lượt lỗi / dùng dự phòng"
               value={external
                 .filter((g) => g.status === 'ERROR')
                 .reduce((sum, g) => sum + g.count, 0)}
-              note="Chỉ tính lần gọi dịch vụ AI thất bại"
             />
             <Metric
               label="Lượt dự báo có đề xuất"
               value={data.recommendationRuns}
-              note="Loại trừ hàng mẫu và gợi ý bằng 0"
             />
             <Metric
               label="Tỷ lệ sử dụng đề xuất"
               value={data.acceptanceRate === null ? '—' : `${data.acceptanceRate}%`}
-              note={`${data.acceptedRuns} lượt được lưu thành kế hoạch`}
             />
           </div>
           <p className="admin-note">
@@ -2615,7 +2585,6 @@ function AiMonitoring({ onLogout }: Props) {
           </div>
           <Panel
             title="Lưu lượng theo dịch vụ"
-            note="RULES là trả lời nội bộ, không gọi Gemini/OpenAI và không được tính vào lượt gọi AI bên ngoài."
           >
             {data.groups.length ? (
               <div className="admin-table-wrap">
@@ -3277,7 +3246,7 @@ function ModerationQueue({ onLogout }: Props) {
       {data && (
         <>
           <div className="admin-metrics three">
-            <Metric label="Cần Admin duyệt (Mức 2)" value={data.summary.flaggedCount} note="Cảnh báo nhẹ / 1 lỗi" />
+            <Metric label="Cần Admin duyệt (Mức 2)" value={data.summary.flaggedCount} />
             <Metric label="AI đã tự cấm (Mức 3)" value={data.summary.autoRejectedCount ?? 0} />
             <Metric label="AI duyệt tự động (Mức 1)" value={data.summary.autoApprovedCount} />
           </div>
@@ -3663,22 +3632,18 @@ function AiSystemConfig({ onLogout }: Props) {
         <Metric
           label="SLA Tự Hủy Đơn Sỉ"
           value={`${form.orderAndDelivery?.orderAutoCancelHours} giờ`}
-          note="Hoàn 100% cọc nếu vựa chậm duyệt"
         />
         <Metric
           label="Ký quỹ Escrow Chuẩn"
           value={`${form.escrowDeposit.defaultDepositRate}%`}
-          note={`Trần tối đa: ${form.escrowDeposit.maxDepositRate}%`}
         />
         <Metric
           label="Ký Gửi Tiếp Thị Tối Đa"
           value={`${form.consignment?.maxConsignmentItemsPerStore} mặt hàng`}
-          note={`Đối soát ${form.consignment?.settlementCycleDays} ngày/lần`}
         />
         <Metric
           label="Duyệt Rút Tự Động"
           value={`${((form.walletLimits?.autoApproveWithdrawalThreshold || 0) / 1000000).toLocaleString('vi-VN')} tr ₫`}
-          note={`Hạn mức: ${((form.walletLimits?.maxDailyWithdrawalAmount || 0) / 1000000).toLocaleString('vi-VN')} tr/ngày`}
         />
       </div>
 
