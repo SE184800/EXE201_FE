@@ -4,7 +4,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import type { CatalogProduct } from '../services/catalog.api';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import { getWallet, type WalletInfo } from '../services/wallet.api';
-import { getWallet, type WalletInfo } from '../services/wallet.api';
 import { calculateDeliveryFee, type DeliveryFeeResult } from '../utils/geo';
 import type { Profile } from '../pages/ProfilePage';
 import { checkoutRequestId } from '../utils/checkoutRequests';

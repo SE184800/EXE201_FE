@@ -6,6 +6,7 @@ import { api, getApiError, isUnauthenticated } from '../../services/api';
 import {
   createQrDepositRequest,
   createWithdrawalRequest,
+  getDepositRequests,
   getQrDepositTicket,
   getWallet,
   getWalletTransactions,
@@ -79,7 +80,6 @@ export default function WalletPage({
   const [qrLoading, setQrLoading] = useState(false);
   const [qr, setQr] = useState<QrCode | null>(null);
   const [qrTicketId, setQrTicketId] = useState<number | null>(null);
-  const [copiedStk, setCopiedStk] = useState(false);
 
   // Withdraw modal state
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -117,6 +117,7 @@ export default function WalletPage({
       setError('');
       setOverview(walletRes);
       setTransactions(txRes.transactions || []);
+      setDeposits(depositRes.requests || []);
       window.dispatchEvent(new CustomEvent('supplymind:wallet-changed'));
     } catch (e) {
       setError(getApiError(e));

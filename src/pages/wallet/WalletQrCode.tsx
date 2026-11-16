@@ -54,7 +54,7 @@ export default function WalletQrCode({
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      setCopiedType(null);
+      setCopied(false);
     }
   }
 
