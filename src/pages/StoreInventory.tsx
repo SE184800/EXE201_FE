@@ -67,6 +67,14 @@ const empty = {
   expiryDate: '',
   supplierName: '',
 };
+// Hạn sử dụng hợp lệ phải nằm ở tương lai (tính theo giờ Việt Nam, UTC+7).
+const vietnamDayIso = (date: Date) =>
+  new Date(date.getTime() + 7 * 3600000).toISOString().slice(0, 10);
+const vietnamTomorrowIso = () => {
+  const now = new Date();
+  now.setUTCDate(now.getUTCDate() + 1);
+  return vietnamDayIso(now);
+};
 const examples = [
   'Coca còn bao nhiêu?',
   'Hàng nào sắp hết hạn?',
@@ -118,6 +126,7 @@ export default function StoreInventory({
   const [pack, setPack] = useState('');
   const [unitsPerPack, setUnitsPerPack] = useState('');
   const [editing, setEditing] = useState<number | null>(null);
+  const [expiryError, setExpiryError] = useState('');
   const [saving, setSaving] = useState(false);
   const [selling, setSelling] = useState<Item | null>(null);
   const [saleQuantity, setSaleQuantity] = useState('1');
@@ -284,9 +293,21 @@ export default function StoreInventory({
   async function save(event: FormEvent) {
     event.preventDefault();
     if (saving) return;
-    setSaving(true);
     setError('');
     setNotice('');
+    // Khi thêm sản phẩm mới: hạn sử dụng bắt buộc có và phải là ngày tương lai.
+    if (editing === null) {
+      if (!form.expiryDate) {
+        setExpiryError('Vui lòng nhập hạn sử dụng của sản phẩm.');
+        return;
+      }
+      if (form.expiryDate < vietnamTomorrowIso()) {
+        setExpiryError('Hạn sử dụng phải là ngày tương lai (từ ngày mai trở đi).');
+        return;
+      }
+    }
+    setExpiryError('');
+    setSaving(true);
     try {
       const existingItem =
         editing === null
@@ -426,6 +447,7 @@ export default function StoreInventory({
     });
     setNotice('');
     setError('');
+    setExpiryError('');
     editor.current?.showModal();
     nameInput.current?.focus();
   }
@@ -470,6 +492,7 @@ export default function StoreInventory({
     setEditing(null);
     setForm(empty);
     setError('');
+    setExpiryError('');
     editor.current?.showModal();
   }
   function openFilter(value: string) {
@@ -1222,18 +1245,31 @@ export default function StoreInventory({
                             <span className="unit-label">{item.unit}</span>
                           </td>
                           <td data-label="Giá nhập / bán">
-                            {(
-                              <>
-                                {item.purchasePrice === null
-                                  ? 'Chưa có giá nhập'
-                                  : item.purchasePrice.toLocaleString('vi-VN') + ' ₫'}
-                                <small>
-                                  {item.sellingPrice === null
+                            <span className="price-pair">
+                              <span
+                                className="price-pair-item"
+                                title={
+                                  item.purchasePrice === null
+                                    ? 'Chưa có giá nhập'
+                                    : `Giá nhập: ${item.purchasePrice.toLocaleString('vi-VN')} ₫`
+                                }
+                              >
+                                {item.purchasePrice === null ? '—' : `${item.purchasePrice}₫`}
+                              </span>
+                              <span className="price-pair-sep" aria-hidden="true">
+                                /
+                              </span>
+                              <span
+                                className="price-pair-item"
+                                title={
+                                  item.sellingPrice === null
                                     ? 'Chưa có giá bán'
-                                    : item.sellingPrice.toLocaleString('vi-VN') + ' ₫'}
-                                </small>
-                              </>
-                            )}
+                                    : `Giá bán: ${item.sellingPrice.toLocaleString('vi-VN')} ₫`
+                                }
+                              >
+                                {item.sellingPrice === null ? '—' : `${item.sellingPrice}₫`}
+                              </span>
+                            </span>
                           </td>
                           <td data-label="Trạng thái">
                             <span
@@ -1401,15 +1437,18 @@ export default function StoreInventory({
                     onClick={() => {
                       setPack('');
                       setUnitsPerPack('');
+                      const suggestedExpiry = item.expiryDate?.slice(0, 10) || '';
                       setForm({
                         name: item.name,
                         unit: item.unit,
                         quantity: '1',
                         purchasePrice: item.purchasePrice == null ? '' : String(item.purchasePrice),
                         sellingPrice: item.sellingPrice == null ? '' : String(item.sellingPrice),
-                        expiryDate: item.expiryDate?.slice(0, 10) || '',
+                        // Chỉ giữ lại hạn sử dụng còn tương lai, tránh nhập sẵn HSD đã qua.
+                        expiryDate: suggestedExpiry && suggestedExpiry >= vietnamTomorrowIso() ? suggestedExpiry : '',
                         supplierName: item.supplierName || '',
                       });
+                      setExpiryError('');
                     }}
                   >
                     <strong>{item.name}</strong>
@@ -1497,9 +1536,23 @@ export default function StoreInventory({
             <DatePicker
               value={form.expiryDate}
               disabled={saving}
-              onChange={(val) => setForm({ ...form, expiryDate: val })}
+              invalid={Boolean(expiryError)}
+              min={editing === null ? vietnamTomorrowIso() : undefined}
+              onChange={(val) => {
+                setForm({ ...form, expiryDate: val });
+                if (expiryError) setExpiryError('');
+              }}
               placeholder="DD/MM/YYYY"
             />
+            {expiryError ? (
+              <small className="inventory-expiry-error" role="alert">
+                {expiryError}
+              </small>
+            ) : (
+              <small className="stock-help">
+                Hạn sử dụng phải là ngày tương lai (từ ngày mai trở đi).
+              </small>
+            )}
           </label>
           <label className="inventory-name">
             Nhà cung cấp / Nguồn hàng
