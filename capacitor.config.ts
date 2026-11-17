@@ -5,9 +5,10 @@ const config: CapacitorConfig = {
   appName: 'SupplyMind AI',
   webDir: 'dist',
   server: {
-    // The demo APK follows the hosted application so later Vercel updates are
-    // available immediately without asking the teacher to reinstall the APK.
-    url: 'https://supplymind-demo.vercel.app',
+    // Bundle the mobile UI; API/uploads continue over HTTPS at the same trusted
+    // origin through MobileWebViewClient, preserving HttpOnly session cookies.
+    hostname: 'supplymind-demo.vercel.app',
+    androidScheme: 'https',
     cleartext: false,
     allowNavigation: ['supplymind-demo.vercel.app'],
   },

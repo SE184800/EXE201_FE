@@ -1,0 +1,543 @@
+.mobile-store-app {
+  min-height: 100dvh;
+  background: #f5f7f2;
+  color: #173f30;
+  font-family: system-ui, sans-serif;
+}
+.mobile-store-app *,
+.mobile-store-app *::before,
+.mobile-store-app *::after {
+  box-sizing: border-box;
+}
+.mobile-store-app button,
+.mobile-store-app input,
+.mobile-store-app select {
+  font: inherit;
+}
+.mobile-store-app button {
+  cursor: pointer;
+}
+.mobile-store-app button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+.mobile-store-app button:focus-visible,
+.mobile-store-app a:focus-visible {
+  outline: 3px solid #b9d76a;
+  outline-offset: 3px;
+}
+.mobile-app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: #173f30;
+  color: white;
+}
+.mobile-app-header > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.mobile-app-header strong {
+  font-size: 20px;
+  letter-spacing: -0.6px;
+}
+.mobile-app-header strong span {
+  color: #cde9a5;
+  font-size: 12px;
+}
+.mobile-app-header small {
+  display: block;
+  font-size: 11px;
+  color: #d1e1d4;
+  max-width: 190px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mobile-brand-mark {
+  display: grid;
+  place-items: center;
+  background: #d1eaa3;
+  color: #173f30;
+  font-size: 26px;
+  font-weight: 800;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  flex-shrink: 0;
+}
+.mobile-header-actions button {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #52725e;
+  border-radius: 13px;
+  background: transparent;
+  color: white;
+  font-size: 23px;
+}
+.mobile-header-actions svg {
+  width: 21px;
+  height: 21px;
+}
+.mobile-app-content {
+  max-width: 800px;
+  margin: auto;
+  padding: 22px 16px 190px;
+}
+.mobile-sale-intro > span {
+  font-size: 10px;
+  letter-spacing: 1.8px;
+  font-weight: 750;
+  color: #687e58;
+}
+.mobile-sale-intro h1 {
+  font-size: 32px;
+  line-height: 1.2;
+  letter-spacing: -1.1px;
+  margin: 8px 0;
+}
+.mobile-sale-intro p {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #6c7d71;
+  margin: 0 0 22px;
+}
+.mobile-sale-entry {
+  display: grid;
+  gap: 18px;
+}
+.mobile-voice-button {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  border: 1px solid #c6d9ae;
+  padding: 16px;
+  background: #e8f1d7;
+  text-align: left;
+  color: #244b32;
+  border-radius: 18px;
+}
+.mobile-voice-button > span:first-child {
+  font-size: 28px;
+}
+.mobile-voice-button strong,
+.mobile-voice-button small {
+  display: block;
+}
+.mobile-voice-button strong {
+  font-size: 16px;
+}
+.mobile-voice-button small {
+  margin-top: 5px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.mobile-search {
+  display: grid;
+  gap: 7px;
+  color: #566d5e;
+  font-size: 12px;
+  font-weight: 650;
+}
+.mobile-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 49px;
+  padding: 12px 14px;
+  background: white;
+  border: 1px solid #d7e2d5;
+  border-radius: 13px;
+  color: #173f30;
+  font-size: 16px;
+}
+.mobile-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 24px 0 12px;
+}
+.mobile-section-title h2 {
+  font-size: 17px;
+  margin: 0;
+}
+.mobile-section-title h2 span {
+  font-size: 11px;
+  color: #7b8a80;
+  margin-left: 6px;
+  font-weight: 500;
+}
+.mobile-section-title button,
+.mobile-stock-filters button {
+  min-height: 42px;
+  padding: 8px 11px;
+  background: white;
+  border: 1px solid #d7e2d5;
+  border-radius: 11px;
+  color: #315f44;
+  font-size: 12px;
+}
+.mobile-sale-products {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.mobile-sale-products > button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #dce5d8;
+  border-radius: 16px;
+  background: white;
+  text-align: left;
+  color: #1e4632;
+}
+.mobile-sale-products > button.selected {
+  border-color: #48744a;
+  background: #f0f6e6;
+}
+.mobile-product-symbol {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #edf2e5;
+  color: #648446;
+  font-size: 18px;
+  font-weight: 750;
+}
+.mobile-sale-products strong {
+  font-size: 13px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.mobile-sale-products small {
+  font-size: 11px;
+  color: #738172;
+}
+.mobile-sale-products b {
+  font-size: 15px;
+  margin-top: auto;
+}
+.mobile-add-mark {
+  font-size: 11px;
+  color: #346c3f;
+  font-weight: 700;
+  align-self: flex-end;
+}
+.mobile-sale-cart {
+  margin-top: 22px;
+}
+.mobile-cart-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 15px;
+  border: 1px solid #dce5d8;
+  border-radius: 15px;
+  background: white;
+}
+.mobile-cart-row > div:first-child strong {
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.mobile-cart-row small {
+  display: block;
+  color: #778375;
+  margin-top: 4px;
+  font-size: 12px;
+}
+.mobile-cart-row > b {
+  font-size: 15px;
+  text-align: right;
+}
+.mobile-remove {
+  border: 0;
+  background: #f7f1eb;
+  color: #975443;
+  border-radius: 10px;
+  width: 42px;
+  height: 42px;
+  font-size: 22px !important;
+}
+.mobile-stepper {
+  display: flex;
+  align-items: center;
+  max-width: 154px;
+}
+.mobile-stepper button {
+  width: 42px;
+  height: 44px;
+  flex-shrink: 0;
+  border: 1px solid #d5e0cf;
+  background: #eef4e7;
+  color: #274e32;
+  font-size: 22px;
+  border-radius: 9px;
+}
+.mobile-stepper input {
+  min-width: 0;
+  width: 66px;
+  height: 44px;
+  border: 0;
+  background: transparent;
+  text-align: center;
+  color: #173f30;
+  font-weight: 700;
+  font-size: 16px;
+  appearance: textfield;
+}
+.mobile-stepper input::-webkit-inner-spin-button {
+  appearance: none;
+}
+.mobile-sale-checkout {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(72px + env(safe-area-inset-bottom));
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  background: #fff;
+  border-top: 1px solid #d6e1d3;
+  box-shadow: 0 -6px 20px #14321c0a;
+}
+.mobile-sale-checkout span {
+  display: block;
+  color: #75816e;
+  font-size: 11px;
+}
+.mobile-sale-checkout strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 21px;
+}
+.mobile-sale-checkout button {
+  min-height: 50px;
+  max-width: 52%;
+  background: #1e5138;
+  color: white;
+  padding: 12px 17px;
+  border: 0;
+  border-radius: 13px;
+  font-weight: 700;
+  font-size: 14px;
+}
+.mobile-app-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 90;
+  height: calc(72px + env(safe-area-inset-bottom));
+  padding: 7px 9px calc(7px + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  background: #fff;
+  border-top: 1px solid #e2e7df;
+}
+.mobile-app-nav a {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  color: #7a877b;
+  text-decoration: none;
+  border-radius: 13px;
+  font-size: 11px;
+  font-weight: 650;
+}
+.mobile-app-nav a.selected {
+  background: #e9f2dc;
+  color: #24583a;
+}
+.mobile-app-nav svg {
+  width: 22px;
+  height: 22px;
+}
+.mobile-sale-message,
+.mobile-sale-warning {
+  background: #fff4e7;
+  color: #8b5025;
+  border: 1px solid #ecd5b4;
+  padding: 13px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  margin: 12px 0;
+}
+.mobile-sale-message button {
+  display: block;
+  margin-top: 8px;
+  padding: 8px 12px;
+}
+.mobile-sale-receipt {
+  background: #e8f4e5;
+  color: #285336;
+  padding: 16px;
+  border-radius: 14px;
+  margin-bottom: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.mobile-sale-receipt p {
+  overflow-wrap: anywhere;
+}
+.mobile-sale-receipt small {
+  font-size: 11px;
+}
+.mobile-heard,
+.mobile-empty {
+  color: #6e7c70;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.mobile-account-panel {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  background: white;
+  border-bottom: 1px solid #dce5d8;
+}
+.mobile-account-panel button {
+  text-align: left;
+  padding: 12px;
+  border: 0;
+  border-radius: 9px;
+  background: #f0f4e9;
+  color: #244e36;
+}
+.mobile-stock-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.mobile-stock-summary > div {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  background: white;
+  border: 1px solid #e1e8db;
+  border-radius: 13px;
+}
+.mobile-stock-summary strong {
+  font-size: 26px;
+}
+.mobile-stock-summary span {
+  font-size: 10px;
+  color: #748268;
+}
+.mobile-stock-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 14px 0;
+}
+.mobile-stock-filters [aria-pressed='true'] {
+  color: white;
+  background: #25563c;
+}
+.mobile-stock-list {
+  display: grid;
+  gap: 9px;
+}
+.mobile-stock-list article {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px;
+  border: 1px solid #dde6d6;
+  background: white;
+  border-radius: 14px;
+}
+.mobile-stock-list article > div {
+  min-width: 0;
+}
+.mobile-stock-list article > div:last-child {
+  text-align: right;
+  flex-shrink: 0;
+}
+.mobile-stock-list h2 {
+  font-size: 14px;
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+.mobile-stock-list span,
+.mobile-stock-list small {
+  display: block;
+  font-size: 11px;
+  color: #76816e;
+  margin-top: 4px;
+}
+.mobile-stock-list strong {
+  font-size: 24px;
+}
+.mobile-stock-list .expiry-warning {
+  color: #b06627;
+}
+.mobile-store-active #supplymind-native-notifications {
+  display: none !important;
+}
+.mobile-app-content > .wallet-page {
+  max-width: 100%;
+}
+.mobile-store-app :is(.order-panel, .wallet-page) {
+  min-width: 0;
+}
+.mobile-store-app .wallet-filter-tabs {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+.mobile-store-app .wallet-filter-tab {
+  white-space: normal;
+}
+@media (min-width: 700px) {
+  .mobile-sale-products {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .mobile-app-nav,
+  .mobile-sale-checkout {
+    max-width: 800px;
+    margin-inline: auto;
+  }
+}
+@media (max-width: 360px) {
+  .mobile-app-header {
+    padding-inline: 12px;
+  }
+  .mobile-app-header small {
+    max-width: 140px;
+  }
+  .mobile-brand-mark {
+    display: none;
+  }
+  .mobile-cart-row {
+    padding: 12px;
+  }
+  .mobile-stepper {
+    max-width: 135px;
+  }
+  .mobile-stepper button {
+    width: 38px;
+  }
+}

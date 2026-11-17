@@ -2,6 +2,7 @@ import axios from 'axios';
 import { api, withTransientRetry } from './api';
 import { ROLE_DETAILS, type AuthUser } from '../types/auth';
 import type { Subscription } from './subscription.api';
+import { SALE_STORAGE_PREFIX } from '../mobile/quickSale';
 
 export class SubscriptionRequiredError extends Error {
   renewalToken: string;
@@ -128,7 +129,10 @@ export async function logout(): Promise<void> {
     await api.post('/auth/logout');
   } finally {
     try {
-      localStorage.clear();
+      // Keep owner-scoped sale IDs so an uncertain request survives re-login.
+      for (const key of Object.keys(localStorage)) {
+        if (!key.startsWith(SALE_STORAGE_PREFIX)) localStorage.removeItem(key);
+      }
       sessionStorage.clear();
       sessionStorage.setItem('just_logged_out', 'true');
       if (typeof window !== 'undefined') {

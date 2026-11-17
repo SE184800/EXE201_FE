@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import Brand from '../components/Brand';
 import Icon from '../components/Icon';
 import StoreInventory from './StoreInventory';
+import MobileStoreApp from '../mobile/MobileStoreApp';
+import { isMobileApp } from '../mobile/platform';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import { logout } from '../services/auth.api';
 import { ROLE_DETAILS, type AuthUser } from '../types/auth';
@@ -65,12 +67,12 @@ export default function WorkspacePage({
             {error}
           </p>
         )}
-        <StoreInventory
+        {isMobileApp() ? <MobileStoreApp user={user} onLogout={onLogout} onSignOut={handleLogout} signingOut={busy} /> : <StoreInventory
           user={user}
           onLogout={onLogout}
           onSignOut={handleLogout}
           signingOut={busy}
-        />
+        />}
       </>
     );
 
