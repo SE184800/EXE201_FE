@@ -1,5 +1,4 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { fillEmptySuggestions } from '../validation/restock';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import './restock-print.css';
 
@@ -46,57 +45,59 @@ type Plan = {
 
 type SeasonalOpportunity = {
   id: string;
+  numericId: number;
   name: string;
   category: string;
   unit: string;
-  holidayName: string;
-  growthNote: string;
   trendScore: number;
-  supplierName: string;
-  supplierDistance: string;
-  wholesalePrice: number;
-  moq: number;
+  defaultQty: number;
 };
 
 const SEASONAL_OPPORTUNITIES: SeasonalOpportunity[] = [
   {
     id: 'SEAS-01',
+    numericId: 90001,
     name: 'Khay Mứt Tết Ngũ Phúc 600g (Hộp lục giác sang trọng)',
     category: 'Bánh kẹo & Quà Tết',
     unit: 'Hộp',
-    holidayName: 'Tết & Giáng Sinh',
-    growthNote: 'Nhu cầu tăng x2.8 lần vào dịp lễ hội cuối năm (Nguồn: Kantar FMCG Vietnam)',
     trendScore: 92,
-    supplierName: 'Vựa Nông Sản & Bánh Kẹo Chợ Lớn',
-    supplierDistance: '2.4 km',
-    wholesalePrice: 65000,
-    moq: 10,
+    defaultQty: 10,
   },
   {
     id: 'SEAS-02',
+    numericId: 90002,
     name: 'Hạt Điều Rang Muối Bình Phước (Hũ 500g loại 1)',
     category: 'Hạt dinh dưỡng & Đồ nhắm',
     unit: 'Hũ',
-    holidayName: 'Tết & Giáng Sinh',
-    growthNote: 'Tìm kiếm Google Trends tăng +210% các tuần cận Tết (Google Search Trends VN)',
     trendScore: 88,
-    supplierName: 'Vựa Nông Sản Miền Đông',
-    supplierDistance: '3.8 km',
-    wholesalePrice: 85000,
-    moq: 12,
+    defaultQty: 10,
   },
   {
     id: 'SEAS-03',
+    numericId: 90003,
     name: 'Hộp Quà Bánh Quy Bơ Thượng Hạng (Hộp thiếc đỏ 450g)',
     category: 'Quà biếu tặng',
     unit: 'Hộp',
-    holidayName: 'Tết & Giáng Sinh',
-    growthNote: 'Nhóm quà biếu tặng tiêu thụ mạnh nhất tháng Chạp (Kantar Retail Outlook)',
     trendScore: 85,
-    supplierName: 'Tổng Kho Bánh Kẹo Hữu Nghị',
-    supplierDistance: '4.5 km',
-    wholesalePrice: 125000,
-    moq: 6,
+    defaultQty: 6,
+  },
+  {
+    id: 'SEAS-04',
+    numericId: 90004,
+    name: 'Nước Ngọt Pepsi (Thùng 24 lon 330ml)',
+    category: 'Nước giải khát',
+    unit: 'Thùng',
+    trendScore: 82,
+    defaultQty: 5,
+  },
+  {
+    id: 'SEAS-05',
+    numericId: 90005,
+    name: 'Bánh Chưng / Bánh Tét Đóng Hộp (Hộp 400g)',
+    category: 'Đặc sản Tết',
+    unit: 'Hộp',
+    trendScore: 79,
+    defaultQty: 10,
   },
 ];
 
@@ -122,7 +123,7 @@ const DEMO_HOLIDAYS: Holiday[] = [
     name: 'Lễ Giáng Sinh & Chào Đón Năm Mới',
     categories: ['Bia', 'Nước giải khát', 'Bánh kẹo', 'Rượu', 'Snack'],
     multiplier: 1.6,
-    description: 'Dự báo tiệc cuối năm & lễ hội làm nhu cầu Đồ uống, Bia & Bánh kẹo tăng vọt (+60%).',
+    description: 'Dự báo tiệc cuối năm & lễ hội làm nhu cầu Đồ uống, Bia & Bánh kẹo tăng vọt.',
     daysUntil: 12,
     isUpcoming: true,
     isCurrent: false,
@@ -216,6 +217,37 @@ export default function RestockPage({
   const [printScope, setPrintScope] = useState<'TOMORROW' | 'ALL'>('TOMORROW');
   const [printPlanTarget, setPrintPlanTarget] = useState<Plan | null>(null);
 
+  // Theo dõi số lượng các món đã thêm vào kế hoạch sỉ từ gợi ý mùa vụ
+  const [seasonalQuantities, setSeasonalQuantities] = useState<Record<string, number>>(() => {
+    try {
+      const saved = localStorage.getItem('supplymind:draft-seasonal-quantities');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Bộ lọc kế hoạch ở Tab 2: 'ALL' | 'ACTIVE' | 'COMPLETED'
+  const [planFilter, setPlanFilter] = useState<'ALL' | 'ACTIVE' | 'COMPLETED'>('ALL');
+
+  // Theo dõi trạng thái checkbox kế hoạch đã lưu (plan-level & line-level)
+  const [planChecked, setPlanChecked] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('supplymind:plan-checked');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [lineChecked, setLineChecked] = useState<Record<string, Record<number, boolean>>>(() => {
+    try {
+      const saved = localStorage.getItem('supplymind:line-checked');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
   useEffect(() => {
     if (!toastMessage) return;
     const t = setTimeout(() => setToastMessage(''), 4000);
@@ -278,8 +310,17 @@ export default function RestockPage({
   const displayHolidays = upcomingHolidays.length > 0 ? upcomingHolidays : DEMO_HOLIDAYS;
   const displayItems = items.length > 0 ? items : DEMO_ITEMS;
 
-  // Lọc danh sách các mặt hàng đã chọn số lượng > 0
-  const selectedLines = displayItems
+  // Lọc danh sách hàng cấp bách trong kho cần tái nhập
+  const urgentInventoryItems = displayItems.filter(
+    (i) =>
+      (i.daysUntilStockout !== null && i.daysUntilStockout <= 3) ||
+      (i.daysUntilStockout === null && i.quantity <= 5),
+  );
+  const urgentItemIds = new Set(urgentInventoryItems.map((i) => i.itemId));
+
+  // 1. Danh sách các mặt hàng trong kho thực tế được chọn số lượng > 0
+  const selectedInventoryLines = displayItems
+    .filter((item) => urgentItemIds.has(item.itemId))
     .map((item) => {
       const q = quantities[item.itemId];
       const qty = q !== undefined && q !== '' ? Number(q) : 0;
@@ -289,25 +330,51 @@ export default function RestockPage({
         unit: item.unit,
         quantity: qty,
         purchasePrice: item.purchasePrice,
+        isSeasonal: false,
       };
     })
     .filter((line) => line.quantity > 0);
 
+  // 2. Danh sách các mặt hàng mùa vụ / dịp lễ được bấm chọn số lượng > 0 (bán thử nghiệm - giá nhập tự do)
+  const selectedSeasonalLines = SEASONAL_OPPORTUNITIES
+    .filter((opp) => (seasonalQuantities[opp.id] || 0) > 0)
+    .map((opp) => ({
+      itemId: opp.numericId,
+      name: opp.name,
+      unit: opp.unit,
+      quantity: seasonalQuantities[opp.id],
+      purchasePrice: null,
+      isSeasonal: true,
+    }));
+
+  // Tổng hợp tất cả mặt hàng thực tế đã chọn
+  const selectedLines = [...selectedInventoryLines, ...selectedSeasonalLines];
   const selectedCount = selectedLines.length;
-  const totalCost = selectedLines.reduce(
-    (sum, l) => sum + (l.purchasePrice == null ? BigInt(0) : BigInt(l.quantity) * BigInt(l.purchasePrice)),
-    BigInt(0),
-  );
 
   // Xử lý nút: "Lưu mặt hàng cần nhập" ở Tab 1
   function handleSaveDraftSelection() {
     try {
       localStorage.setItem('supplymind:draft-restock-quantities', JSON.stringify(quantities));
+      localStorage.setItem('supplymind:draft-seasonal-quantities', JSON.stringify(seasonalQuantities));
     } catch {
       // Bỏ qua lỗi storage
     }
-    setToastMessage(`✓ Đã lưu danh sách cần nhập (${selectedCount} mặt hàng · ${money(totalCost)})! Sang tab "Kế hoạch đã lưu" để tạo phiếu.`);
-    setMessage(`Đã lưu danh sách mặt hàng cần nhập (${selectedCount} món). Dữ liệu đã sẵn sàng để tạo kế hoạch.`);
+    setToastMessage('✓ Đã lưu danh sách cần nhập! Sang tab "Kế hoạch đã lưu" để tạo phiếu.');
+  }
+
+  // Xử lý nút: "Xóa toàn bộ lựa chọn / Làm mới dữ liệu"
+  function handleClearAllDrafts() {
+    setQuantities({});
+    setSeasonalQuantities({});
+    try {
+      localStorage.removeItem('supplymind:draft-restock-quantities');
+      localStorage.removeItem('supplymind:draft-seasonal-quantities');
+      localStorage.removeItem('supplymind:draft-seasonal-added');
+    } catch {
+      // Bỏ qua lỗi storage
+    }
+    setToastMessage('✓ Đã xóa sạch dữ liệu chọn nháp! Bạn có thể chọn lại từ đầu.');
+    change();
   }
 
   // Mở modal tạo kế hoạch mới ở Tab 2
@@ -325,10 +392,22 @@ export default function RestockPage({
     setModalPlanNote(plan.note || '');
     setHorizon(plan.horizonDays);
     setSafety(plan.safetyDays);
-    const newQty = Object.fromEntries(plan.lines.map((l) => [l.sourceItemId, String(l.quantity)]));
-    setQuantities(newQty);
+
+    const invQty: Record<number, string> = {};
+    const seasQty: Record<string, number> = {};
+    for (const l of plan.lines) {
+      if (l.sourceItemId >= 90001) {
+        const found = SEASONAL_OPPORTUNITIES.find((o) => o.numericId === l.sourceItemId);
+        if (found) seasQty[found.id] = l.quantity;
+      } else {
+        invQty[l.sourceItemId] = String(l.quantity);
+      }
+    }
+    setQuantities(invQty);
+    setSeasonalQuantities(seasQty);
     try {
-      localStorage.setItem('supplymind:draft-restock-quantities', JSON.stringify(newQty));
+      localStorage.setItem('supplymind:draft-restock-quantities', JSON.stringify(invQty));
+      localStorage.setItem('supplymind:draft-seasonal-quantities', JSON.stringify(seasQty));
     } catch {
       // Bỏ qua lỗi storage
     }
@@ -366,7 +445,6 @@ export default function RestockPage({
       setShowCreatePlanModal(false);
       setEditing(null);
       setToastMessage(editing ? '✓ Đã cập nhật kế hoạch thành công!' : '✓ Đã tạo và lưu kế hoạch nhập hàng thành công!');
-      setMessage('Kế hoạch đã được lưu an toàn.');
       // Tải lại danh sách plans
       const res = await api.get(`/restock/plans?page=1`);
       setPlans(res.data.plans || []);
@@ -487,7 +565,7 @@ export default function RestockPage({
         </div>
       </div>
 
-      {/* 3 Thẻ KPI chỉ số trực quan nhanh */}
+      {/* 2 Thẻ KPI chỉ số trực quan nhanh */}
       <div
         style={{
           display: 'grid',
@@ -505,9 +583,9 @@ export default function RestockPage({
             boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
           }}
         >
-          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>HÀNG CẤP BÁCH</span>
-          <div style={{ fontSize: '20px', fontWeight: 700, color: '#dc2626', marginTop: '4px' }}>
-            {urgentCount} mặt hàng sắp cạn
+          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>HÀNG CẤP BÁCH</span>
+          <div style={{ fontSize: '17px', fontWeight: 700, color: '#dc2626', marginTop: '4px' }}>
+            {urgentCount} mặt hàng
           </div>
         </div>
         <div
@@ -519,22 +597,8 @@ export default function RestockPage({
             boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
           }}
         >
-          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>VỐN NHẬP DỰ KIẾN</span>
-          <div style={{ fontSize: '20px', fontWeight: 700, color: '#059669', marginTop: '4px' }}>
-            {money(totalCost)}
-          </div>
-        </div>
-        <div
-          style={{
-            backgroundColor: '#ffffff',
-            border: '1px solid #e2e8f0',
-            borderRadius: '10px',
-            padding: '14px 18px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-          }}
-        >
-          <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600 }}>GỢI Ý MẶT HÀNG MỚI</span>
-          <div style={{ fontSize: '20px', fontWeight: 700, color: '#2563eb', marginTop: '4px' }}>
+          <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>GỢI Ý MẶT HÀNG MỚI</span>
+          <div style={{ fontSize: '17px', fontWeight: 700, color: '#2563eb', marginTop: '4px' }}>
             {SEASONAL_OPPORTUNITIES.length} món hot dịp lễ
           </div>
         </div>
@@ -606,7 +670,7 @@ export default function RestockPage({
                 borderRadius: '20px',
               }}
             >
-              Hệ số gợi ý x{displayHolidays[0]?.multiplier || 1.6} (+60%)
+              Dự kiến tăng nhu cầu x{displayHolidays[0]?.multiplier || 1.6} lần
             </span>
           </div>
 
@@ -646,144 +710,200 @@ export default function RestockPage({
                 ))}
               </select>
             </label>
-            <button
-              type="button"
-              className="inventory-refresh"
-              onClick={() => {
-                setQuantities((current) => fillEmptySuggestions(current, displayItems));
-                change();
-              }}
-            >
-              Điền đề xuất vào ô trống
-            </button>
           </div>
 
           {/* PHẦN 1: BẢNG HÀNG TRONG KHO CẦN NHẬP */}
           <div style={{ marginBottom: '24px' }}>
-            <h3 style={{ fontSize: '15px', color: '#0f172a', margin: '0 0 10px 0', fontWeight: 700 }}>
-              1. Mặt hàng trong kho cần tái nhập ({displayItems.length} sản phẩm)
-            </h3>
-            <div className="restock-table-wrap">
-              <table className="restock-table">
-                <thead>
-                  <tr>
-                    <th>Mặt hàng</th>
-                    <th>Tồn kho</th>
-                    <th>Tình trạng</th>
-                    <th>Bán/ngày</th>
-                    <th>Giá nhập</th>
-                    <th>Gợi ý AI</th>
-                    <th style={{ width: '130px' }}>Số lượng bạn chọn</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayItems.map((item) => {
-                    const days = item.daysUntilStockout;
-                    const isUrgent = days !== null && days <= 1.5;
-                    const isWarning = days !== null && days > 1.5 && days <= 3;
-                    return (
-                      <tr key={item.itemId}>
-                        <td>
-                          <strong>{item.name}</strong>
-                          {item.holidayMultiplier && (
-                            <span
-                              style={{
-                                display: 'inline-block',
-                                backgroundColor: '#dcfce7',
-                                color: '#15803d',
-                                fontSize: '11px',
-                                fontWeight: 'bold',
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                                marginLeft: '6px',
-                              }}
-                            >
-                              +{Math.round((item.holidayMultiplier - 1) * 100)}% ({item.holidayName || 'Lễ'})
-                            </span>
-                          )}
-                          <small style={{ display: 'block', color: '#64748b' }}>ĐVT: {item.unit}</small>
-                        </td>
-                        <td>
-                          <span style={{ fontWeight: 650 }}>{item.quantity}</span> {item.unit}
-                        </td>
-                        <td>
-                          {isUrgent ? (
-                            <span
-                              style={{
-                                backgroundColor: '#fee2e2',
-                                color: '#b91c1c',
-                                padding: '3px 8px',
-                                borderRadius: '12px',
-                                fontSize: '11.5px',
-                                fontWeight: 700,
-                              }}
-                            >
-                              🔴 Còn ≈ {days} ngày
-                            </span>
-                          ) : isWarning ? (
-                            <span
-                              style={{
-                                backgroundColor: '#fef3c7',
-                                color: '#b45309',
-                                padding: '3px 8px',
-                                borderRadius: '12px',
-                                fontSize: '11.5px',
-                                fontWeight: 700,
-                              }}
-                            >
-                              🟡 Còn ≈ {days} ngày
-                            </span>
-                          ) : (
-                            <span
-                              style={{
-                                backgroundColor: '#f1f5f9',
-                                color: '#475569',
-                                padding: '3px 8px',
-                                borderRadius: '12px',
-                                fontSize: '11.5px',
-                                fontWeight: 600,
-                              }}
-                            >
-                              🟢 Đủ bán
-                            </span>
-                          )}
-                        </td>
-                        <td>{item.averageDailySales === null ? '-' : item.averageDailySales.toLocaleString('vi-VN')}</td>
-                        <td>{item.purchasePrice == null ? 'Chưa có giá' : money(item.purchasePrice)}</td>
-                        <td>
-                          <strong style={{ color: '#059669', fontSize: '14.5px' }}>
-                            {item.suggestedQuantity ?? 'Chọn tay'}
-                          </strong>
-                        </td>
-                        <td>
-                          <input
-                            aria-label={`Lượng nhập ${item.name}`}
-                            type="number"
-                            min="0"
-                            max="2147483647"
-                            step="1"
-                            value={quantities[item.itemId] ?? ''}
-                            placeholder="0"
-                            onChange={(e) => {
-                              setQuantities({ ...quantities, [item.itemId]: e.target.value });
-                              change();
-                            }}
-                            style={{
-                              width: '100%',
-                              padding: '6px 10px',
-                              borderRadius: '6px',
-                              border: '1px solid #cbd5e1',
-                              fontWeight: 650,
-                              textAlign: 'center',
-                            }}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {(() => {
+              const urgentItems = displayItems.filter(
+                (i) =>
+                  (i.daysUntilStockout !== null && i.daysUntilStockout <= 3) ||
+                  (i.daysUntilStockout === null && i.quantity <= 5),
+              );
+              return (
+                <>
+                  <h3 style={{ fontSize: '14px', color: '#0f172a', margin: '0 0 10px 0', fontWeight: 700 }}>
+                    1. Mặt hàng sắp hết cần tái nhập
+                    {urgentItems.length > 0 ? ` (${urgentItems.length} sản phẩm)` : ''}
+                  </h3>
+                  {urgentItems.length === 0 ? (
+                    <div
+                      style={{
+                        padding: '20px 16px',
+                        backgroundColor: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        color: '#15803d',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                      }}
+                    >
+                      <span style={{ fontSize: '20px' }}>✅</span>
+                      <span>Tốt lắm! Kho hiện đang đủ hàng, không có mặt hàng nào cần nhập gấp.</span>
+                    </div>
+                  ) : (
+                    <div className="restock-table-wrap">
+                      <table className="restock-table">
+                        <thead>
+                          <tr>
+                            <th>Mặt hàng</th>
+                            <th>Tồn kho</th>
+                            <th>Tình trạng</th>
+                            <th>Bán/ngày</th>
+                            <th>Giá nhập</th>
+                            <th>Gợi ý AI</th>
+                            <th style={{ width: '130px' }}>Số lượng bạn chọn</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {urgentItems.map((item) => {
+                            const days = item.daysUntilStockout;
+                            const isExpired = item.notes?.some((n) => n.includes('quá hạn'));
+                            const isNearExpiry = item.notes?.some((n) => n.includes('Hạn gần'));
+                            const isOutOfStock = item.quantity === 0 || days === 0;
+                            const isUrgent = isOutOfStock || (days !== null && days <= 1.5);
+                            const isWarning = days !== null && days > 1.5 && days <= 3;
+                            return (
+                              <tr key={item.itemId}>
+                                <td>
+                                  <strong style={{ fontSize: '13px' }}>{item.name}</strong>
+                                  {item.holidayMultiplier && (
+                                    <span
+                                      style={{
+                                        display: 'inline-block',
+                                        backgroundColor: '#dcfce7',
+                                        color: '#15803d',
+                                        fontSize: '11px',
+                                        fontWeight: 'bold',
+                                        padding: '2px 6px',
+                                        borderRadius: '4px',
+                                        marginLeft: '6px',
+                                      }}
+                                    >
+                                      +{Math.round((item.holidayMultiplier - 1) * 100)}% ({item.holidayName || 'Lễ'})
+                                    </span>
+                                  )}
+                                </td>
+                                <td>
+                                  <span style={{ fontWeight: 650, fontSize: '13px' }}>{item.quantity}</span>{' '}
+                                  <span style={{ fontSize: '12px', color: '#64748b' }}>{item.unit}</span>
+                                </td>
+                                <td>
+                                  {isExpired ? (
+                                    <span
+                                      style={{
+                                        backgroundColor: '#fee2e2',
+                                        color: '#b91c1c',
+                                        padding: '3px 8px',
+                                        borderRadius: '12px',
+                                        fontSize: '11.5px',
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      🔴 Đã quá hạn
+                                    </span>
+                                  ) : isNearExpiry ? (
+                                    <span
+                                      style={{
+                                        backgroundColor: '#fef3c7',
+                                        color: '#b45309',
+                                        padding: '3px 8px',
+                                        borderRadius: '12px',
+                                        fontSize: '11.5px',
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      🟡 Cận date (Còn {days} ngày)
+                                    </span>
+                                  ) : isUrgent ? (
+                                    <span
+                                      style={{
+                                        backgroundColor: '#fee2e2',
+                                        color: '#b91c1c',
+                                        padding: '3px 8px',
+                                        borderRadius: '12px',
+                                        fontSize: '11.5px',
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      🔴 Sắp hết
+                                    </span>
+                                  ) : isWarning ? (
+                                    <span
+                                      style={{
+                                        backgroundColor: '#fef3c7',
+                                        color: '#b45309',
+                                        padding: '3px 8px',
+                                        borderRadius: '12px',
+                                        fontSize: '11.5px',
+                                        fontWeight: 700,
+                                      }}
+                                    >
+                                      🟡 Còn {days} ngày
+                                    </span>
+                                  ) : (
+                                    <span
+                                      style={{
+                                        backgroundColor: '#f1f5f9',
+                                        color: '#475569',
+                                        padding: '3px 8px',
+                                        borderRadius: '12px',
+                                        fontSize: '11.5px',
+                                        fontWeight: 600,
+                                      }}
+                                    >
+                                      🟢 Đủ bán
+                                    </span>
+                                  )}
+                                </td>
+                                <td style={{ fontSize: '13px' }}>
+                                  {item.averageDailySales === null ? '-' : item.averageDailySales.toLocaleString('vi-VN')}
+                                </td>
+                                <td style={{ fontSize: '13px' }}>
+                                  {item.purchasePrice == null ? 'Chưa có giá' : money(item.purchasePrice)}
+                                </td>
+                                <td>
+                                  <strong style={{ color: '#059669', fontSize: '13px' }}>
+                                    {item.suggestedQuantity ?? 'Chọn tay'}
+                                  </strong>
+                                </td>
+                                <td>
+                                  <input
+                                    aria-label={`Lượng nhập ${item.name}`}
+                                    type="number"
+                                    min="0"
+                                    max="2147483647"
+                                    step="1"
+                                    value={quantities[item.itemId] ?? ''}
+                                    placeholder="0"
+                                    onChange={(e) => {
+                                      setQuantities({ ...quantities, [item.itemId]: e.target.value });
+                                      change();
+                                    }}
+                                    style={{
+                                      width: '100%',
+                                      padding: '6px 10px',
+                                      borderRadius: '6px',
+                                      border: '1px solid #cbd5e1',
+                                      fontWeight: 650,
+                                      textAlign: 'center',
+                                      fontSize: '13px',
+                                    }}
+                                  />
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {/* PHẦN 2: GỢI Ý MẶT HÀNG MỚI NGOÀI KHO THEO MÙA VỤ / DỊP LỄ */}
@@ -796,113 +916,165 @@ export default function RestockPage({
               marginBottom: '24px',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '18px' }}>✨</span>
-                  <h3 style={{ margin: 0, fontSize: '15.5px', color: '#6b21a8', fontWeight: 700 }}>
-                    2. Đề xuất mặt hàng mới đón đầu Dịp Lễ (Chưa có trong kho)
-                  </h3>
-                </div>
-                <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#7e22ce' }}>
-                  Mặt hàng có nhu cầu tăng cao dịp lễ Tết theo Kantar FMCG & Google Trends VN · Có sẵn nguồn hàng từ Chủ vựa B2B
-                </p>
-              </div>
-              <span
-                style={{
-                  backgroundColor: '#f3e8ff',
-                  color: '#7e22ce',
-                  padding: '4px 10px',
-                  borderRadius: '20px',
-                  fontSize: '12px',
-                  fontWeight: 650,
-                }}
-              >
-                Kiểm chứng: Google Trends & Kantar FMCG
-              </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+              <span style={{ fontSize: '18px' }}>✨</span>
+              <h3 style={{ margin: 0, fontSize: '14px', color: '#6b21a8', fontWeight: 700 }}>
+                2. Đề xuất mặt hàng mới đón đầu Dịp Lễ (Chưa có trong kho)
+              </h3>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '14px' }}>
-              {SEASONAL_OPPORTUNITIES.map((opp) => (
-                <div
-                  key={opp.id}
-                  style={{
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #e9d5ff',
-                    borderRadius: '10px',
-                    padding: '14px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                  }}
-                >
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '6px' }}>
-                      <strong style={{ fontSize: '14px', color: '#1e293b' }}>{opp.name}</strong>
-                      <span
-                        style={{
-                          backgroundColor: '#fef3c7',
-                          color: '#b45309',
-                          fontSize: '11px',
-                          fontWeight: 700,
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Hot {opp.trendScore}/100
-                      </span>
-                    </div>
-                    <p style={{ margin: '6px 0 8px', fontSize: '12px', color: '#6b7280', lineHeight: 1.4 }}>
-                      {opp.growthNote}
-                    </p>
-                    <div
-                      style={{
-                        backgroundColor: '#f8fafc',
-                        padding: '8px 10px',
-                        borderRadius: '6px',
-                        fontSize: '12px',
-                        color: '#334155',
-                      }}
-                    >
-                      <div>
-                        <strong>Chủ vựa:</strong> {opp.supplierName} ({opp.supplierDistance})
-                      </div>
-                      <div style={{ marginTop: '2px' }}>
-                        <strong>Giá sỉ:</strong> <span style={{ color: '#059669', fontWeight: 700 }}>{money(opp.wholesalePrice)}</span> / {opp.unit} · MOQ: {opp.moq} {opp.unit}
-                      </div>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px' }}>
+              {SEASONAL_OPPORTUNITIES.map((opp) => {
+                const currentQty = seasonalQuantities[opp.id] || 0;
+                const isSelected = currentQty > 0;
+                return (
+                  <div
+                    key={opp.id}
                     style={{
-                      marginTop: '12px',
-                      padding: '8px 12px',
-                      backgroundColor: '#7e22ce',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '6px',
-                      fontSize: '13px',
-                      fontWeight: 650,
-                      cursor: 'pointer',
+                      backgroundColor: '#ffffff',
+                      border: `1.5px solid ${isSelected ? '#10b981' : '#e9d5ff'}`,
+                      borderRadius: '10px',
+                      padding: '14px',
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                    }}
-                    onClick={() => {
-                      setToastMessage(`Đã ghi nhận mặt hàng "${opp.name}" vào danh sách quan tâm!`);
+                      flexDirection: 'column',
+                      justifyContent: 'space-between',
+                      boxShadow: isSelected ? '0 2px 8px rgba(16, 185, 129, 0.15)' : 'none',
                     }}
                   >
-                    + Thêm vào kế hoạch sỉ
-                  </button>
-                </div>
-              ))}
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '6px' }}>
+                        <strong style={{ fontSize: '13px', color: '#1e293b' }}>{opp.name}</strong>
+                        <span
+                          style={{
+                            backgroundColor: '#fef3c7',
+                            color: '#b45309',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Hot {opp.trendScore}/100
+                        </span>
+                      </div>
+                      <div style={{ marginTop: '6px', fontSize: '12px', color: '#6b7280' }}>
+                        <span>Ngành hàng: <strong style={{ color: '#475569' }}>{opp.category}</strong></span>
+                      </div>
+                    </div>
+
+                    {isSelected ? (
+                      <div
+                        style={{
+                          marginTop: '12px',
+                          padding: '8px 10px',
+                          backgroundColor: '#ecfdf5',
+                          borderRadius: '8px',
+                          border: '1px solid #a7f3d0',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                          <span style={{ fontSize: '12px', fontWeight: 700, color: '#065f46' }}>
+                            ✓ Đã đưa vào kế hoạch
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = { ...seasonalQuantities };
+                              delete next[opp.id];
+                              setSeasonalQuantities(next);
+                              try {
+                                localStorage.setItem('supplymind:draft-seasonal-quantities', JSON.stringify(next));
+                              } catch {
+                                // Bỏ qua
+                              }
+                              change();
+                            }}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#dc2626',
+                              fontSize: '11.5px',
+                              cursor: 'pointer',
+                              fontWeight: 600,
+                              padding: 0,
+                            }}
+                          >
+                            ✕ Bỏ chọn
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ fontSize: '12px', color: '#047857', fontWeight: 600 }}>SL muốn thử:</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="9999"
+                            value={currentQty}
+                            onChange={(e) => {
+                              const val = Math.max(1, Number(e.target.value) || 1);
+                              const next = { ...seasonalQuantities, [opp.id]: val };
+                              setSeasonalQuantities(next);
+                              try {
+                                localStorage.setItem('supplymind:draft-seasonal-quantities', JSON.stringify(next));
+                              } catch {
+                                // Bỏ qua
+                              }
+                              change();
+                            }}
+                            style={{
+                              width: '65px',
+                              padding: '4px 6px',
+                              borderRadius: '4px',
+                              border: '1px solid #059669',
+                              fontSize: '12.5px',
+                              fontWeight: 700,
+                              textAlign: 'center',
+                              color: '#065f46',
+                            }}
+                          />
+                          <span style={{ fontSize: '12px', color: '#475569' }}>{opp.unit}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        style={{
+                          marginTop: '12px',
+                          padding: '8px 12px',
+                          backgroundColor: '#7e22ce',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          fontWeight: 650,
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: '6px',
+                        }}
+                        onClick={() => {
+                          const next = { ...seasonalQuantities, [opp.id]: opp.defaultQty };
+                          setSeasonalQuantities(next);
+                          try {
+                            localStorage.setItem('supplymind:draft-seasonal-quantities', JSON.stringify(next));
+                          } catch {
+                            // Bỏ qua lỗi storage
+                          }
+                          setToastMessage(`✓ Đã đưa "${opp.name}" (${opp.defaultQty} ${opp.unit}) vào kế hoạch nhập!`);
+                          change();
+                        }}
+                      >
+                        + Đưa vào kế hoạch bán thử ({opp.defaultQty} {opp.unit})
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* KHUNG TỔNG KẾT & NÚT LƯU MẶT HÀNG CẦN NHẬP (KHÔNG CÒN FORM RƯỜM RÀ) */}
+          {/* KHUNG TỔNG KẾT & NÚT LƯU MẶT HÀNG CẦN NHẬP */}
           <div
             style={{
               padding: '16px 20px',
@@ -919,27 +1091,47 @@ export default function RestockPage({
             <div>
               <span style={{ fontSize: '13px', color: '#64748b' }}>Tổng hợp đề xuất:</span>
               <div style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', marginTop: '2px' }}>
-                Đã chọn: <span style={{ color: '#059669' }}>{selectedCount} mặt hàng</span> · Chi phí dự kiến:{' '}
-                <span style={{ color: '#059669' }}>{money(totalCost)}</span>
+                Đã chọn: <span style={{ color: '#059669' }}>{selectedCount} mặt hàng</span>
               </div>
             </div>
 
-            <button
-              type="button"
-              className="dash-primary"
-              style={{
-                padding: '12px 24px',
-                fontSize: '15px',
-                fontWeight: 700,
-                backgroundColor: '#059669',
-                borderColor: '#059669',
-                boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)',
-              }}
-              disabled={selectedCount === 0}
-              onClick={handleSaveDraftSelection}
-            >
-              💾 Lưu mặt hàng cần nhập
-            </button>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              {selectedCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllDrafts}
+                  style={{
+                    padding: '10px 16px',
+                    fontSize: '13.5px',
+                    fontWeight: 600,
+                    backgroundColor: '#ffffff',
+                    color: '#64748b',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                  }}
+                  title="Xóa toàn bộ các lựa chọn đang chọn nháp để chọn lại từ đầu"
+                >
+                  ↺ Đặt lại lựa chọn
+                </button>
+              )}
+              <button
+                type="button"
+                className="dash-primary"
+                style={{
+                  padding: '12px 24px',
+                  fontSize: '15px',
+                  fontWeight: 700,
+                  backgroundColor: '#059669',
+                  borderColor: '#059669',
+                  boxShadow: '0 4px 12px rgba(5, 150, 105, 0.25)',
+                }}
+                disabled={selectedCount === 0}
+                onClick={handleSaveDraftSelection}
+              >
+                💾 Lưu mặt hàng cần nhập
+              </button>
+            </div>
           </div>
         </div>
       ) : (
@@ -984,77 +1176,296 @@ export default function RestockPage({
               </button>
             </div>
 
-            {plans.length ? (
-              plans.map((plan) => (
-                <article key={plan.id} style={{ marginBottom: '14px' }}>
-                  <div className="card-heading">
-                    <div>
-                      <h3>{plan.name}</h3>
-                      <small>
-                        {new Date(plan.updatedAt).toLocaleString('vi-VN')} · {plan.horizonDays} ngày +{' '}
-                        {plan.safetyDays} ngày dự phòng
-                      </small>
-                    </div>
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      <button
-                        type="button"
-                        className="inventory-refresh"
-                        style={{ color: '#059669', borderColor: '#059669', fontWeight: 600 }}
-                        onClick={() => {
-                          setPrintPlanTarget(plan);
-                          setShowPrintModal(true);
-                        }}
-                      >
-                        In phiếu / Xuất PDF
-                      </button>
-                      <button className="inventory-refresh" onClick={() => handleEditPlan(plan)}>
-                        Mở chỉnh sửa
-                      </button>
-                    </div>
-                  </div>
-                  {plan.note && <p style={{ margin: '8px 0', color: '#475569', fontSize: '13.5px' }}>{plan.note}</p>}
-                  <ul>
-                    {plan.lines.map((line) => (
-                      <li key={line.sourceItemId}>
-                        {line.productName}:{' '}
-                        <strong>
-                          {line.quantity} {line.unit}
-                        </strong>{' '}
-                        ·{' '}
-                        {line.purchasePrice == null
-                          ? 'Chưa có giá'
-                          : money(line.purchasePrice) + ' / ' + line.unit}
-                      </li>
-                    ))}
-                  </ul>
-                  <p style={{ marginTop: '8px' }}>
-                    <strong>{budget(plan.lines)}</strong>
-                  </p>
-                </article>
-              ))
-            ) : (
-              <div
-                style={{
-                  textAlign: 'center',
-                  padding: '40px 20px',
-                  backgroundColor: '#f8fafc',
-                  borderRadius: '10px',
-                  border: '1px dashed #cbd5e1',
-                }}
-              >
-                <p style={{ color: '#64748b', fontSize: '14.5px', margin: '0 0 12px' }}>
-                  Chưa có kế hoạch nhập hàng nào được lưu.
-                </p>
+            {/* Thanh Filter Kế Hoạch: Tất cả | Đang nhập | Đã nhập xong */}
+            {plans.length > 0 && (
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '14px', flexWrap: 'wrap' }}>
                 <button
                   type="button"
-                  className="dash-primary"
-                  style={{ backgroundColor: '#059669', borderColor: '#059669' }}
-                  onClick={openCreatePlanModal}
+                  onClick={() => setPlanFilter('ALL')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    fontSize: '13px',
+                    fontWeight: 650,
+                    border: '1px solid',
+                    cursor: 'pointer',
+                    backgroundColor: planFilter === 'ALL' ? '#0f172a' : '#f1f5f9',
+                    color: planFilter === 'ALL' ? '#ffffff' : '#475569',
+                    borderColor: planFilter === 'ALL' ? '#0f172a' : '#cbd5e1',
+                  }}
                 >
-                  + Tạo kế hoạch đầu tiên ngay
+                  Tất cả ({plans.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPlanFilter('ACTIVE')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    fontSize: '13px',
+                    fontWeight: 650,
+                    border: '1px solid',
+                    cursor: 'pointer',
+                    backgroundColor: planFilter === 'ACTIVE' ? '#2563eb' : '#eff6ff',
+                    color: planFilter === 'ACTIVE' ? '#ffffff' : '#1e40af',
+                    borderColor: planFilter === 'ACTIVE' ? '#2563eb' : '#bfdbfe',
+                  }}
+                >
+                  ⏳ Đang nhập ({plans.filter((p) => !planChecked[p.id]).length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPlanFilter('COMPLETED')}
+                  style={{
+                    padding: '6px 14px',
+                    borderRadius: '20px',
+                    fontSize: '13px',
+                    fontWeight: 650,
+                    border: '1px solid',
+                    cursor: 'pointer',
+                    backgroundColor: planFilter === 'COMPLETED' ? '#059669' : '#f0fdf4',
+                    color: planFilter === 'COMPLETED' ? '#ffffff' : '#065f46',
+                    borderColor: planFilter === 'COMPLETED' ? '#059669' : '#bbf7d0',
+                  }}
+                >
+                  ✓ Đã nhập xong ({plans.filter((p) => !!planChecked[p.id]).length})
                 </button>
               </div>
             )}
+
+            {(() => {
+              // Lọc theo filter
+              const filteredPlans = plans.filter((p) => {
+                if (planFilter === 'ACTIVE') return !planChecked[p.id];
+                if (planFilter === 'COMPLETED') return !!planChecked[p.id];
+                return true;
+              });
+
+              // Sắp xếp: Ưu tiên kế hoạch ĐANG NHẬP lên trước, kế hoạch ĐÃ XONG xuống dưới
+              const sortedPlans = [...filteredPlans].sort((a, b) => {
+                const aDone = planChecked[a.id] ? 1 : 0;
+                const bDone = planChecked[b.id] ? 1 : 0;
+                if (aDone !== bDone) return aDone - bDone;
+                return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+              });
+
+              if (plans.length === 0) {
+                return (
+                  <div
+                    style={{
+                      textAlign: 'center',
+                      padding: '40px 20px',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: '10px',
+                      border: '1px dashed #cbd5e1',
+                    }}
+                  >
+                    <p style={{ color: '#64748b', fontSize: '14.5px', margin: '0 0 12px' }}>
+                      Chưa có kế hoạch nhập hàng nào được lưu.
+                    </p>
+                    <button
+                      type="button"
+                      className="dash-primary"
+                      style={{ backgroundColor: '#059669', borderColor: '#059669' }}
+                      onClick={openCreatePlanModal}
+                    >
+                      + Tạo kế hoạch đầu tiên ngay
+                    </button>
+                  </div>
+                );
+              }
+
+              if (sortedPlans.length === 0) {
+                return (
+                  <div
+                    style={{
+                      textAlign: 'center',
+                      padding: '30px 20px',
+                      backgroundColor: '#f8fafc',
+                      borderRadius: '10px',
+                      border: '1px solid #e2e8f0',
+                      color: '#64748b',
+                      fontSize: '14px',
+                    }}
+                  >
+                    Không có kế hoạch nào trong mục này.
+                  </div>
+                );
+              }
+
+              return sortedPlans.map((plan) => {
+                const isPlanDone = planChecked[plan.id] ?? false;
+                return (
+                  <article
+                    key={plan.id}
+                    style={{
+                      marginBottom: '14px',
+                      backgroundColor: isPlanDone ? '#f0fdf4' : '#ffffff',
+                      border: `1.5px solid ${isPlanDone ? '#86efac' : '#e2e8f0'}`,
+                      borderRadius: '12px',
+                      padding: '16px 20px',
+                      boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+                    }}
+                  >
+                    {/* Header kế hoạch */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <input
+                          type="checkbox"
+                          id={`plan-${plan.id}`}
+                          checked={isPlanDone}
+                          disabled={isPlanDone}
+                          onChange={(e) => {
+                            const next = { ...planChecked, [plan.id]: e.target.checked };
+                            setPlanChecked(next);
+                            try { localStorage.setItem('supplymind:plan-checked', JSON.stringify(next)); } catch { /* Bỏ qua */ }
+                          }}
+                          style={{
+                            width: '17px',
+                            height: '17px',
+                            cursor: isPlanDone ? 'not-allowed' : 'pointer',
+                            accentColor: '#059669',
+                          }}
+                        />
+                        <label htmlFor={`plan-${plan.id}`} style={{ cursor: isPlanDone ? 'default' : 'pointer' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <h3 style={{ margin: 0, fontSize: '15px', color: isPlanDone ? '#065f46' : '#0f172a', fontWeight: 700 }}>
+                              {plan.name}
+                            </h3>
+                            {isPlanDone && (
+                              <span
+                                style={{
+                                  backgroundColor: '#10b981',
+                                  color: '#ffffff',
+                                  fontSize: '11px',
+                                  fontWeight: 700,
+                                  padding: '2px 8px',
+                                  borderRadius: '12px',
+                                }}
+                              >
+                                ✓ ĐÃ NHẬP XONG (ĐÃ KHÓA)
+                              </span>
+                            )}
+                          </div>
+                          <small style={{ color: '#64748b', fontSize: '12px' }}>
+                            {new Date(plan.updatedAt).toLocaleString('vi-VN')} · {plan.horizonDays} ngày +{' '}
+                            {plan.safetyDays} ngày dự phòng
+                          </small>
+                        </label>
+                      </div>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          type="button"
+                          className="inventory-refresh"
+                          style={{ color: '#059669', borderColor: '#059669', fontWeight: 600, fontSize: '13px' }}
+                          onClick={() => {
+                            setPrintPlanTarget(plan);
+                            setShowPrintModal(true);
+                          }}
+                        >
+                          In phiếu / Xuất PDF
+                        </button>
+                        {!isPlanDone && (
+                          <button className="inventory-refresh" style={{ fontSize: '13px' }} onClick={() => handleEditPlan(plan)}>
+                            Mở chỉnh sửa
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {plan.note && <p style={{ margin: '0 0 10px', color: '#475569', fontSize: '13px' }}>{plan.note}</p>}
+
+                    {/* Danh sách mặt hàng với checkbox nổi bật */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {plan.lines.map((line) => {
+                        const lineKey = line.sourceItemId;
+                        const isDone = lineChecked[plan.id]?.[lineKey] ?? false;
+                        return (
+                          <div
+                            key={lineKey}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '10px',
+                              padding: '8px 12px',
+                              backgroundColor: isDone ? '#ecfdf5' : '#f8fafc',
+                              borderRadius: '8px',
+                              border: `1.5px solid ${isDone ? '#a7f3d0' : '#e2e8f0'}`,
+                              transition: 'all 0.15s ease',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              id={`line-${plan.id}-${lineKey}`}
+                              checked={isDone}
+                              disabled={isPlanDone}
+                              onChange={(e) => {
+                                const nextPlanLines = { ...(lineChecked[plan.id] ?? {}), [lineKey]: e.target.checked };
+                                const next = { ...lineChecked, [plan.id]: nextPlanLines };
+                                setLineChecked(next);
+                                try { localStorage.setItem('supplymind:line-checked', JSON.stringify(next)); } catch { /* Bỏ qua */ }
+                              }}
+                              style={{
+                                width: '16px',
+                                height: '16px',
+                                cursor: isPlanDone ? 'not-allowed' : 'pointer',
+                                flexShrink: 0,
+                                accentColor: '#059669',
+                              }}
+                            />
+                            <label
+                              htmlFor={`line-${plan.id}-${lineKey}`}
+                              style={{
+                                flex: 1,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
+                                gap: '6px',
+                                cursor: 'pointer',
+                                fontSize: '13px',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontWeight: 650, color: isDone ? '#065f46' : '#1e293b' }}>
+                                  {line.productName}
+                                </span>
+                                {isDone && (
+                                  <span
+                                    style={{
+                                      backgroundColor: '#10b981',
+                                      color: '#ffffff',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      padding: '1px 6px',
+                                      borderRadius: '10px',
+                                    }}
+                                  >
+                                    ✓ Đã nhập
+                                  </span>
+                                )}
+                              </div>
+                              <span style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                <span style={{ color: '#059669', fontWeight: 700 }}>
+                                  {line.quantity} {line.unit}
+                                </span>
+                                <span style={{ color: '#64748b', fontSize: '12px' }}>
+                                  {line.purchasePrice == null ? 'Bán thử nghiệm (Chưa định giá)' : money(line.purchasePrice) + ' / ' + line.unit}
+                                </span>
+                              </span>
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
+                      <strong style={{ fontSize: '13px', color: '#0f172a' }}>{budget(plan.lines)}</strong>
+                    </div>
+                  </article>
+                );
+              });
+            })()}
 
             {plans.length > 0 && (
               <div className="restock-actions" style={{ marginTop: '16px' }}>
@@ -1207,11 +1618,11 @@ export default function RestockPage({
                     <span style={{ fontSize: '18px', color: '#059669', fontWeight: 'bold' }}>✓</span>
                     <div>
                       <strong style={{ color: '#065f46', fontSize: '14.5px' }}>
-                        Danh sách từ Gợi ý nhập hàng ({selectedCount} mặt hàng · {money(totalCost)})
+                        Danh sách từ Gợi ý nhập hàng ({selectedCount} mặt hàng)
                       </strong>
                       <p style={{ margin: '4px 0 0', fontSize: '12.5px', color: '#047857' }}>
                         {selectedCount > 0
-                          ? `Gồm ${selectedCount} mặt hàng bạn đã chọn số lượng.`
+                          ? `Gồm ${selectedInventoryLines.length} mặt hàng trong kho và ${selectedSeasonalLines.length} mặt hàng mới dịp lễ bạn đã chọn.`
                           : 'Chưa có mặt hàng nào được chọn số lượng ở tab Gợi ý nhập hàng.'}
                       </p>
                     </div>
@@ -1390,8 +1801,7 @@ export default function RestockPage({
                   color: '#334155',
                 }}
               >
-                Số lượng mặt hàng in dự kiến: <strong>{printableLines.length} mặt hàng</strong> · Tổng
-                tiền dự kiến: <strong>{money(printTotalCost)}</strong>
+                Số lượng mặt hàng in dự kiến: <strong>{printableLines.length} mặt hàng</strong>
               </div>
             </div>
 
