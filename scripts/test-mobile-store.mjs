@@ -291,7 +291,7 @@ try {
       assert.deepEqual(overflow, [], `${tab} at ${width}px`);
       if (tab === 'orders') assert.equal(await page.locator('.order-card').count(), 3);
       if (tab === 'wallet') {
-        for (const action of ['+ Nạp tiền (VietQR)', 'Rút tiền về ngân hàng']) {
+        for (const action of ['+ Nạp tiền ví (VietQR)', 'Rút tiền về tài khoản']) {
           await page.getByRole('button', { name: action, exact: true }).click();
           const overflow = await page.evaluate(() =>
             [...document.querySelectorAll('.wallet-page input, .wallet-page button')]
@@ -302,7 +302,10 @@ try {
               .map((el) => el.textContent?.slice(0, 40)),
           );
           assert.deepEqual(overflow, [], `${action} at ${width}px`);
-          await page.getByTitle('Đóng', { exact: true }).click();
+          await page
+            .locator('.wallet-modal-header')
+            .getByRole('button', { name: '✕', exact: true })
+            .click();
         }
       }
       if (width === 390)
