@@ -46,6 +46,8 @@ export function dateTime(value: string | null) {
     : '—';
 }
 export function defaultPeriod() {
-  const to = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
-  return { from: to.slice(0, 8) + '01', to };
+  const now = Date.now() + 7 * 3600000;
+  const to = new Date(now).toISOString().slice(0, 10);
+  const from = new Date(now - 6 * 86400000).toISOString().slice(0, 10);
+  return { from, to };
 }

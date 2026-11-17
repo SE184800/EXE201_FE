@@ -1,5 +1,7 @@
 # Thông báo Android — 1.1.2
 
+> Bản APK 1.2.0-store đóng gói giao diện trong APK và đưa chuông lên đầu màn hình chủ cửa hàng. Xem [ANDROID_MOBILE.md](ANDROID_MOBILE.md). Các quy tắc thông báo dưới đây vẫn áp dụng.
+
 APK mở app chính, có nút **Thông báo** nổi phía dưới bên phải. Màn VIP demo cũ nằm trong phần Thông báo.
 
 ## Hành vi

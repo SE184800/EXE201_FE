@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { Capacitor } from '@capacitor/core';
 
 export const api = axios.create({
-  baseURL: import.meta.env?.VITE_API_URL || '/api',
+  baseURL: Capacitor.isNativePlatform() ? '/api' : import.meta.env?.VITE_API_URL || '/api',
   withCredentials: true,
   timeout: 10_000,
   headers: { 'X-CSRF-Protection': 'sg-restock-web' },

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode, type SetStateAction } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type SetStateAction } from 'react';
 import { NavLink, Navigate, useParams } from 'react-router-dom';
 import Brand from '../../components/Brand';
 import DatePicker from '../../components/DatePicker';
@@ -343,6 +343,403 @@ type OverviewData = {
   transactions?: OverviewTransaction[];
 };
 
+type DailyPoint = {
+  day: string;
+  dayLabel: string;
+  weekdayLabel: string;
+  fullDate: string;
+  gmv: number;
+  orders: number;
+};
+
+function formatWeekday(dateStr: string): string {
+  try {
+    const dt = new Date(dateStr + 'T00:00:00');
+    const days = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+    return days[dt.getDay()] || '';
+  } catch {
+    return '';
+  }
+}
+
+function getNiceMaxScale(maxValue: number): number {
+  if (maxValue <= 100000) return 100000;
+  if (maxValue <= 500000) return Math.ceil(maxValue / 100000) * 100000;
+  if (maxValue <= 2000000) return Math.ceil(maxValue / 250000) * 250000;
+  if (maxValue <= 10000000) return Math.ceil(maxValue / 1000000) * 1000000;
+  return Math.ceil(maxValue / 5000000) * 5000000;
+}
+
+function DailyAnalyticsChart({
+  daily,
+  totalGmv,
+  totalOrders,
+}: {
+  daily: { day: string; gmv: number; orders: number }[];
+  from?: string;
+  to?: string;
+  totalGmv: number;
+  totalOrders: number;
+}) {
+  const [chartMode, setChartMode] = useState<'bar' | 'area'>('bar');
+  const [hoveredPoint, setHoveredPoint] = useState<DailyPoint | null>(null);
+
+  const points: DailyPoint[] = useMemo(() => {
+    if (!daily || daily.length === 0) return [];
+    return [...daily]
+      .sort((a, b) => a.day.localeCompare(b.day))
+      .map((d) => {
+        const dayMonth = `${d.day.slice(8, 10)}/${d.day.slice(5, 7)}`;
+        const weekday = formatWeekday(d.day);
+        return {
+          day: d.day,
+          dayLabel: dayMonth,
+          weekdayLabel: weekday,
+          fullDate: `${weekday}, ngày ${dayMonth}/${d.day.slice(0, 4)}`,
+          gmv: d.gmv,
+          orders: d.orders,
+        };
+      });
+  }, [daily]);
+
+  const maxGmvRaw = Math.max(1, ...points.map((p) => p.gmv));
+  const maxScale = useMemo(() => getNiceMaxScale(maxGmvRaw), [maxGmvRaw]);
+
+  const peakDay = useMemo(() => {
+    return points.reduce(
+      (max, d) => (d.gmv > max.gmv ? d : max),
+      { day: '', dayLabel: '', weekdayLabel: '', fullDate: '', gmv: 0, orders: 0 },
+    );
+  }, [points]);
+
+  const yTicks = [
+    maxScale,
+    Math.round(maxScale * 0.75),
+    Math.round(maxScale * 0.5),
+    Math.round(maxScale * 0.25),
+    0,
+  ];
+
+  const svgWidth = 720;
+  const svgHeight = 240;
+  const paddingLeft = 70;
+  const paddingRight = 35;
+  const paddingTop = 42;
+  const paddingBottom = 46;
+  const plotWidth = svgWidth - paddingLeft - paddingRight;
+  const plotHeight = svgHeight - paddingTop - paddingBottom;
+
+  const N = points.length;
+  const slotWidth = N > 0 ? plotWidth / N : plotWidth;
+  const barWidth = Math.min(54, Math.max(22, slotWidth * 0.55));
+
+  const getX = (index: number) => {
+    if (N <= 1) return paddingLeft + plotWidth / 2;
+    return paddingLeft + (index + 0.5) * slotWidth;
+  };
+
+  const getY = (value: number) => {
+    const ratio = Math.min(1, Math.max(0, value / maxScale));
+    return paddingTop + plotHeight - ratio * plotHeight;
+  };
+
+  const linePath = useMemo(() => {
+    if (points.length === 0) return '';
+    return points
+      .map((p, i) => `${i === 0 ? 'M' : 'L'} ${getX(i).toFixed(1)} ${getY(p.gmv).toFixed(1)}`)
+      .join(' ');
+  }, [points, maxScale, slotWidth]);
+
+  const areaPath = useMemo(() => {
+    if (points.length === 0) return '';
+    const firstX = getX(0).toFixed(1);
+    const lastX = getX(points.length - 1).toFixed(1);
+    const bottomY = (paddingTop + plotHeight).toFixed(1);
+    return `${linePath} L ${lastX} ${bottomY} L ${firstX} ${bottomY} Z`;
+  }, [linePath, points, slotWidth]);
+
+  if (daily.length === 0) {
+    return (
+      <div className="admin-empty-chart">
+        <Icon name="chart" />
+        <p>Chưa có giao dịch sỉ nào phát sinh trong khoảng thời gian này.</p>
+        <small>Các giao dịch giữa chủ tiệm tạp hóa và chủ vựa sẽ tự động tổng hợp vào biểu đồ.</small>
+      </div>
+    );
+  }
+
+  return (
+    <div className="admin-smart-chart-container">
+      <div className="admin-chart-topbar">
+        <div className="admin-chart-kpis">
+          <div className="admin-chart-kpi-item">
+            <span>Tổng giao dịch</span>
+            <strong>{money(totalGmv)}</strong>
+          </div>
+          <div className="admin-chart-kpi-divider" />
+          <div className="admin-chart-kpi-item">
+            <span>Số đơn hoàn tất</span>
+            <strong>{totalOrders} đơn</strong>
+          </div>
+          {peakDay.gmv > 0 && (
+            <>
+              <div className="admin-chart-kpi-divider" />
+              <div className="admin-chart-kpi-item">
+                <span>Đỉnh doanh số / ngày</span>
+                <strong className="text-emerald">{money(peakDay.gmv)}</strong>
+              </div>
+              <div className="admin-chart-kpi-divider" />
+              <div className="admin-chart-kpi-item">
+                <span>Số ngày giao dịch</span>
+                <strong>{points.length} ngày</strong>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="admin-chart-switcher">
+          <button
+            type="button"
+            className={`admin-chart-mode-btn ${chartMode === 'bar' ? 'active' : ''}`}
+            onClick={() => setChartMode('bar')}
+          >
+             Cột số liệu
+          </button>
+          <button
+            type="button"
+            className={`admin-chart-mode-btn ${chartMode === 'area' ? 'active' : ''}`}
+            onClick={() => setChartMode('area')}
+          >
+            Đường xu hướng
+          </button>
+        </div>
+      </div>
+
+      <div className="admin-chart-svg-wrapper">
+        <svg
+          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+          className="admin-smart-svg"
+          preserveAspectRatio="none"
+        >
+          <defs>
+            <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#16a34a" stopOpacity="0.32" />
+              <stop offset="65%" stopColor="#22c55e" stopOpacity="0.08" />
+              <stop offset="100%" stopColor="#22c55e" stopOpacity="0.00" />
+            </linearGradient>
+            <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#22c55e" />
+              <stop offset="100%" stopColor="#15803d" />
+            </linearGradient>
+            <linearGradient id="barGradientActive" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#34d399" />
+              <stop offset="100%" stopColor="#059669" />
+            </linearGradient>
+          </defs>
+
+          {yTicks.map((val) => {
+            const y = getY(val);
+            return (
+              <g key={val}>
+                <line
+                  x1={paddingLeft}
+                  y1={y}
+                  x2={svgWidth - paddingRight}
+                  y2={y}
+                  stroke={val === 0 ? '#cbd5e1' : '#e2e8f0'}
+                  strokeDasharray={val === 0 ? 'none' : '4 4'}
+                  strokeWidth={val === 0 ? '1.5' : '1'}
+                />
+                <text
+                  x={paddingLeft - 8}
+                  y={y + 3.5}
+                  textAnchor="end"
+                  fill="#64748b"
+                  fontSize="10"
+                  fontWeight="500"
+                >
+                  {val >= 1000000 ? `${(val / 1000000).toFixed(1)}Tr ₫` : val > 0 ? `${Math.round(val / 1000)}k ₫` : '0 ₫'}
+                </text>
+              </g>
+            );
+          })}
+
+          {chartMode === 'area' && (
+            <>
+              {points.length > 1 && (
+                <>
+                  <path d={areaPath} fill="url(#areaGradient)" />
+                  <path
+                    d={linePath}
+                    fill="none"
+                    stroke="#16a34a"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </>
+              )}
+              {points.map((p, i) => {
+                const cx = getX(i);
+                const cy = getY(p.gmv);
+                const isHovered = hoveredPoint?.day === p.day;
+
+                return (
+                  <g
+                    key={p.day}
+                    className="admin-chart-point-group"
+                    onMouseEnter={() => setHoveredPoint(p)}
+                    onMouseLeave={() => setHoveredPoint(null)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {isHovered && (
+                      <line
+                        x1={cx}
+                        y1={paddingTop}
+                        x2={cx}
+                        y2={paddingTop + plotHeight}
+                        stroke="#16a34a"
+                        strokeDasharray="3 3"
+                        strokeWidth="1"
+                      />
+                    )}
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={isHovered ? 6 : 4.5}
+                      fill="#16a34a"
+                      stroke="#ffffff"
+                      strokeWidth="2"
+                    />
+                    <text
+                      x={cx}
+                      y={cy - 10}
+                      textAnchor="middle"
+                      fill="#15803d"
+                      fontSize="10.5"
+                      fontWeight="650"
+                    >
+                      {money(p.gmv)}
+                    </text>
+                  </g>
+                );
+              })}
+            </>
+          )}
+
+          {chartMode === 'bar' && (
+            <>
+              {points.map((p, i) => {
+                const cx = getX(i);
+                const cy = getY(p.gmv);
+                const barHeight = Math.max(4, paddingTop + plotHeight - cy);
+                const isHovered = hoveredPoint?.day === p.day;
+
+                return (
+                  <g
+                    key={p.day}
+                    className="admin-chart-bar-group"
+                    onMouseEnter={() => setHoveredPoint(p)}
+                    onMouseLeave={() => setHoveredPoint(null)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <rect
+                      x={cx - barWidth}
+                      y={paddingTop}
+                      width={barWidth * 2}
+                      height={plotHeight}
+                      fill="transparent"
+                    />
+
+                    <rect
+                      x={cx - barWidth / 2}
+                      y={cy}
+                      width={barWidth}
+                      height={barHeight}
+                      rx="6"
+                      ry="6"
+                      fill={isHovered ? 'url(#barGradientActive)' : 'url(#barGradient)'}
+                      filter="drop-shadow(0px 2px 4px rgba(22, 163, 74, 0.2))"
+                    />
+
+                    <text
+                      x={cx}
+                      y={cy - 19}
+                      textAnchor="middle"
+                      fill="#059669"
+                      fontSize="10"
+                      fontWeight="600"
+                    >
+                      {p.orders} đơn
+                    </text>
+                    <text
+                      x={cx}
+                      y={cy - 6}
+                      textAnchor="middle"
+                      fill="#166534"
+                      fontSize="11"
+                      fontWeight="700"
+                    >
+                      {money(p.gmv)}
+                    </text>
+                  </g>
+                );
+              })}
+            </>
+          )}
+
+          {points.map((p, i) => {
+            const cx = getX(i);
+            const isHovered = hoveredPoint?.day === p.day;
+
+            return (
+              <g key={`axis-label-${p.day}`}>
+                <text
+                  x={cx}
+                  y={paddingTop + plotHeight + 17}
+                  textAnchor="middle"
+                  fill={isHovered ? '#16a34a' : '#1e293b'}
+                  fontSize="11"
+                  fontWeight="650"
+                >
+                  {p.dayLabel}
+                </text>
+                <text
+                  x={cx}
+                  y={paddingTop + plotHeight + 31}
+                  textAnchor="middle"
+                  fill="#64748b"
+                  fontSize="9.5"
+                  fontWeight="500"
+                >
+                  {p.weekdayLabel}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+
+        {hoveredPoint && (
+          <div
+            className="admin-chart-tooltip"
+            style={{
+              left: `${(getX(points.findIndex((p) => p.day === hoveredPoint.day)) / svgWidth) * 100}%`,
+              top: '10px',
+            }}
+          >
+            <span className="tooltip-date">{hoveredPoint.fullDate}</span>
+            <strong className="tooltip-amount">{money(hoveredPoint.gmv)}</strong>
+            <span className="tooltip-orders">
+              {hoveredPoint.orders} giao dịch hoàn tất
+            </span>
+          </div>
+        )}
+      </div>
+
+    </div>
+  );
+}
+
 function Overview({ onLogout }: Props) {
   const [dates, setDates] = useState(defaultPeriod);
   const [region, setRegion] = useState('');
@@ -356,25 +753,8 @@ function Overview({ onLogout }: Props) {
     revision,
   );
 
-  const max = Math.max(1, ...(data?.daily.map((d) => d.gmv) || []));
   const totalDailyGmv = data?.daily.reduce((sum, d) => sum + d.gmv, 0) || 0;
   const totalDailyOrders = data?.daily.reduce((sum, d) => sum + d.orders, 0) || 0;
-
-  const applyPreset = (preset: 'today' | '7days' | '30days' | 'month') => {
-    const todayStr = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
-    let fromStr = todayStr;
-    if (preset === '7days') {
-      fromStr = new Date(Date.now() + 7 * 3600000 - 6 * 86400000).toISOString().slice(0, 10);
-    } else if (preset === '30days') {
-      fromStr = new Date(Date.now() + 7 * 3600000 - 29 * 86400000).toISOString().slice(0, 10);
-    } else if (preset === 'month') {
-      fromStr = todayStr.slice(0, 8) + '01';
-    }
-    const newDates = { from: fromStr, to: todayStr };
-    setDates(newDates);
-    setQuery({ ...newDates, region });
-    setRevision((n) => n + 1);
-  };
 
   return (
     <div className="admin-overview-view">
@@ -390,43 +770,14 @@ function Overview({ onLogout }: Props) {
       />
 
       <div className="admin-overview-toolbar">
-        <div className="admin-preset-group">
-          <span className="admin-preset-label">Kỳ báo cáo nhanh:</span>
-          <button
-            type="button"
-            className={`admin-preset-btn ${dates.from === dates.to ? 'active' : ''}`}
-            onClick={() => applyPreset('today')}
-          >
-            Hôm nay
-          </button>
-          <button
-            type="button"
-            className="admin-preset-btn"
-            onClick={() => applyPreset('7days')}
-          >
-            7 ngày qua
-          </button>
-          <button
-            type="button"
-            className="admin-preset-btn"
-            onClick={() => applyPreset('month')}
-          >
-            Tháng này
-          </button>
-          <button
-            type="button"
-            className="admin-preset-btn"
-            onClick={() => applyPreset('30days')}
-          >
-            30 ngày
-          </button>
-        </div>
-
         <form
           className="admin-filters admin-filters-inline"
           onSubmit={(e) => {
             e.preventDefault();
-            setQuery({ ...dates, region });
+            const fallback = defaultPeriod();
+            const from = dates.from || fallback.from;
+            const to = dates.to || fallback.to;
+            setQuery({ from, to, region });
             setRevision((n) => n + 1);
           }}
         >
@@ -492,42 +843,17 @@ function Overview({ onLogout }: Props) {
               title="Giá trị giao dịch theo ngày"
               note={
                 data.daily.length > 0
-                  ? `Tổng giao dịch: ${money(totalDailyGmv)} · ${totalDailyOrders} đơn trong kỳ`
+                  ? `Dữ liệu giao dịch sỉ thời gian thực giữa Tạp Hóa & Chủ Vựa`
                   : undefined
               }
             >
-              {data.daily.length ? (
-                <div className="admin-chart" role="img" aria-label="Biểu đồ GMV theo ngày">
-                  <div className="admin-chart-bars">
-                    {data.daily.map((day) => (
-                      <div className="admin-bar-column" key={day.day}>
-                        <div
-                          className="admin-bar"
-                          tabIndex={0}
-                          title={`${day.day}: ${money(day.gmv)} · ${day.orders} đơn hàng`}
-                          aria-label={`${day.day}: ${money(day.gmv)}, ${day.orders} đơn`}
-                          style={{ height: `${Math.max(4, (day.gmv / max) * 100)}%` }}
-                        >
-                          <span>
-                            <strong>{money(day.gmv)}</strong>
-                            <small>{day.orders} giao dịch</small>
-                            <small className="chart-tip-date">{day.day}</small>
-                          </span>
-                        </div>
-                        <small>
-                          {day.day.slice(8)}/{day.day.slice(5, 7)}
-                        </small>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="admin-empty-chart">
-                  <Icon name="chart" />
-                  <p>Chưa có giao dịch sỉ nào phát sinh trong khoảng thời gian này.</p>
-                  <small>Các giao dịch giữa chủ tiệm tạp hóa và chủ vựa sẽ tự động tổng hợp vào biểu đồ.</small>
-                </div>
-              )}
+              <DailyAnalyticsChart
+                daily={data.daily}
+                from={data.from}
+                to={data.to}
+                totalGmv={totalDailyGmv}
+                totalOrders={totalDailyOrders}
+              />
             </Panel>
 
             <Panel title="Tổng quan kết nối">
@@ -2827,7 +3153,7 @@ const actionLabels: Record<string, string> = {
   DEPOSIT_SUBMITTED: 'Cửa hàng báo đã chuyển cọc',
   DEPOSIT_SANDBOX_SUBMITTED: 'Cửa hàng chạy thanh toán cọc sandbox',
   DEPOSIT_CONFIRMED: 'Chủ vựa xác nhận nhận cọc',
-  DEPOSIT_REJECTED: 'Chủ vựa chưa nhận được cọc',
+  DEPOSIT_REJECTED: 'Chủ vựa từ chối cọc',
   DEPOSIT_REFUNDED: 'Chủ vựa xác nhận hoàn cọc',
   ORDER_CREATED_FROM_QUOTE: 'Tạo đơn từ báo giá',
   ORDER_CREATED: 'Tạo đơn hàng',
@@ -2836,7 +3162,334 @@ const actionLabels: Record<string, string> = {
   PERSONAL_PROFILE_UPDATED: 'Đổi thông tin cá nhân',
   PASSWORD_CHANGED: 'Đổi mật khẩu',
   PASSWORD_RESET: 'Khôi phục mật khẩu',
+  ORDER_SETTLED_TO_SUPPLIER: 'Quyết toán tiền đơn hàng cho chủ vựa',
+  ORDER_REFUNDED: 'Hoàn tiền đơn hàng',
+  ORDER_PAID_WITH_WALLET: 'Thanh toán đơn hàng bằng ví',
+  DEPOSIT_REQUESTED: 'Tạo yêu cầu nạp tiền',
+  QR_DEPOSIT_REQUESTED: 'Tạo mã QR nạp tiền',
+  QR_DEPOSIT_CONFIRMED: 'Xác nhận nạp tiền qua QR',
+  SEPAY_WEBHOOK_DEPOSIT_CONFIRMED: 'Hệ thống SePay tự động nạp tiền',
+  DEPOSIT_APPROVED: 'Duyệt yêu cầu nạp tiền',
+  SANDBOX_DEPOSIT_CREATED: 'Nạp tiền thử nghiệm (Sandbox)',
+  WITHDRAWAL_REQUESTED: 'Tạo yêu cầu rút tiền',
+  WITHDRAWAL_APPROVED: 'Duyệt yêu cầu rút tiền',
+  WITHDRAWAL_REJECTED: 'Từ chối yêu cầu rút tiền',
+  WITHDRAWAL_COMPLETED: 'Hoàn tất chuyển khoản rút tiền',
+  WITHDRAWAL_FAILED: 'Thất bại khi chuyển tiền rút',
+  SANDBOX_WITHDRAWAL_CREATED: 'Rút tiền thử nghiệm (Sandbox)',
+  SYSTEM_CONFIG_UPDATED: 'Cập nhật tham số sàn',
+  SYSTEM_CONFIG_RESET: 'Khôi phục tham số mặc định',
+  FORBIDDEN_KEYWORD_ADDED: 'Thêm từ khóa cấm',
+  FORBIDDEN_KEYWORD_REMOVED: 'Xóa từ khóa cấm',
+  RESTRICTED_KEYWORD_ADDED: 'Thêm từ khóa cảnh báo',
+  RESTRICTED_KEYWORD_REMOVED: 'Xóa từ khóa cảnh báo',
+  STOCK_MOVEMENT: 'Biến động tồn kho',
+  INVENTORY_UPDATED: 'Cập nhật kho tiệm',
+  INVENTORY_CREATED: 'Thêm hàng vào kho',
+  INVENTORY_RECEIVED: 'Nhập hàng vào kho',
+  INVENTORY_IMPORTED: 'Nhập hàng vào kho',
 };
+
+const entityLabels: Record<string, string> = {
+  ORDER: 'Đơn hàng',
+  SUBSCRIPTION: 'Gói sử dụng',
+  USER: 'Tài khoản',
+  SUPPLIER: 'Chủ vựa',
+  PRODUCT: 'Sản phẩm',
+  DEPOSIT_REQUEST: 'Yêu cầu nạp',
+  WITHDRAWAL_REQUEST: 'Yêu cầu rút',
+  SETTING: 'Tham số sàn',
+  HOLIDAY: 'Lịch sự kiện',
+  QUOTE: 'Báo giá',
+  SYSTEM: 'Hệ thống',
+  INVENTORY: 'Kho tiệm',
+};
+
+const fieldTranslations: Record<string, string> = {
+  strictness: 'Mức kiểm duyệt',
+  autoModerationEnabled: 'Tự động kiểm duyệt',
+  forbiddenWordsCount: 'Số từ cấm',
+  restrictedWordsCount: 'Số từ cảnh báo',
+  defaultDepositRate: 'Tỷ lệ cọc mặc định',
+  maxDepositRate: 'Tỷ lệ cọc tối đa',
+  orderAutoCancelHours: 'Thời hạn tự hủy đơn',
+  complaintWindowHours: 'Thời hạn khiếu nại',
+  maxConsignmentItems: 'Sản phẩm ký gửi tối đa',
+  minDepositAmount: 'Mức nạp tối thiểu',
+  name: 'Tên',
+  action: 'Hành động',
+  status: 'Trạng thái',
+  price: 'Giá',
+  stock: 'Tồn kho',
+  active: 'Hoạt động',
+  packaging: 'Quy cách',
+};
+
+const valueTranslations: Record<string, string> = {
+  true: 'Bật',
+  false: 'Tắt',
+  STANDARD: 'Tiêu chuẩn',
+  STRICT: 'Nghiêm ngặt',
+  LENIENT: 'Nới lỏng',
+  ACTIVE: 'Hoạt động',
+  INACTIVE: 'Ngưng hoạt động',
+  SUSPENDED: 'Tạm khóa',
+  BANNED: 'Bị cấm',
+  PENDING: 'Chờ duyệt',
+  APPROVED: 'Đã duyệt',
+  REJECTED: 'Từ chối',
+};
+
+function formatLogSummary(details: Record<string, unknown>): ReactNode {
+  if (!details || Object.keys(details).length === 0) {
+    return <span className="text-muted">—</span>;
+  }
+
+  // 1. Quyết toán tiền đơn hàng
+  if (details.amount !== undefined && details.grossAmount !== undefined) {
+    const net = Number(details.amount) || 0;
+    const gross = Number(details.grossAmount) || 0;
+    const comm = Number(details.commissionAmount) || 0;
+    return (
+      <div className="admin-log-summary">
+        <div>
+          Thực nhận: <strong>{money(net)}</strong>
+        </div>
+        <small>
+          Tổng đơn: {money(gross)} · Phí sàn: {money(comm)}
+        </small>
+      </div>
+    );
+  }
+
+  // 2. Gói sử dụng / gia hạn / mở khóa
+  if (details.periodEnd) {
+    const amt = Number(details.amount) || 0;
+    const methodStr = details.method === 'WALLET' ? 'Ví tiền' : details.method ? String(details.method) : '';
+    const endDt = new Date(String(details.periodEnd)).toLocaleDateString('vi-VN');
+    const rawReason = details.reason || details.note || details.adminNote;
+    const reason = rawReason ? String(rawReason) : '';
+    return (
+      <div className="admin-log-summary">
+        <div>
+          {amt > 0 ? (
+            <>
+              <strong>{money(amt)}</strong>
+              {methodStr && ` · ${methodStr}`}
+            </>
+          ) : (
+            <strong>Gia hạn / Mở khóa</strong>
+          )}
+        </div>
+        <small>Hạn dùng: {endDt}{reason ? ` · Lý do: ${reason}` : ''}</small>
+      </div>
+    );
+  }
+
+  // 3. Thay đổi cấu hình ngày lễ
+  if (details.name && (details.startDate || details.endDate)) {
+    return (
+      <div className="admin-log-summary">
+        <div>
+          Sự kiện: <strong>{String(details.name)}</strong>
+        </div>
+        <small>Thời gian: {String(details.startDate || '')} → {String(details.endDate || '')}</small>
+      </div>
+    );
+  }
+
+  // 4. Biến động kho hàng (STOCK_MOVEMENT)
+  if (details.type !== undefined && details.before !== undefined && details.after !== undefined) {
+    const b = Number(details.before) || 0;
+    const a = Number(details.after) || 0;
+    const type = String(details.type);
+    let title = `Tồn kho: ${b} → ${a}`;
+    if (type === 'SALE') {
+      title = `Bán lẻ: Tồn ${b} → Còn ${a}`;
+    } else if (type === 'RECEIPT') {
+      title = `Nhập kho: Tồn ${b} → Tăng lên ${a}`;
+    } else if (type === 'ADJUSTMENT') {
+      title = `Kiểm kê điều chỉnh: ${b} → ${a}`;
+    } else if (type === 'EXPIRED_DISCARD') {
+      title = `Hủy hàng hết hạn: Tồn ${b} → Còn ${a}`;
+    }
+
+    const price = details.unitSalePrice !== undefined && Number(details.unitSalePrice) > 0
+      ? `Đơn giá: ${money(Number(details.unitSalePrice))}`
+      : '';
+
+    return (
+      <div className="admin-log-summary">
+        <div><strong>{title}</strong></div>
+        {price && <small>{price}</small>}
+      </div>
+    );
+  }
+
+  // 5. Cập nhật thông tin hàng hóa kho tiệm (INVENTORY_UPDATED)
+  if (details.before && details.after && typeof details.before === 'object' && typeof details.after === 'object') {
+    const b = details.before as Record<string, unknown>;
+    const a = details.after as Record<string, unknown>;
+
+    const changes: string[] = [];
+    if (a.name && b.name && a.name !== b.name) {
+      changes.push(`Đổi tên: ${String(a.name)}`);
+    }
+    if (a.sellingPrice !== undefined && b.sellingPrice !== undefined && a.sellingPrice !== b.sellingPrice) {
+      changes.push(`Giá bán: ${money(Number(b.sellingPrice) || 0)} → ${money(Number(a.sellingPrice) || 0)}`);
+    }
+    if (a.quantity !== undefined && b.quantity !== undefined && a.quantity !== b.quantity) {
+      changes.push(`Tồn: ${b.quantity} → ${a.quantity} ${String(a.unit || b.unit || '')}`);
+    }
+    if (a.unit && b.unit && a.unit !== b.unit) {
+      changes.push(`Đơn vị: ${String(b.unit)} → ${String(a.unit)}`);
+    }
+
+    if (changes.length > 0) {
+      return (
+        <div className="admin-log-summary">
+          <div><strong>{changes[0]}</strong></div>
+          {changes.length > 1 && <small>{changes.slice(1).join(' · ')}</small>}
+        </div>
+      );
+    }
+
+    const prodName = String(a.name || b.name || '');
+    const priceStr = a.sellingPrice !== undefined ? `Giá: ${money(Number(a.sellingPrice) || 0)}` : '';
+    const qtyStr = a.quantity !== undefined ? `Tồn: ${a.quantity} ${String(a.unit || b.unit || '')}` : '';
+    return (
+      <div className="admin-log-summary">
+        <div>Cập nhật hàng: <strong>{prodName || 'Sản phẩm'}</strong></div>
+        <small>{[priceStr, qtyStr].filter(Boolean).join(' · ')}</small>
+      </div>
+    );
+  }
+
+  // 6. Thêm hàng vào kho tiệm (INVENTORY_CREATED)
+  if (details.name && details.sellingPrice !== undefined && details.quantity !== undefined) {
+    return (
+      <div className="admin-log-summary">
+        <div>Thêm hàng: <strong>{String(details.name)}</strong></div>
+        <small>Tồn ban đầu: {String(details.quantity)} · Giá bán: {money(Number(details.sellingPrice) || 0)}</small>
+      </div>
+    );
+  }
+
+  // 7. Nhập kho hàng tiệm (INVENTORY_RECEIVED)
+  if (details.total !== undefined && details.quantity !== undefined) {
+    return (
+      <div className="admin-log-summary">
+        <div>Nhập thêm: <strong>+{String(details.quantity)}</strong></div>
+        <small>Tổng tồn sau nhập: {String(details.total)}{details.supplierName ? ` · Nguồn: ${String(details.supplierName)}` : ''}</small>
+      </div>
+    );
+  }
+
+  // 8. Thay đổi trạng thái (before -> after)
+  if (details.before !== undefined && details.after !== undefined) {
+    const rawReason = details.reason || details.note || details.adminNote;
+    const reason = rawReason ? String(rawReason) : '';
+    const beforeStr = typeof details.before === 'object' ? 'Dữ liệu cũ' : String(details.before);
+    const afterStr = typeof details.after === 'object' ? 'Dữ liệu mới' : String(details.after);
+    return (
+      <div className="admin-log-summary">
+        <div>
+          <span>{beforeStr}</span>
+          {' → '}
+          <strong>{afterStr}</strong>
+        </div>
+        {reason ? <small>Lý do: {reason}</small> : null}
+      </div>
+    );
+  }
+
+  // 5. Giao dịch số tiền đơn lẻ
+  if (details.amount !== undefined) {
+    const amt = Number(details.amount) || 0;
+    const methodStr = details.method === 'VIET_QR' ? 'VietQR' : details.method === 'BANK_TRANSFER' ? 'Chuyển khoản' : '';
+    const rawNote = details.adminNote || details.reason || details.note;
+    const note = rawNote ? String(rawNote) : '';
+    return (
+      <div className="admin-log-summary">
+        <div>
+          Số tiền: <strong>{money(amt)}</strong>
+          {methodStr && ` · ${methodStr}`}
+        </div>
+        {note ? <small>Ghi chú: {note}</small> : null}
+      </div>
+    );
+  }
+
+  // 6. Cập nhật tham số sàn (SYSTEM_CONFIG_UPDATED)
+  if (details.strictness !== undefined || details.autoModerationEnabled !== undefined) {
+    const isAuto = details.autoModerationEnabled === true ? 'Bật' : 'Tắt';
+    const strictMap: Record<string, string> = {
+      STANDARD: 'Tiêu chuẩn',
+      STRICT: 'Nghiêm ngặt',
+      LENIENT: 'Nới lỏng',
+    };
+    const strictStr = strictMap[String(details.strictness)] || String(details.strictness || 'Tiêu chuẩn');
+    const forbidden = details.forbiddenWordsCount !== undefined ? `${details.forbiddenWordsCount} từ cấm` : '';
+    const deposit = details.defaultDepositRate !== undefined ? `Cọc: ${details.defaultDepositRate}%` : '';
+
+    return (
+      <div className="admin-log-summary">
+        <div>
+          Kiểm duyệt AI: <strong>{isAuto} ({strictStr})</strong>
+        </div>
+        <small>{[forbidden, deposit].filter(Boolean).join(' · ')}</small>
+      </div>
+    );
+  }
+
+  // 7. Khôi phục tham số mặc định
+  if (details.action === 'RESET_TO_DEFAULT') {
+    return (
+      <div className="admin-log-summary">
+        <strong>Khôi phục tham số mặc định</strong>
+      </div>
+    );
+  }
+
+  // 8. Thêm/xóa từ khóa hoặc cấu hình
+  if (details.word) {
+    return (
+      <div className="admin-log-summary">
+        <span>Từ khóa: <strong>{String(details.word)}</strong></span>
+      </div>
+    );
+  }
+
+  // Loại trừ các mã kỹ thuật nội bộ khỏi tóm tắt
+  const technicalKeys = new Set([
+    'userId',
+    'actorId',
+    'paymentId',
+    'supplierUserId',
+    'paymentCreated',
+    'periodStart',
+    'reference',
+  ]);
+  const friendlyEntries = Object.entries(details).filter(([k]) => !technicalKeys.has(k));
+  if (friendlyEntries.length > 0) {
+    return (
+      <div className="admin-log-summary">
+        <small>
+          {friendlyEntries
+            .slice(0, 3)
+            .map(([k, v]) => {
+              const label = fieldTranslations[k] || k;
+              const valStr = valueTranslations[String(v)] || String(v);
+              return `${label}: ${valStr}`;
+            })
+            .join(' · ')}
+        </small>
+      </div>
+    );
+  }
+
+  return <span className="text-muted">—</span>;
+}
 function Audit({ onLogout }: Props) {
   const [dates, setDates] = useState(defaultPeriod),
     [action, setAction] = useState(''),
@@ -2911,21 +3564,30 @@ function Audit({ onLogout }: Props) {
                     <tr key={log.id}>
                       <td>{dateTime(log.createdAt)}</td>
                       <td>
-                        <strong>{log.actor?.name || 'Tài khoản đã xóa'}</strong>
-                        <small>{log.actor ? '@' + log.actor.username : '#' + log.actorId}</small>
+                        {log.actor ? (
+                          <>
+                            <strong>{log.actor.name}</strong>
+                            <small>@{log.actor.username}</small>
+                          </>
+                        ) : log.actorId ? (
+                          <>
+                            <strong>Tài khoản đã xóa</strong>
+                            <small>#{log.actorId}</small>
+                          </>
+                        ) : (
+                          <>
+                            <strong>Hệ thống tự động</strong>
+                            <small>Tác vụ nền</small>
+                          </>
+                        )}
                       </td>
                       <td>{actionLabels[log.action] || log.action}</td>
                       <td>
-                        {log.entityType} #{log.entityId}
+                        <strong>{entityLabels[log.entityType] || log.entityType}</strong>
+                        {log.entityId && log.entityId !== 'SYSTEM' && <small> #{log.entityId}</small>}
+                        {log.entityId === 'SYSTEM' && <small> (Hệ thống)</small>}
                       </td>
-                      <td>
-                        <details>
-                          <summary>Xem thay đổi</summary>
-                          <pre className="admin-log-detail">
-                            {JSON.stringify(log.details, null, 2)}
-                          </pre>
-                        </details>
-                      </td>
+                      <td>{formatLogSummary(log.details)}</td>
                     </tr>
                   ))}
                 </tbody>

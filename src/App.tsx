@@ -17,6 +17,7 @@ import SupplierProfilePage from './pages/supplier/SupplierProfilePage';
 import ContractKeyPage from './pages/ContractKeyPage';
 import { getMe, logout } from './services/auth.api';
 import { ROLE_DETAILS, type AuthUser } from './types/auth';
+import { isMobileApp } from './mobile/platform';
 
 
 function LogoutToast() {
@@ -97,7 +98,7 @@ function LogoutToast() {
 
 export default function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [checkingSession, setCheckingSession] = useState(() => sessionStorage.getItem('supplymind_active_tab') === 'true');
+  const [checkingSession, setCheckingSession] = useState(() => isMobileApp() || sessionStorage.getItem('supplymind_active_tab') === 'true');
 
   const handleSetUser = useCallback((u: AuthUser | null) => {
     if (u) {
@@ -115,7 +116,7 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
-    const isTabActive = sessionStorage.getItem('supplymind_active_tab') === 'true';
+    const isTabActive = isMobileApp() || sessionStorage.getItem('supplymind_active_tab') === 'true';
     if (!isTabActive) {
       // Khi mở tab mới hoặc tắt mở lại trình duyệt: yêu cầu đăng nhập lại
       return;
@@ -170,7 +171,7 @@ export default function App() {
     };
   }, [user]);
 
-  const destination = user ? ROLE_DETAILS[user.role].path : '/';
+  const destination = user ? (isMobileApp() && user.role === 'STORE_OWNER' ? '/store/quick-sale' : ROLE_DETAILS[user.role].path) : (isMobileApp() ? '/login' : '/');
   // Keep protected deep links while /me restores the session; login stays usable
   // immediately even when a cold server is waking up.
   const restoreSession = (
@@ -185,7 +186,7 @@ export default function App() {
       <Routes>
         <Route
           path="/"
-          element={<LandingPage user={user} onLogout={clearUser} />}
+          element={isMobileApp() ? (checkingSession ? restoreSession : <Navigate to={destination} replace />) : <LandingPage user={user} onLogout={clearUser} />}
         />
         <Route
           path="/login"

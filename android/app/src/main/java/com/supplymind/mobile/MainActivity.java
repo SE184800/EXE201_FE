@@ -28,6 +28,7 @@ public class MainActivity extends BridgeActivity {
                 .setNegativeButton("Để sau", null).show();
         }
         if (bridge != null) {
+            bridge.setWebViewClient(new MobileWebViewClient(bridge));
             WebView webView = bridge.getWebView();
             WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
             WindowCompat.getInsetsController(getWindow(), webView).setAppearanceLightStatusBars(true);
