@@ -3756,7 +3756,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Nếu vựa không duyệt chuẩn bị hàng trong số giờ này, hệ thống tự động hủy đơn và hoàn 100% cọc về ví cho tiệm.</small>
               </div>
 
               <div className="admin-config-field">
@@ -3777,7 +3776,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Thời gian tối đa để chủ tạp hóa kiểm hàng và bấm gửi khiếu nại (Mặc định: 24 giờ).</small>
               </div>
 
               <div className="admin-config-field">
@@ -3798,7 +3796,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Nếu quá thời gian này và tiệm không khiếu nại, hệ thống tự động hoàn tất đơn và giải ngân cho vựa.</small>
               </div>
 
               <div className="admin-config-field">
@@ -3841,14 +3838,12 @@ function AiSystemConfig({ onLogout }: Props) {
                   />
                   <span style={{ fontSize: '13px', color: '#64748b' }}>giờ hàng ngày</span>
                 </div>
-                <small>Ví dụ: từ 5h sáng đến 21h tối. Tránh việc vựa hẹn giờ giao ban đêm gây phiền toái cho tiệm.</small>
               </div>
             </div>
 
             <div style={{ marginTop: '16px' }} className="admin-config-toggle">
               <span>
                 <strong>Cho phép chuyến xe giao hàng vào cuối tuần (Thứ Bảy & Chủ Nhật)</strong>
-                <small>Khi bật, chủ vựa có thể lên lịch chuyến xe giao hàng vào các ngày cuối tuần như bình thường.</small>
               </span>
               <input
                 type="checkbox"
@@ -3899,7 +3894,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Mức cọc chuẩn áp dụng mặc định khi chủ vựa gửi báo giá (Mặc định: 10%).</small>
               </div>
 
               <div className="admin-config-field">
@@ -3921,7 +3915,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Mức trần tối đa, chủ vựa không được phép yêu cầu cọc vượt ngưỡng này (Mặc định: 50%).</small>
               </div>
 
               <div className="admin-config-field">
@@ -3942,7 +3935,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Đơn hàng vượt giá trị này sẽ tự động áp dụng chính sách ký quỹ bảo đảm.</small>
               </div>
 
               <div className="admin-config-field">
@@ -3963,7 +3955,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Số ngày giữ cọc để chủ tạp hóa kiểm tra hàng hóa trước khi giải tỏa hoàn tất.</small>
               </div>
             </div>
           </section>
@@ -3999,7 +3990,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Mỗi chủ vựa chỉ được ký gửi tối đa số mặt hàng này tại cùng 1 tiệm tạp hóa (Mặc định: 5 mặt hàng).</small>
               </div>
 
               <div className="admin-config-field">
@@ -4020,14 +4010,12 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Hệ thống tự động phát thông báo nhắc nhở tiệm tạp hóa thanh toán tiền sỉ các mặt hàng ký gửi đã bán lẻ.</small>
               </div>
             </div>
 
             <div style={{ marginTop: '16px' }} className="admin-config-toggle">
               <span>
                 <strong>Yêu cầu Chủ vựa phải hoàn tất Xác minh uy tín (Approved) mới được đưa hàng ký gửi</strong>
-                <small>Bảo vệ chủ tiệm tạp hóa khỏi các nhà cung cấp chưa được chứng thực giấy tờ kinh doanh hợp lệ.</small>
               </span>
               <input
                 type="checkbox"
@@ -4077,7 +4065,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Số tiền tối thiểu một lần nạp vào ví (Mặc định: 50.000đ).</small>
               </div>
 
               <div className="admin-config-field">
@@ -4098,7 +4085,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Mức rút tối thiểu tránh các giao dịch siêu nhỏ gây quá tải ngân hàng (Mặc định: 100.000đ).</small>
               </div>
 
               <div className="admin-config-field">
@@ -4119,7 +4105,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Giới hạn bảo vệ tài sản, một tài khoản không thể rút vượt ngưỡng này trong vòng 24 giờ (Mặc định: 50.000.000đ).</small>
               </div>
 
               <div className="admin-config-field">
@@ -4140,7 +4125,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Các lệnh rút dưới mức này sẽ được hệ thống duyệt ngay; trên mức này bắt buộc Admin kiểm tra chứng từ (Mặc định: 2.000.000đ).</small>
               </div>
             </div>
           </section>
@@ -4160,7 +4144,6 @@ function AiSystemConfig({ onLogout }: Props) {
             <div className="admin-config-toggle">
               <span>
                 <strong>Bật chế độ bảo trì hệ thống toàn sàn (Maintenance Mode)</strong>
-                <small>Khi bật, hệ thống sẽ tạm khóa các thao tác đặt hàng sỉ và hiển thị lời nhắn bảo trì cho người dùng.</small>
               </span>
               <input
                 type="checkbox"
@@ -4201,7 +4184,6 @@ function AiSystemConfig({ onLogout }: Props) {
             <div className="admin-config-toggle">
               <span>
                 <strong>Kích hoạt Banner thông báo khẩn cấp toàn sàn</strong>
-                <small>Hiển thị thanh banner nổi bật ở đầu trang của cả Tiệm tạp hóa lẫn Chủ vựa.</small>
               </span>
               <input
                 type="checkbox"
@@ -4298,7 +4280,6 @@ function AiSystemConfig({ onLogout }: Props) {
             <div className="admin-config-toggle">
               <span>
                 <strong>Kích hoạt tính năng AI kiểm duyệt tự động</strong>
-                <small>Khi tắt, các bài đăng sản phẩm sỉ sẽ không bị AI kiểm tra hay chặn tự động.</small>
               </span>
               <input
                 type="checkbox"
@@ -4336,7 +4317,6 @@ function AiSystemConfig({ onLogout }: Props) {
                   <option value="STRICT">Nghiêm ngặt (Tăng độ nhạy cảnh báo 25%, kiểm soát chặt)</option>
                   <option value="LENIENT">Linh hoạt (Nới lỏng, chỉ chặn vi phạm nặng)</option>
                 </select>
-                <small>Quyết định hệ số tính điểm rủi ro (risk score) của sản phẩm.</small>
               </div>
 
               <div className="admin-config-field">
@@ -4357,7 +4337,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Giá sỉ thấp hơn mức này sẽ bị coi là giá ảo phá giá (Mặc định: 500đ).</small>
               </div>
 
               <div className="admin-config-field">
@@ -4378,7 +4357,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Sản phẩm trong khoảng này sẽ cảnh báo Mức 2 để Admin xác minh.</small>
               </div>
 
               <div className="admin-config-field">
@@ -4399,7 +4377,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Giá sỉ vượt trần này sẽ bị AI cấm vì nghi ngờ thông tin sai lệch.</small>
               </div>
 
               <div className="admin-config-field">
@@ -4420,7 +4397,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>Số lượng tối thiểu (MOQ) vượt ngưỡng này sẽ bị cấm (Mặc định: 50.000).</small>
               </div>
 
               <div className="admin-config-field">
@@ -4442,7 +4418,6 @@ function AiSystemConfig({ onLogout }: Props) {
                     })
                   }
                 />
-                <small>MOQ vượt ngưỡng này sẽ cảnh báo Admin duyệt (Mặc định: 5.000).</small>
               </div>
             </div>
           </section>
