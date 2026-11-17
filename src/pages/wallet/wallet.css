@@ -535,10 +535,12 @@
     transform: scale(0.95);
     box-shadow: 0 0 0 0 rgba(217, 119, 6, 0.7);
   }
+
   70% {
     transform: scale(1);
     box-shadow: 0 0 0 6px rgba(217, 119, 6, 0);
   }
+
   100% {
     transform: scale(0.95);
     box-shadow: 0 0 0 0 rgba(217, 119, 6, 0);
@@ -851,8 +853,13 @@
 }
 
 @keyframes wallet-fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .wallet-modal-card {
@@ -874,6 +881,7 @@
     opacity: 0;
     transform: scale(0.96) translateY(8px);
   }
+
   to {
     opacity: 1;
     transform: scale(1) translateY(0);
@@ -1088,9 +1096,10 @@
 
 .wallet-qr-actions {
   display: flex;
-  gap: 10px;
+  flex-direction: column;
+  gap: 12px;
   width: 100%;
-  margin-top: 4px;
+  justify-self: stretch;
 }
 
 .wallet-qr-actions button {
@@ -1102,6 +1111,7 @@
   .wallet-grid {
     grid-template-columns: 1fr;
   }
+
   .wallet-hero-card {
     padding: 24px;
   }
@@ -1111,22 +1121,28 @@
   .wallet-hero-actions {
     width: 100%;
   }
+
   .wallet-hero-actions button {
     flex: 1;
   }
+
   .wallet-history-controls {
     width: 100%;
   }
+
   .wallet-search-box {
     width: 100%;
   }
+
   .wallet-search-input {
     width: 100% !important;
   }
+
   .wallet-filter-tabs {
     width: 100%;
     overflow-x: auto;
   }
+
   .wallet-amount-grid {
     grid-template-columns: repeat(2, 1fr);
   }

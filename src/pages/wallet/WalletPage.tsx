@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import './wallet.css';
 import Icon from '../../components/Icon';
 import { api, getApiError, isUnauthenticated } from '../../services/api';
 import {
-  confirmQrDeposit,
   createQrDepositRequest,
   createWithdrawalRequest,
   getDepositRequests,
+  getQrDepositTicket,
   getWallet,
   getWalletTransactions,
   type QrCode,
@@ -75,11 +75,11 @@ export default function WalletPage({
   // Deposit modal state
   const [showDepositModal, setShowDepositModal] = useState(searchParams.get('tab') === 'deposit');
   const [depositAmount, setDepositAmount] = useState('500000');
-  const [depositNote, setDepositNote] = useState('');
+  const [depositNote, setDepositNote] = useState('Nạp tiền vào SupplyMind AI');
+  const [successToast, setSuccessToast] = useState('');
   const [qrLoading, setQrLoading] = useState(false);
   const [qr, setQr] = useState<QrCode | null>(null);
   const [qrTicketId, setQrTicketId] = useState<number | null>(null);
-  const [copiedStk, setCopiedStk] = useState(false);
 
   // Withdraw modal state
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -91,12 +91,20 @@ export default function WalletPage({
     note: '',
   });
   const [withdrawError, setWithdrawError] = useState('');
+  const depositBackdropMouseDown = useRef(false);
+  const withdrawBackdropMouseDown = useRef(false);
 
   useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(''), 4500);
     return () => clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (!successToast) return;
+    const timer = setTimeout(() => setSuccessToast(''), 4500);
+    return () => clearTimeout(timer);
+  }, [successToast]);
 
   const load = useCallback(async () => {
     try {
@@ -109,14 +117,8 @@ export default function WalletPage({
       setError('');
       setOverview(walletRes);
       setTransactions(txRes.transactions || []);
-      setDeposits(
-        depositRes.requests.filter(
-          (request) =>
-            request.method === 'VIET_QR' &&
-            request.status !== 'AWAITING_TRANSFER' &&
-            !request.isSandbox
-        )
-      );
+      setDeposits(depositRes.requests || []);
+      window.dispatchEvent(new CustomEvent('supplymind:wallet-changed'));
     } catch (e) {
       setError(getApiError(e));
       if (isUnauthenticated(e)) onLogout();
@@ -174,7 +176,7 @@ export default function WalletPage({
           }));
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   // Create QR for official deposit
@@ -202,24 +204,41 @@ export default function WalletPage({
     }
   }
 
-  // Confirm QR transfer
-  async function handleConfirmQr() {
-    if (!qrTicketId || busy) return;
-    setBusy(true);
-    try {
-      await confirmQrDeposit(qrTicketId);
-      setNotice('Đã gửi yêu cầu nạp tiền. Hệ thống sẽ tự động đối soát và cộng tiền vào ví trong giây lát.');
-      setShowDepositModal(false);
-      setQr(null);
-      setQrTicketId(null);
-      await load();
-    } catch (issue) {
-      setError(getApiError(issue));
-      if (isUnauthenticated(issue)) onLogout();
-    } finally {
-      setBusy(false);
-    }
-  }
+  // Polling for QR ticket approval via SePay Webhook
+  useEffect(() => {
+    if (!qrTicketId || !showDepositModal) return;
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      try {
+        const ticket = await getQrDepositTicket(qrTicketId);
+        if (cancelled) return;
+        if (ticket.status === 'APPROVED') {
+          clearInterval(interval);
+          setSuccessToast(`Nạp tiền thành công! Đã cộng +${money(ticket.amount)} vào ví SupplyMind AI.`);
+          setNotice(`Nạp tiền thành công! Đã cộng ${money(ticket.amount)} vào ví hệ thống.`);
+          setTimeout(async () => {
+            if (cancelled) return;
+            setShowDepositModal(false);
+            setQr(null);
+            setQrTicketId(null);
+            await load();
+          }, 1500);
+        } else if (ticket.status === 'REJECTED') {
+          clearInterval(interval);
+          setError('Phiếu nạp tiền đã bị từ chối.');
+          setShowDepositModal(false);
+          setQr(null);
+          setQrTicketId(null);
+        }
+      } catch {
+        // silent retry on network hiccups
+      }
+    }, 2000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [qrTicketId, showDepositModal, load]);
 
   // Submit withdrawal request
   async function handleSubmitWithdraw(e: FormEvent) {
@@ -293,7 +312,46 @@ export default function WalletPage({
   const totalBalance = overview?.wallet?.total ?? 0;
 
   return (
-    <section className="wallet-page" aria-label="Ví tiền và Ký quỹ hệ thống SupplyMind">
+    <section className="wallet-page" aria-label="Ví tiền và Ký quỹ hệ thống">
+      {successToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            top: '24px',
+            right: '24px',
+            zIndex: 999999,
+            backgroundColor: '#10b981',
+            color: '#ffffff',
+            padding: '14px 22px',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            fontWeight: 600,
+            fontSize: '14.5px',
+          }}
+        >
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '24px',
+              height: '24px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(255, 255, 255, 0.25)',
+              fontSize: '13px',
+              fontWeight: 700,
+            }}
+          >
+            ✓
+          </span>
+          <span>{successToast}</span>
+        </div>
+      )}
       {searchParams.get('from') === 'subscription' && (
         <div style={{ marginBottom: '16px' }}>
           <Link
@@ -321,11 +379,11 @@ export default function WalletPage({
               ? 'Ví Tiền & Ký Quỹ Đơn Hàng'
               : 'Ví Tiền & Ký Quỹ Bán Sỉ'}
           </h1>
-          <p className="wallet-hero-desc">
-            {role === 'STORE_OWNER'
-              ? 'Nạp tiền để đặt cọc 10% đơn hàng sỉ. Tiền cọc được hệ thống bảo hộ trung gian (Escrow) an toàn, chỉ thanh toán cho chủ vựa khi bạn đã nhận đủ hàng.'
-              : 'Quản lý tiền cọc từ các tiệm tạp hóa, đối soát doanh thu bán sỉ và rút tiền về tài khoản ngân hàng dễ dàng 24/7.'}
-          </p>
+          {role !== 'STORE_OWNER' && (
+            <p className="wallet-hero-desc">
+              Quản lý tiền cọc từ các tiệm tạp hóa, đối soát doanh thu bán sỉ và rút tiền về tài khoản ngân hàng dễ dàng 24/7.
+            </p>
+          )}
         </div>
 
         <div className="wallet-hero-actions">
@@ -413,30 +471,6 @@ export default function WalletPage({
         </div>
       )}
 
-      {/* 2. Escrow Protection Explanation for Store Owner */}
-      {role === 'STORE_OWNER' && (
-        <div className="wallet-escrow-banner">
-          <div className="wallet-escrow-icon">
-            <Icon name="shield" />
-          </div>
-          <div className="wallet-escrow-content">
-            <div className="wallet-escrow-title">
-              <span>Bảo vệ quyền lợi Tiệm tạp hóa với SupplyMind Escrow</span>
-            </div>
-            <p className="wallet-escrow-text">
-              Khi tạo đơn sỉ, hệ thống chỉ tạm khóa <strong>10% cọc</strong> trong ví của bạn. Khoản cọc này được
-              giữ độc lập và <strong>chỉ chuyển giao cho Chủ vựa sau khi bạn đã kiểm tra và nhận đủ hàng hóa</strong>. Nếu
-              đơn hàng bị hủy hoặc có sự cố, tiền cọc sẽ được hoàn lại 100% về ví ngay lập tức.
-            </p>
-            <div className="wallet-escrow-tags">
-              <span className="wallet-escrow-tag">✓ Bảo đảm giao đúng số lượng</span>
-              <span className="wallet-escrow-tag">✓ Hoàn cọc tự động khi có sự cố</span>
-              <span className="wallet-escrow-tag">✓ Hỗ trợ đối soát VietQR 24/7</span>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* 3. Three Balance Cards */}
       <div className="wallet-grid">
         {/* Card 1: Available Balance */}
@@ -453,7 +487,6 @@ export default function WalletPage({
             </div>
           </div>
           <div className="wallet-card-footer">
-            <span>Dùng cọc đơn sỉ (10%) hoặc thanh toán</span>
             <button
               type="button"
               className="wallet-card-action-link"
@@ -481,10 +514,6 @@ export default function WalletPage({
               {loading ? 'Đang tải…' : money(lockedBalance)}
             </div>
           </div>
-          <div className="wallet-card-footer">
-            <span>Đang cọc cho các đơn sỉ chờ giao</span>
-            <span className="wallet-card-badge">Bảo hộ 100%</span>
-          </div>
         </div>
 
         {/* Card 3: Total Balance */}
@@ -499,10 +528,6 @@ export default function WalletPage({
             <div className="wallet-card-value">
               {loading ? 'Đang tải…' : money(totalBalance)}
             </div>
-          </div>
-          <div className="wallet-card-footer">
-            <span>Khả dụng + Tiền cọc đang ký quỹ</span>
-            <span style={{ fontSize: '11px', color: '#94a3b8' }}>VND</span>
           </div>
         </div>
       </div>
@@ -554,9 +579,6 @@ export default function WalletPage({
         <div className="wallet-history-header">
           <div className="wallet-history-title-group">
             <h3>Lịch sử biến động số dư</h3>
-            <p>
-              Hiển thị {filteredTransactions.length} giao dịch biến động số dư ví và ký quỹ
-            </p>
           </div>
 
           <div className="wallet-history-controls">
@@ -690,12 +712,35 @@ export default function WalletPage({
 
       {/* Modal Nạp Tiền Qua VietQR */}
       {showDepositModal && (
-        <div className="wallet-modal-backdrop" onClick={() => setShowDepositModal(false)}>
-          <div className="wallet-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="wallet-modal-header">
-              <h3>
-                <Icon name="sparkle" />
-                <span>Nạp Tiền Vào Ví Hệ Thống</span>
+        <div
+          className="wallet-modal-backdrop"
+          onMouseDown={(e) => {
+            depositBackdropMouseDown.current = e.target === e.currentTarget;
+          }}
+          onMouseUp={(e) => {
+            if (depositBackdropMouseDown.current && e.target === e.currentTarget) {
+              setShowDepositModal(false);
+            }
+            depositBackdropMouseDown.current = false;
+          }}
+        >
+          <div
+            className="wallet-modal-card"
+            style={{ maxWidth: '520px' }}
+          >
+            <div
+              className="wallet-modal-header"
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                backgroundColor: '#f8fafc',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a' }}>
+                Nạp Tiền Vào Ví Hệ Thống
               </h3>
               <button
                 type="button"
@@ -762,36 +807,17 @@ export default function WalletPage({
                       className="wallet-form-input"
                       value={depositNote}
                       onChange={(e) => setDepositNote(e.target.value)}
-                      placeholder="Ví dụ: Nạp cọc đơn mua sỉ…"
+                      placeholder="Nạp tiền vào SupplyMind AI"
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                      }}
                     />
-                  </div>
-
-                  <div className="wallet-bank-badge-box">
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                      <strong>Tài khoản nhận tiền ký quỹ:</strong>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          void copyText('050138052378');
-                          setCopiedStk(true);
-                          setTimeout(() => setCopiedStk(false), 2000);
-                        }}
-                        style={{
-                          border: 'none',
-                          background: '#e2e8f0',
-                          borderRadius: '4px',
-                          padding: '2px 8px',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                          color: '#1e293b',
-                        }}
-                      >
-                        {copiedStk ? '✓ Đã chép' : 'Chép STK'}
-                      </button>
-                    </div>
-                    Sacombank · STK <code>050138052378</code> (LE TRAN MINH DUC). Tiền nạp sẽ được hệ thống
-                    tự động đối soát và cộng vào ví ngay sau khi quét mã VietQR.
                   </div>
 
                   <button
@@ -812,26 +838,13 @@ export default function WalletPage({
                     accountNumber={qr.accountNumber}
                     accountHolder={qr.accountHolder}
                     billNumber={qr.billNumber}
-                    onConfirm={handleConfirmQr}
-                    busy={busy}
+                    onClose={() => {
+                      setShowDepositModal(false);
+                      setQr(null);
+                      setQrTicketId(null);
+                    }}
+                    onChangeAmount={() => setQr(null)}
                   />
-                  <div style={{ textAlign: 'center', marginTop: '16px' }}>
-                    <button
-                      type="button"
-                      onClick={() => setQr(null)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#64748b',
-                        fontSize: '13px',
-                        cursor: 'pointer',
-                        textDecoration: 'underline',
-                        fontWeight: 600,
-                      }}
-                    >
-                      ← Đổi số tiền nạp khác
-                    </button>
-                  </div>
                 </div>
               )}
             </div>
@@ -841,12 +854,35 @@ export default function WalletPage({
 
       {/* Modal Yêu Cầu Rút Tiền Về Ngân Hàng */}
       {showWithdrawModal && (
-        <div className="wallet-modal-backdrop" onClick={() => setShowWithdrawModal(false)}>
-          <div className="wallet-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="wallet-modal-header">
-              <h3>
-                <Icon name="download" />
-                <span>Rút Tiền Về Tài Khoản Ngân Hàng</span>
+        <div
+          className="wallet-modal-backdrop"
+          onMouseDown={(e) => {
+            withdrawBackdropMouseDown.current = e.target === e.currentTarget;
+          }}
+          onMouseUp={(e) => {
+            if (withdrawBackdropMouseDown.current && e.target === e.currentTarget) {
+              setShowWithdrawModal(false);
+            }
+            withdrawBackdropMouseDown.current = false;
+          }}
+        >
+          <div
+            className="wallet-modal-card"
+            style={{ maxWidth: '520px' }}
+          >
+            <div
+              className="wallet-modal-header"
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid #e2e8f0',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                backgroundColor: '#f8fafc',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '17px', color: '#0f172a' }}>
+                Rút Tiền Về Tài Khoản Ngân Hàng
               </h3>
               <button
                 type="button"

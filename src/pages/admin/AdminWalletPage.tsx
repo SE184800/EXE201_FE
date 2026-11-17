@@ -164,13 +164,6 @@ function WalletOverview({ onLogout }: Props) {
         <Metric label="Tổng yêu cầu nạp" value={deposits.length} />
         <Metric label="Tổng yêu cầu rút" value={withdrawals.length} />
       </div>
-      <Panel title="Danh sách nhanh" note="Mở các mục con để xử lý từng yêu cầu.">
-        <div className="admin-quick-links">
-          <NavLink to="/admin/wallet/deposits">Yêu cầu nạp tiền →</NavLink>
-          <NavLink to="/admin/wallet/withdrawals">Yêu cầu rút tiền →</NavLink>
-          <NavLink to="/admin/wallet/payments">Thanh toán đơn hàng →</NavLink>
-        </div>
-      </Panel>
     </>
   );
 }
@@ -307,7 +300,7 @@ function DepositRequests({ onLogout }: Props) {
         </p>
       )}
       <LoadState loading={loading} error={error} />
-      <Panel title="Danh sách yêu cầu nạp tiền" note="Chỉ xác nhận khi tiền đã vào tài khoản hệ thống.">
+      <Panel title="Danh sách yêu cầu nạp tiền">
         {requests.length ? (
           <div className="admin-table-wrap">
             <table>
@@ -672,7 +665,7 @@ function WithdrawalRequests({ onLogout }: Props) {
         </p>
       )}
       <LoadState loading={loading} error={error} />
-      <Panel title="Danh sách yêu cầu rút tiền" note="Tiền đã được giữ lại trong ví khi gửi yêu cầu.">
+      <Panel title="Danh sách yêu cầu rút tiền">
         {requests.length ? (
           <div className="admin-table-wrap">
             <table>
@@ -992,7 +985,7 @@ function OrderPayments({ onLogout }: Props) {
         </p>
       )}
       <LoadState loading={loading} error={error} />
-      <Panel title="Lịch sử thanh toán bằng ví" note="Chỉ hoàn tiền được một lần cho mỗi đơn hàng.">
+      <Panel title="Lịch sử thanh toán bằng ví">
         {payments.length ? (
           <div className="admin-table-wrap">
             <table>
@@ -1002,7 +995,7 @@ function OrderPayments({ onLogout }: Props) {
                   <th>Người mua</th>
                   <th>Chủ vựa</th>
                   <th>Số tiền</th>
-                  <th>Hoa hồng</th>
+                  {/* <th>Hoa hồng</th> */}
                   <th>Trạng thái</th>
                   <th>Ngày thanh toán</th>
                   <th>Thao tác</th>
@@ -1024,13 +1017,13 @@ function OrderPayments({ onLogout }: Props) {
                     <td>
                       <strong>{money(payment.amount)}</strong>
                     </td>
-                    <td>
+                    {/* <td>
                       <small>
                         {payment.commissionAmount === null
                           ? '—'
                           : money(payment.commissionAmount)}
                       </small>
-                    </td>
+                    </td> */}
                     <td>
                       <span className="admin-badge">{payment.statusLabel}</span>
                     </td>

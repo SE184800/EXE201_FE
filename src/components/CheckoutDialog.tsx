@@ -126,7 +126,7 @@ export default function CheckoutDialog({
           totalBalance: total,
         });
       })
-      .catch(() => {});
+      .catch(() => { });
 
     api
       .get<{ profile: Profile }>('/profile')
@@ -147,7 +147,7 @@ export default function CheckoutDialog({
           deliveryAddress: prev.deliveryAddress || sAddr,
         }));
       })
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   function handleAddressOptionChange(option: 'DEFAULT' | 'CUSTOM') {
@@ -429,7 +429,7 @@ export default function CheckoutDialog({
                             Địa chỉ kho: <strong>{calc.supplier.warehouseAddress || '120 Lý Thường Kiệt, Q. Tân Bình, TP. Hồ Chí Minh'}</strong>
                           </div>
                         </div>
-                        
+
                       </div>
 
                       {/* Items in this group */}
@@ -613,28 +613,28 @@ export default function CheckoutDialog({
                 {isInsufficientBalance && (
                   <div className="checkout-insufficient-banner">
                     <p>
-                      Số dư ví không đủ để cọc {money(totalDepositRequired)}.
+                      Số dư ví không đủ để cọc {money(totalDepositRequired)}. Vui lòng nạp tiền vào ví qua VietQR để tiếp tục.
                     </p>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '4px' }}>
                       <button
                         type="button"
-                        className="table-button"
+                        className="table-button primary-small"
                         onClick={() => {
                           onClose();
                           navigate('/store/wallet');
                         }}
                         style={{
                           fontSize: '11.5px',
-                          padding: '5px 12px',
-                          backgroundColor: '#ffffff',
-                          color: '#214e39',
-                          border: '1px solid #214e39',
+                          padding: '5px 14px',
+                          backgroundColor: '#059669',
+                          color: '#ffffff',
+                          border: 'none',
                           borderRadius: '6px',
                           cursor: 'pointer',
                           fontWeight: 600,
                         }}
                       >
-                        Nạp tiền vào ví
+                        + Nạp tiền vào ví
                       </button>
                     </div>
                   </div>

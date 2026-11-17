@@ -250,17 +250,14 @@ export default function AdminDisputes({ onLogout }: { onLogout: () => void }) {
         <Metric
           label="Đang xử lý"
           value={`${activeCount} vụ`}
-          note="Mới tạo và hai bên đang trao đổi"
         />
         <Metric
           label="Hoàn thành"
           value={`${completedCount} vụ`}
-          note="Đã thống nhất phương án cuối cùng"
         />
         <Metric
           label="Tổng số khiếu nại"
           value={complaints.length}
-          note="Lịch sử ghi nhận toàn hệ thống"
         />
       </div>
 

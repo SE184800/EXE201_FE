@@ -206,6 +206,11 @@ export async function createQrDepositRequest(input: {
   ).data;
 }
 
+/** Polls the status of a specific QR deposit ticket. */
+export async function getQrDepositTicket(id: number): Promise<DepositRequest> {
+  return (await api.get<{ request: DepositRequest }>(`/wallet/deposits/qr/${id}`)).data.request;
+}
+
 /** Confirms the transfer so the money is credited to the wallet. */
 export async function confirmQrDeposit(
   id: number,

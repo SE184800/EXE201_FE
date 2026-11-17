@@ -718,6 +718,11 @@
     text-align: left;
   }
 
+  .product-card .inventory-table td .price-pair {
+    display: flex;
+    width: 100%;
+  }
+
   .product-card .inventory-table td:first-child {
     display: block;
     padding: 15px 13px;
