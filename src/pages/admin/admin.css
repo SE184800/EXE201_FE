@@ -1389,47 +1389,6 @@
   border: 1px solid #e2e8da;
 }
 
-.admin-preset-group {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  padding-bottom: 12px;
-  border-bottom: 1px dashed #e8eee2;
-}
-
-.admin-preset-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #64748b;
-  margin-right: 4px;
-}
-
-.admin-preset-btn {
-  padding: 5px 12px;
-  font-size: 12px;
-  border-radius: 20px;
-  border: 1px solid #d5dfd0;
-  background: #f7faf5;
-  color: #375338;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-weight: 500;
-}
-
-.admin-preset-btn:hover {
-  background: #eaf3e4;
-  border-color: #8da783;
-}
-
-.admin-preset-btn.active {
-  background: #235836;
-  border-color: #235836;
-  color: #ffffff;
-  font-weight: 600;
-  box-shadow: 0 2px 4px rgba(35, 88, 54, 0.15);
-}
-
 .admin-filters-inline {
   margin-bottom: 0;
 }
@@ -1610,4 +1569,223 @@
 .admin-tx-empty small {
   font-size: 11px;
   color: #81917a;
+}
+
+
+/* --- Smart Admin Chart Styles --- */
+.admin-smart-chart-container {
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-chart-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.admin-chart-kpis {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-chart-kpi-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-chart-kpi-item span {
+  font-size: 11px;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.admin-chart-kpi-item strong {
+  font-size: 14px;
+  color: #1e293b;
+  font-weight: 700;
+}
+
+.admin-chart-kpi-divider {
+  width: 1px;
+  height: 24px;
+  background: #e2e8f0;
+}
+
+.admin-chart-switcher {
+  display: inline-flex;
+  background: #f1f5f9;
+  padding: 3px;
+  border-radius: 8px;
+  gap: 3px;
+}
+
+.admin-chart-mode-btn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.admin-chart-mode-btn:hover {
+  color: #1e293b;
+}
+
+.admin-chart-mode-btn.active {
+  background: #ffffff;
+  color: #15803d;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.admin-chart-svg-wrapper {
+  position: relative;
+  width: 100%;
+  height: 230px;
+}
+
+.admin-smart-svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.admin-chart-point-group:hover circle,
+.admin-chart-bar-group:hover rect {
+  transition: all 0.15s ease;
+}
+
+.admin-chart-tooltip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  margin-top: -8px;
+  background: #0f172a;
+  color: #ffffff;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 11px;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.25);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+}
+
+.admin-chart-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 5px;
+  border-style: solid;
+  border-color: #0f172a transparent transparent transparent;
+}
+
+.tooltip-date {
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.tooltip-amount {
+  font-size: 13px;
+  font-weight: 700;
+  color: #4ade80;
+}
+
+.tooltip-orders {
+  font-size: 10.5px;
+  color: #cbd5e1;
+}
+
+.admin-chart-legend {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+  font-size: 11px;
+  color: #64748b;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.legend-dot.green {
+  background: #16a34a;
+}
+
+.legend-dot.gray {
+  background: #cbd5e1;
+}
+
+.legend-tip {
+  font-size: 10.5px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.text-emerald {
+  color: #10b981 !important;
+}
+
+.admin-log-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: #1e293b;
+}
+
+.admin-log-summary strong {
+  font-weight: 600;
+  color: #15803d;
+}
+
+.admin-log-summary small {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.admin-log-raw {
+  margin-top: 6px;
+}
+
+.admin-log-raw summary {
+  font-size: 11px;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.admin-log-raw summary:hover {
+  color: #15803d;
 }
