@@ -721,9 +721,6 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
           <div>
             <p className="form-eyebrow">GIAN HÀNG CỦA BẠN</p>
             <h1>Sản phẩm đăng bán</h1>
-            <p className="form-description">
-              Đưa nguồn hàng sỉ của {profile?.businessName || 'gian hàng'} đến các tiệm tạp hóa.
-            </p>
           </div>
           <button
             className="ghost-button"
