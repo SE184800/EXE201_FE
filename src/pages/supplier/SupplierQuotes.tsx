@@ -255,7 +255,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
       onLogout={onLogout}
       businessName={profile?.businessName}
     >
-      <div>
+      <div className="supplier-quotes-page">
         <div className="supplier-heading">
           <div>
             <p className="form-eyebrow">TIẾP THỊ TẠI CỬA HÀNG</p>

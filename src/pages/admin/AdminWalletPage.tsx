@@ -4,30 +4,24 @@ import { getApiError, isUnauthenticated } from '../../services/api';
 import { AdminDialog, Empty, LoadState, Metric, Pager } from './admin.shared';
 import { dateTime, money } from './admin.data';
 import {
-  approveDeposit,
   approveWithdrawal,
   completeWithdrawal,
   failWithdrawal,
-  getAdminDeposit,
-  getAdminDeposits,
   getAdminPayments,
   getAdminWithdrawal,
   getAdminWithdrawals,
   refundOrder,
-  rejectDeposit,
   rejectWithdrawal,
-  type DepositRequest,
   type OrderPayment,
   type WithdrawalRequest,
 } from '../../services/wallet.api';
 
 type Props = { onLogout: () => void };
 
-export type AdminWalletTab = 'overview' | 'deposits' | 'withdrawals' | 'payments';
+export type AdminWalletTab = 'overview' | 'withdrawals' | 'payments';
 
 const tabs: { key: AdminWalletTab; label: string }[] = [
   { key: 'overview', label: 'Tổng quan' },
-  { key: 'deposits', label: 'Yêu cầu nạp tiền' },
   { key: 'withdrawals', label: 'Yêu cầu rút tiền' },
   { key: 'payments', label: 'Thanh toán đơn hàng' },
 ];
@@ -90,9 +84,7 @@ export default function AdminWalletSection({ tab, onLogout }: Props & { tab: Adm
   return (
     <>
       <WalletTabs current={tab} />
-      {tab === 'deposits' ? (
-        <DepositRequests onLogout={onLogout} />
-      ) : tab === 'withdrawals' ? (
+      {tab === 'withdrawals' ? (
         <WithdrawalRequests onLogout={onLogout} />
       ) : tab === 'payments' ? (
         <OrderPayments onLogout={onLogout} />
@@ -106,20 +98,20 @@ export default function AdminWalletSection({ tab, onLogout }: Props & { tab: Adm
 /** Landing panel: pending counts and shortcuts for the admin. */
 function WalletOverview({ onLogout }: Props) {
   const [revision, setRevision] = useState(0);
-  const [deposits, setDeposits] = useState<DepositRequest[]>([]);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
+  const [payments, setPayments] = useState<OrderPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [depositList, withdrawalList] = await Promise.all([
-        getAdminDeposits({ page: 1 }),
+      const [withdrawalList, paymentList] = await Promise.all([
         getAdminWithdrawals({ page: 1 }),
+        getAdminPayments({ page: 1 }),
       ]);
-      setDeposits(depositList.requests);
       setWithdrawals(withdrawalList.requests);
+      setPayments(paymentList.payments);
       setError('');
     } catch (issue) {
       if (isUnauthenticated(issue)) return onLogout();
@@ -136,17 +128,17 @@ function WalletOverview({ onLogout }: Props) {
     return () => window.clearTimeout(timer);
   }, [load, revision]);
 
-  const pendingDeposits = deposits.filter((item) => item.status === 'PENDING');
   const pendingWithdrawals = withdrawals.filter((item) => item.status === 'PENDING');
-  const pendingDepositAmount = pendingDeposits.reduce((sum, item) => sum + item.amount, 0);
   const pendingWithdrawalAmount = pendingWithdrawals.reduce((sum, item) => sum + item.amount, 0);
+  const totalPaidOrders = payments.length;
+  const totalPaidAmount = payments.reduce((sum, item) => sum + item.amount, 0);
 
   return (
     <>
       <Heading
         eyebrow="WALLET MANAGEMENT"
-        title="Quản lý ví tiền"
-        description="Xác nhận yêu cầu nạp tiền, duyệt và hoàn tất yêu cầu rút tiền của cửa hàng và chủ vựa."
+        title="Quản lý ví & Ký quỹ"
+        description="Duyệt và hoàn tất yêu cầu rút tiền của cửa hàng và chủ vựa, theo dõi thanh toán đơn hàng và tiền cọc ký quỹ."
         action={
           <button disabled={loading} onClick={() => setRevision((n) => n + 1)}>
             ↻ Làm mới
@@ -154,336 +146,28 @@ function WalletOverview({ onLogout }: Props) {
         }
       />
       <LoadState loading={loading} error={error} />
-      <div className="admin-metrics three">
-        <Metric label="Yêu cầu nạp chờ duyệt" value={pendingDeposits.length} />
-        <Metric label="Tiền nạp chờ duyệt" value={money(pendingDepositAmount)} />
-        <Metric label="Yêu cầu rút chờ duyệt" value={pendingWithdrawals.length} />
+      <div className="admin-metrics">
+        <Metric
+          label="Yêu cầu rút chờ duyệt"
+          value={pendingWithdrawals.length}
+          note="Cần xử lý chuyển khoản"
+        />
+        <Metric
+          label="Tiền rút chờ chuyển"
+          value={money(pendingWithdrawalAmount)}
+          note="Đang tạm giữ chờ giải ngân"
+        />
+        <Metric
+          label="Đơn hàng đã thanh toán ví"
+          value={`${totalPaidOrders.toLocaleString('vi-VN')} đơn`}
+          note="Giao dịch thanh toán thành công"
+        />
+        <Metric
+          label="Tổng tiền thanh toán đơn"
+          value={money(totalPaidAmount)}
+          note="Dòng tiền thanh toán qua ví sàn"
+        />
       </div>
-      <div className="admin-metrics three">
-        <Metric label="Tiền rút đang giữ" value={money(pendingWithdrawalAmount)} />
-        <Metric label="Tổng yêu cầu nạp" value={deposits.length} />
-        <Metric label="Tổng yêu cầu rút" value={withdrawals.length} />
-      </div>
-    </>
-  );
-}
-
-function DepositRequests({ onLogout }: Props) {
-  const [status, setStatus] = useState('');
-  const [page, setPage] = useState(1);
-  const [revision, setRevision] = useState(0);
-  const [requests, setRequests] = useState<DepositRequest[]>([]);
-  const [total, setTotal] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-  const [working, setWorking] = useState<number | null>(null);
-  const [detail, setDetail] = useState<DepositRequest | null>(null);
-  const [rejecting, setRejecting] = useState<DepositRequest | null>(null);
-  const [adminNote, setAdminNote] = useState('');
-  const [reference, setReference] = useState('');
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const result = await getAdminDeposits({ page, status: status || undefined });
-      setRequests(result.requests);
-      setTotal(result.total);
-      setHasMore(result.hasMore);
-      setError('');
-    } catch (issue) {
-      if (isUnauthenticated(issue)) return onLogout();
-      setError(getApiError(issue));
-    } finally {
-      setLoading(false);
-    }
-  }, [onLogout, page, status]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      void load();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [load, revision]);
-
-  async function confirm(request: DepositRequest) {
-    if (working !== null) return;
-    setWorking(request.id);
-    setError('');
-    try {
-      await approveDeposit(request.id, {
-        reference: reference.trim() || undefined,
-        adminNote: adminNote.trim() || undefined,
-      });
-      setNotice(`Đã cộng ${money(request.amount)} vào ví của ${request.userName ?? 'người dùng'}.`);
-      setDetail(null);
-      setAdminNote('');
-      setReference('');
-      setRevision((n) => n + 1);
-    } catch (issue) {
-      setError(getApiError(issue));
-    } finally {
-      setWorking(null);
-    }
-  }
-
-  async function reject() {
-    if (!rejecting || working !== null) return;
-    if (adminNote.trim().length < 3) {
-      setError('Cần nhập lý do từ chối từ 3 ký tự trở lên.');
-      return;
-    }
-    setWorking(rejecting.id);
-    setError('');
-    try {
-      await rejectDeposit(rejecting.id, { adminNote: adminNote.trim() });
-      setNotice('Đã từ chối yêu cầu nạp tiền.');
-      setRejecting(null);
-      setAdminNote('');
-      setRevision((n) => n + 1);
-    } catch (issue) {
-      setError(getApiError(issue));
-    } finally {
-      setWorking(null);
-    }
-  }
-
-  async function openDetail(request: DepositRequest) {
-    try {
-      setDetail(await getAdminDeposit(request.id));
-    } catch (issue) {
-      setError(getApiError(issue));
-    }
-  }
-
-  return (
-    <>
-      <Heading
-        eyebrow="WALLET MANAGEMENT · NẠP TIỀN"
-        title="Yêu cầu nạp tiền"
-        description="Kiểm tra tài khoản nhận tiền và mã giao dịch trước khi cộng tiền vào ví người dùng."
-        action={
-          <button disabled={loading} onClick={() => setRevision((n) => n + 1)}>
-            ↻ Làm mới
-          </button>
-        }
-      />
-      <form
-        className="admin-filters"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setPage(1);
-          setRevision((n) => n + 1);
-        }}
-      >
-        <label>
-          Trạng thái
-          <select
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
-              setPage(1);
-            }}
-          >
-            <option value="">Tất cả</option>
-            <option value="PENDING">Chờ duyệt</option>
-            <option value="APPROVED">Đã duyệt</option>
-            <option value="REJECTED">Đã từ chối</option>
-          </select>
-        </label>
-        <button className="admin-primary">Lọc yêu cầu</button>
-      </form>
-      {notice && (
-        <p className="admin-notice" role="status">
-          {notice}
-        </p>
-      )}
-      <LoadState loading={loading} error={error} />
-      <Panel title="Danh sách yêu cầu nạp tiền">
-        {requests.length ? (
-          <div className="admin-table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Người dùng</th>
-                  <th>Số tiền</th>
-                  <th>Nguồn</th>
-                  <th>Tài khoản nhận</th>
-                  <th>Mã giao dịch</th>
-                  <th>Trạng thái</th>
-                  <th>Thời gian</th>
-                  <th>Thao tác</th>
-                </tr>
-              </thead>
-              <tbody>
-                {requests.map((request) => (
-                  <tr key={request.id}>
-                    <td>
-                      <strong>{request.userName}</strong>
-                      <small>@{request.username}</small>
-                    </td>
-                    <td>
-                      <strong>{money(request.amount)}</strong>
-                    </td>
-                    <td>
-                      <span
-                        className={`admin-badge ${request.isSandbox ? 'good' : ''}`}
-                      >
-                        {request.isSandbox ? 'Tiền ảo' : 'Thường'}
-                      </span>
-                    </td>
-                    <td>
-                      <strong>{request.bankName}</strong>
-                      <small>
-                        {request.bankAccountNumber} · {request.bankAccountHolder}
-                      </small>
-                    </td>
-                    <td>
-                      <small>{request.reference || '—'}</small>
-                    </td>
-                    <td>
-                      <span className="admin-badge">{request.statusLabel}</span>
-                    </td>
-                    <td>
-                      <small>{dateTime(request.createdAt)}</small>
-                    </td>
-                    <td>
-                      <button onClick={() => void openDetail(request)}>Chi tiết</button>
-                      {request.status === 'PENDING' && (
-                        <button
-                          disabled={working !== null}
-                          onClick={() => {
-                            setRejecting(request);
-                            setAdminNote('');
-                          }}
-                        >
-                          Từ chối
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Empty>Chưa có yêu cầu nạp tiền phù hợp.</Empty>
-        )}
-        <Pager page={page} total={total} hasMore={hasMore} onPage={setPage} />
-      </Panel>
-
-      {detail && (
-        <AdminDialog
-          title={`Yêu cầu nạp tiền #${detail.id}`}
-          busy={working !== null}
-          onClose={() => setDetail(null)}
-        >
-          <div className="admin-dialog-body">
-            <dl className="admin-detail-list">
-              <div>
-                <dt>Người dùng</dt>
-                <dd>
-                  {detail.userName} (@{detail.username})
-                </dd>
-              </div>
-              <div>
-                <dt>Số tiền</dt>
-                <dd>{money(detail.amount)}</dd>
-              </div>
-              <div>
-                <dt>Ngân hàng</dt>
-                <dd>{detail.bankName}</dd>
-              </div>
-              <div>
-                <dt>Số tài khoản</dt>
-                <dd>{detail.bankAccountNumber}</dd>
-              </div>
-              <div>
-                <dt>Chủ tài khoản</dt>
-                <dd>{detail.bankAccountHolder}</dd>
-              </div>
-              <div>
-                <dt>Mã giao dịch</dt>
-                <dd>{detail.reference || '—'}</dd>
-              </div>
-              <div>
-                <dt>Ghi chú</dt>
-                <dd>{detail.note || '—'}</dd>
-              </div>
-              <div>
-                <dt>Ngày tạo</dt>
-                <dd>{dateTime(detail.createdAt)}</dd>
-              </div>
-            </dl>
-            {detail.method === 'VIET_QR' && detail.status === 'PENDING' && (
-              <p>Kiểm tra tài khoản nhận, số tiền và nội dung chuyển khoản <strong>NAP TIEN VI {detail.id}</strong> trên sao kê trước khi xác nhận.</p>
-            )}
-            {detail.status === 'PENDING' && (
-              <>
-                <label>
-                  Mã giao dịch thực tế
-                  <input
-                    maxLength={100}
-                    value={reference}
-                    onChange={(e) => setReference(e.target.value)}
-                    placeholder="Ví dụ: NAP 001234"
-                  />
-                </label>
-                <label>
-                  Ghi chú kiểm duyệt
-                  <textarea
-                    rows={3}
-                    maxLength={500}
-                    value={adminNote}
-                    onChange={(e) => setAdminNote(e.target.value)}
-                    placeholder="Ghi chú cho người dùng (không bắt buộc)"
-                  />
-                </label>
-                <div className="admin-dialog-actions">
-                  <button
-                    className="admin-primary"
-                    disabled={working !== null}
-                    onClick={() => void confirm(detail)}
-                  >
-                    {working === detail.id ? 'Đang xác nhận…' : 'Xác nhận đã nhận tiền'}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </AdminDialog>
-      )}
-
-      {rejecting && (
-        <AdminDialog
-          title={`Từ chối yêu cầu nạp tiền #${rejecting.id}`}
-          busy={working !== null}
-          onClose={() => setRejecting(null)}
-        >
-          <div className="admin-dialog-body">
-            <label>
-              Lý do từ chối
-              <textarea
-                rows={3}
-                maxLength={500}
-                value={adminNote}
-                onChange={(e) => setAdminNote(e.target.value)}
-                placeholder="Ví dụ: Chưa nhận được tiền trong tài khoản"
-              />
-            </label>
-            <div className="admin-dialog-actions">
-              <button
-                className="admin-primary"
-                disabled={working !== null}
-                onClick={() => void reject()}
-              >
-                {working === rejecting.id ? 'Đang xử lý…' : 'Xác nhận từ chối'}
-              </button>
-            </div>
-          </div>
-        </AdminDialog>
-      )}
     </>
   );
 }

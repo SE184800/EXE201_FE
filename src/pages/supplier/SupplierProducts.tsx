@@ -716,14 +716,11 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
       onLogout={onLogout}
       businessName={profile?.businessName}
     >
-      <div>
+      <div className="supplier-products-page">
         <div className="supplier-heading">
           <div>
             <p className="form-eyebrow">GIAN HÀNG CỦA BẠN</p>
             <h1>Sản phẩm đăng bán</h1>
-            <p className="form-description">
-              Đưa nguồn hàng sỉ của {profile?.businessName || 'gian hàng'} đến các tiệm tạp hóa.
-            </p>
           </div>
           <button
             className="ghost-button"
@@ -956,13 +953,13 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
                           {fields.name && <small>{fields.name}</small>}
                         </label>
                         <div className="supplier-field supplier-field-full">
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
+                          <div className="product-packaging-heading">
                             <span>Quy cách / đơn vị bán</span>
                             <span style={{ fontSize: '11px', color: '#275235', background: '#eaf4e6', padding: '2px 8px', borderRadius: '10px' }}>
                               Áp dụng: <strong>{form.packaging || '(Chưa xác định)'}</strong>
                             </span>
                           </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: packState.type === 'Khác' ? '1fr' : packState.type === 'Đơn vị lẻ' ? '1.2fr 1fr' : '1.3fr 0.9fr 1fr', gap: '8px' }}>
+                          <div className={`product-packaging-grid${packState.type === 'Khác' ? ' product-packaging-custom' : ''}`}>
                             <div>
                               <select
                                 value={packState.type}
@@ -1746,18 +1743,7 @@ export default function SupplierProducts({ user, onLogout }: { user?: AuthUser; 
                   ))}
                   {filteredProducts.length > 0 && (
                     <div
-                      className="catalog-pagination"
-                      style={{
-                        marginTop: '20px',
-                        padding: '14px 18px',
-                        background: '#fff',
-                        borderRadius: '12px',
-                        border: '1px solid #e5ebe2',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '12px',
-                      }}
+                      className="catalog-pagination publish-pagination"
                     >
                       <button
                         type="button"
