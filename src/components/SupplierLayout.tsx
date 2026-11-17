@@ -15,6 +15,7 @@ export type SupplierTab =
   | 'orders'
   | 'inventory'
   | 'wallet'
+  | 'revenue'
   | 'profile'
   | 'subscription';
 
@@ -34,6 +35,7 @@ const supplierTabs = [
   { id: 'orders', label: 'Đơn hàng', path: '/supplier/orders', icon: 'check' as const },
   { id: 'inventory', label: 'Kho hàng', path: '/supplier/inventory', icon: 'box' as const },
   { id: 'wallet', label: 'Ví & Ký quỹ', path: '/supplier/wallet', icon: 'sparkle' as const },
+  { id: 'revenue', label: 'Doanh thu', path: '/supplier/revenue', icon: 'chart' as const },
 ] as const;
 
 export default function SupplierLayout({

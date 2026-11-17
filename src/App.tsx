@@ -10,6 +10,7 @@ import SupplierOrders from './pages/supplier/SupplierOrders';
 import SupplierInventory from './pages/supplier/SupplierInventory';
 import SupplierQuotes from './pages/supplier/SupplierQuotes';
 import SupplierWallet from './pages/supplier/SupplierWallet';
+import SupplierRevenue from './pages/supplier/SupplierRevenue';
 import AdminPage from './pages/admin/AdminPage';
 import SubscriptionPage from './pages/SubscriptionPage';
 import SupplierProfilePage from './pages/supplier/SupplierProfilePage';
@@ -284,6 +285,18 @@ export default function App() {
           element={
             user?.role === 'SUPPLIER' ? (
               <SupplierOrders user={user} onLogout={clearUser} />
+            ) : checkingSession && !user ? (
+              restoreSession
+            ) : (
+              <Navigate to={destination} replace />
+            )
+          }
+        />
+        <Route
+          path="/supplier/revenue"
+          element={
+            user?.role === 'SUPPLIER' ? (
+              <SupplierRevenue user={user} onLogout={clearUser} />
             ) : checkingSession && !user ? (
               restoreSession
             ) : (

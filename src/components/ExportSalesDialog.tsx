@@ -10,6 +10,7 @@ type ExportSalesDialogProps = {
   onClose: () => void;
   defaultDate?: string;
   storeName?: string;
+  fetchReport?: (from: string, to: string, page?: number) => Promise<StoreRevenueReport>;
 };
 
 export default function ExportSalesDialog(props: ExportSalesDialogProps) {
@@ -21,6 +22,7 @@ function ExportSalesContent({
   onClose,
   defaultDate,
   storeName = 'Cửa hàng tạp hóa',
+  fetchReport = getStoreRevenue,
 }: ExportSalesDialogProps) {
   const [today] = useState(() => defaultDate || vietnamDay());
   const [openedAt] = useState(() => Date.now());
@@ -38,7 +40,7 @@ function ExportSalesContent({
     let active = true;
     const range = `${from}:${to}`;
 
-    getStoreRevenue(from, to, 1)
+    fetchReport(from, to, 1)
       .then((data) => {
         if (active) {
           setPreview(data);
@@ -65,13 +67,13 @@ function ExportSalesContent({
   async function loadFullReport(): Promise<StoreRevenueReport | null> {
     try {
       let page = 1;
-      const initial = await getStoreRevenue(from, to, page);
+      const initial = await fetchReport(from, to, page);
       const allSales = [...initial.sales];
       let current = initial;
 
       while (current.hasMore && page < 20) {
         page += 1;
-        current = await getStoreRevenue(from, to, page);
+        current = await fetchReport(from, to, page);
         allSales.push(...current.sales);
       }
 

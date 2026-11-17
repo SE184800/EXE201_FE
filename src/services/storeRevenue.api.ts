@@ -3,6 +3,8 @@ import { api } from './api';
 export type RevenueDay = {
   day: string;
   revenue: string;
+  purchaseCost?: string;
+  profit?: string;
   salesCount: number;
   unpricedSalesCount: number;
 };
@@ -12,6 +14,8 @@ export type StoreRevenueReport = {
   timezone: string;
   summary: {
     revenue: string;
+    purchaseCost?: string;
+    netProfit?: string;
     salesCount: number;
     pricedSalesCount: number;
     unpricedSalesCount: number;
@@ -33,6 +37,7 @@ export type StoreRevenueReport = {
     unit: string;
     quantity: number;
     unitSalePrice: number | null;
+    isEstimatedPrice?: boolean;
     revenue: string | null;
     note: string;
     createdAt: string;
@@ -41,7 +46,7 @@ export type StoreRevenueReport = {
   hasMore: boolean;
 };
 
-export const vnd = (value: string | number) =>
+export const vnd = (value: string | number | bigint) =>
   new Intl.NumberFormat('vi-VN', {
     style: 'currency',
     currency: 'VND',
@@ -58,5 +63,16 @@ export async function getStoreRevenue(
 ) {
   return (
     await api.get<StoreRevenueReport>('/inventory/revenue', { params: { from, to, page }, signal })
+  ).data;
+}
+
+export async function getSupplierRevenue(
+  from: string,
+  to: string,
+  page = 1,
+  signal?: AbortSignal,
+) {
+  return (
+    await api.get<StoreRevenueReport>('/supplier/revenue', { params: { from, to, page }, signal })
   ).data;
 }
