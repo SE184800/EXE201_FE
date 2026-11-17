@@ -1375,3 +1375,239 @@
 .admin-tag-remove-btn:hover {
   opacity: 1;
 }
+
+
+/* --- Admin Overview & Transactions Enhancements --- */
+.admin-overview-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+  background: #ffffff;
+  padding: 16px 20px;
+  border-radius: 12px;
+  border: 1px solid #e2e8da;
+}
+
+.admin-preset-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed #e8eee2;
+}
+
+.admin-preset-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  margin-right: 4px;
+}
+
+.admin-preset-btn {
+  padding: 5px 12px;
+  font-size: 12px;
+  border-radius: 20px;
+  border: 1px solid #d5dfd0;
+  background: #f7faf5;
+  color: #375338;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-weight: 500;
+}
+
+.admin-preset-btn:hover {
+  background: #eaf3e4;
+  border-color: #8da783;
+}
+
+.admin-preset-btn.active {
+  background: #235836;
+  border-color: #235836;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(35, 88, 54, 0.15);
+}
+
+.admin-filters-inline {
+  margin-bottom: 0;
+}
+
+.admin-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid #cfe0c8;
+  background: #fff;
+  color: #275635;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.admin-refresh-btn:hover {
+  background: #f2f7ef;
+  border-color: #a4c498;
+}
+
+.admin-metric-dual {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 10px 0;
+}
+
+.admin-metric-dual strong {
+  display: block;
+  font-size: clamp(19px, 1.8vw, 24px);
+  font-weight: 650;
+  letter-spacing: -0.5px;
+  color: #1e3a24;
+}
+
+.admin-metric-dual small {
+  color: #72826d;
+  font-size: 11px;
+}
+
+.admin-metric-divider {
+  width: 1px;
+  height: 36px;
+  background: #e2e8da;
+  margin: 0 12px;
+}
+
+.admin-link-accent {
+  color: #2e6e44;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.admin-link-accent:hover {
+  text-decoration: underline;
+}
+
+.text-amber {
+  color: #b45309 !important;
+}
+
+.admin-badge.warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.admin-empty-chart {
+  padding: 48px 24px;
+  text-align: center;
+  color: #7a8b72;
+}
+
+.admin-empty-chart svg {
+  width: 44px;
+  height: 44px;
+  color: #a9be9d;
+  margin-bottom: 12px;
+}
+
+.admin-empty-chart p {
+  font-size: 14px;
+  font-weight: 600;
+  color: #3b5037;
+  margin: 0 0 6px;
+}
+
+.admin-empty-chart small {
+  font-size: 12px;
+  color: #83937c;
+}
+
+.chart-tip-date {
+  opacity: 0.8;
+  font-size: 9px;
+  margin-top: 2px;
+}
+
+.admin-network-footer {
+  padding: 12px 24px 16px;
+  border-top: 1px solid #edf0e8;
+  color: #8c9985;
+  font-size: 11px;
+}
+
+.admin-order-code {
+  display: inline-block;
+  padding: 3px 8px;
+  background: #eef5eb;
+  border: 1px solid #d4e6cc;
+  border-radius: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  font-weight: 650;
+  color: #1c502b;
+  white-space: nowrap;
+}
+
+.admin-party-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.admin-party-info strong {
+  font-size: 12px;
+  color: #1f2937;
+}
+
+.admin-party-info small {
+  color: #64748b;
+  font-size: 11px;
+}
+
+.admin-region-pill {
+  display: inline-block;
+  align-self: flex-start;
+  padding: 1px 7px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #475569;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.admin-tx-time {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.admin-tx-empty {
+  padding: 40px 24px;
+  text-align: center;
+  color: #74856f;
+}
+
+.admin-tx-empty svg {
+  width: 40px;
+  height: 40px;
+  color: #a4ba99;
+  margin-bottom: 10px;
+}
+
+.admin-tx-empty p {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2e432a;
+  margin: 0 0 6px;
+}
+
+.admin-tx-empty small {
+  font-size: 11px;
+  color: #81917a;
+}

@@ -93,38 +93,36 @@ type NavGroup = {
 
 const navGroups: NavGroup[] = [
   {
-    section: 'TỔNG QUAN & PHÂN TÍCH',
+    section: 'TỔNG QUAN HỆ THỐNG',
     items: [
       { path: '', label: 'Bảng điều khiển', icon: 'chart' },
+    ],
+  },
+  {
+    section: 'ĐỐI TÁC & TRANH CHẤP',
+    items: [
+      { path: 'users', label: 'Tài khoản người dùng', icon: 'user' },
+      { path: 'verification', label: 'Xác minh chủ vựa (KYC)', icon: 'shield' },
+      { path: 'disputes', label: 'Phân xử khiếu nại', icon: 'shield' },
+    ],
+  },
+  {
+    section: 'TÀI CHÍNH & VÍ KÝ QUỸ',
+    items: [
+      { path: 'wallet', label: 'Quản lý ví & Ký quỹ', icon: 'chart' },
+    ],
+  },
+  {
+    section: 'TRÍ TUỆ NHÂN TẠO & KIỂM DUYỆT',
+    items: [
       { path: 'ai', label: 'Giám sát hoạt động AI', icon: 'sparkle' },
-    ],
-  },
-  {
-    section: 'ĐỐI TÁC & VẬN HÀNH',
-    items: [
-      { path: 'users', label: 'Tài khoản & Đối tác', icon: 'user' },
-      { path: 'verification', label: 'Xác minh chủ vựa', icon: 'shield' },
-      { path: 'disputes', label: 'Lịch sử khiếu nại', icon: 'shield' },
-    ],
-  },
-  {
-    section: 'TÀI CHÍNH & VÍ TIỀN',
-    items: [
-      // { path: 'finance', label: 'Hoa hồng & Đối soát', icon: 'box' }, // Tạm thời ẩn cho môn WDP
-      { path: 'wallet', label: 'Quản lý ví & Nạp rút', icon: 'chart' },
-    ],
-  },
-  {
-    section: 'KIỂM DUYỆT & SỰ KIỆN',
-    items: [
-      { path: 'moderation', label: 'Hàng chờ duyệt bài AI', icon: 'sparkle' },
-      { path: 'holidays', label: 'Sự kiện & Ngày lễ', icon: 'calendar' },
     ],
   },
   {
     section: 'HỆ THỐNG & CẤU HÌNH',
     items: [
       { path: 'ai-config', label: 'Cấu hình tham số sàn', icon: 'store' },
+      { path: 'holidays', label: 'Lịch sự kiện & Ngày lễ', icon: 'calendar' },
       { path: 'audit', label: 'Nhật ký kiểm toán', icon: 'lock' },
     ],
   },
@@ -135,7 +133,6 @@ const navigation = navGroups.flatMap((group) => group.items);
 /** Wallet sub tabs live under the `wallet` navigation entry. */
 const walletTabs: Record<string, AdminWalletTab> = {
   wallet: 'overview',
-  'wallet/deposits': 'deposits',
   'wallet/withdrawals': 'withdrawals',
   'wallet/payments': 'payments',
 };
@@ -260,8 +257,6 @@ export default function AdminPage({ user, onLogout }: Props & { user: AuthUser }
             <HolidaySettings onLogout={onLogout} />
           ) : tab === 'ai' ? (
             <AiMonitoring onLogout={onLogout} />
-          ) : tab === 'moderation' ? (
-            <ModerationQueue onLogout={onLogout} />
           ) : tab === 'ai-config' ? (
             <AiSystemConfig onLogout={onLogout} />
           ) : (
@@ -309,7 +304,25 @@ function Panel({ title, note, children }: { title: string; note?: string; childr
   );
 }
 
+type OverviewTransaction = {
+  id: number;
+  orderCode: string;
+  status: string;
+  subtotal: number;
+  deliveryFee: number;
+  total: number;
+  createdAt: string;
+  deliveredAt: string | null;
+  region: string;
+  buyerName: string;
+  buyerPhone: string | null;
+  supplierName: string;
+  itemCount: number;
+};
+
 type OverviewData = {
+  from: string;
+  to: string;
   gmv: number;
   completedOrders: number;
   commissionAccrued: number;
@@ -319,7 +332,7 @@ type OverviewData = {
   legacyOrders: number;
   users: Record<string, number>;
   daily: { day: string; gmv: number; orders: number }[];
-  topProducts: {
+  topProducts?: {
     productId: number;
     productName: string;
     packaging: string;
@@ -327,73 +340,161 @@ type OverviewData = {
     quantity: number;
     revenue: number;
   }[];
+  transactions?: OverviewTransaction[];
 };
+
 function Overview({ onLogout }: Props) {
-  const [dates, setDates] = useState(defaultPeriod),
-    [region, setRegion] = useState('');
-  const [query, setQuery] = useState<Record<string, string>>(defaultPeriod),
-    [revision, setRevision] = useState(0);
+  const [dates, setDates] = useState(defaultPeriod);
+  const [region, setRegion] = useState('');
+  const [query, setQuery] = useState<Record<string, string>>(defaultPeriod);
+  const [revision, setRevision] = useState(0);
+
   const { data, error, loading } = useAdminData<OverviewData>(
     '/admin/analytics',
     query,
     onLogout,
     revision,
   );
+
   const max = Math.max(1, ...(data?.daily.map((d) => d.gmv) || []));
+  const totalDailyGmv = data?.daily.reduce((sum, d) => sum + d.gmv, 0) || 0;
+  const totalDailyOrders = data?.daily.reduce((sum, d) => sum + d.orders, 0) || 0;
+
+  const applyPreset = (preset: 'today' | '7days' | '30days' | 'month') => {
+    const todayStr = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
+    let fromStr = todayStr;
+    if (preset === '7days') {
+      fromStr = new Date(Date.now() + 7 * 3600000 - 6 * 86400000).toISOString().slice(0, 10);
+    } else if (preset === '30days') {
+      fromStr = new Date(Date.now() + 7 * 3600000 - 29 * 86400000).toISOString().slice(0, 10);
+    } else if (preset === 'month') {
+      fromStr = todayStr.slice(0, 8) + '01';
+    }
+    const newDates = { from: fromStr, to: todayStr };
+    setDates(newDates);
+    setQuery({ ...newDates, region });
+    setRevision((n) => n + 1);
+  };
+
   return (
-    <>
+    <div className="admin-overview-view">
       <Heading
         eyebrow="PLATFORM OVERVIEW"
-        title="Toàn cảnh nền tảng"
-        description="Theo dõi giao dịch hoàn tất, dòng phí và hoạt động của các đối tác."
-        action={<button onClick={() => setRevision((n) => n + 1)}>↻ Làm mới</button>}
+        title="Toàn cảnh vận hành sàn B2B"
+        description="Theo dõi dữ liệu giao dịch sỉ thời gian thực giữa chủ tiệm tạp hóa và nhà cung cấp chủ vựa."
+        action={
+          <button className="admin-refresh-btn" onClick={() => setRevision((n) => n + 1)}>
+            ↻ Làm mới
+          </button>
+        }
       />
-      <form
-        className="admin-filters"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setQuery({ ...dates, region });
-          setRevision((n) => n + 1);
-        }}
-      >
-        <DateFields value={dates} onChange={setDates} />
-        <label>
-          Khu vực chủ vựa
-          <input
-            maxLength={100}
-            value={region}
-            onChange={(e) => setRegion(e.target.value)}
-            placeholder="Tất cả khu vực"
-          />
-        </label>
-        <button className="admin-primary">Xem báo cáo</button>
-      </form>
+
+      <div className="admin-overview-toolbar">
+        <div className="admin-preset-group">
+          <span className="admin-preset-label">Kỳ báo cáo nhanh:</span>
+          <button
+            type="button"
+            className={`admin-preset-btn ${dates.from === dates.to ? 'active' : ''}`}
+            onClick={() => applyPreset('today')}
+          >
+            Hôm nay
+          </button>
+          <button
+            type="button"
+            className="admin-preset-btn"
+            onClick={() => applyPreset('7days')}
+          >
+            7 ngày qua
+          </button>
+          <button
+            type="button"
+            className="admin-preset-btn"
+            onClick={() => applyPreset('month')}
+          >
+            Tháng này
+          </button>
+          <button
+            type="button"
+            className="admin-preset-btn"
+            onClick={() => applyPreset('30days')}
+          >
+            30 ngày
+          </button>
+        </div>
+
+        <form
+          className="admin-filters admin-filters-inline"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setQuery({ ...dates, region });
+            setRevision((n) => n + 1);
+          }}
+        >
+          <DateFields value={dates} onChange={setDates} />
+          <label>
+            Khu vực chủ vựa
+            <input
+              maxLength={100}
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+              placeholder="Tất cả khu vực"
+            />
+          </label>
+          <button className="admin-primary">Xem báo cáo</button>
+        </form>
+      </div>
+
       <LoadState loading={loading} error={error} />
+
       {data && (
         <>
           <div className="admin-metrics">
             <Metric
-              label="Tổng giá trị hàng hóa (GMV)"
+              label="Tổng giá trị giao dịch (GMV)"
               value={money(data.gmv)}
+              note="Doanh số đơn sỉ đã giao & hoàn tất"
             />
             <Metric
               label="Đơn hàng hoàn tất"
-              value={data.completedOrders.toLocaleString('vi-VN')}
+              value={`${data.completedOrders.toLocaleString('vi-VN')} đơn`}
+              note="Giao dịch sỉ hoàn tất thành công"
             />
-            {/* Tạm ẩn hoa hồng cho môn WDP */}
-            {/* <Metric
-              label="Hoa hồng đã thu"
-              value={money(data.commissionReceived)}
-            />
-            <Metric
-              label="Hoa hồng chưa thu"
-              value={money(data.commissionUnpaid)}
-              note="Của các đơn đã giao trong kỳ"
-            /> */}
+            <article className="admin-metric">
+              <span>Mạng lưới đối tác sàn</span>
+              <div className="admin-metric-dual">
+                <div>
+                  <strong>{data.users.STORE_OWNER || 0}</strong>
+                  <small>Tiệm tạp hóa</small>
+                </div>
+                <div className="admin-metric-divider" />
+                <div>
+                  <strong>{data.users.SUPPLIER || 0}</strong>
+                  <small>Chủ vựa</small>
+                </div>
+              </div>
+              <small>Tài khoản đối tác đang hoạt động</small>
+            </article>
+            <article className="admin-metric">
+              <span>Hồ sơ vựa chờ thẩm định</span>
+              <strong className={data.pendingVerifications > 0 ? 'text-amber' : ''}>
+                {data.pendingVerifications} hồ sơ
+              </strong>
+              <small>
+                <NavLink to="/admin/verification" className="admin-link-accent">
+                  Xem hồ sơ chờ duyệt →
+                </NavLink>
+              </small>
+            </article>
           </div>
+
           <div className="admin-overview-split">
             <Panel
               title="Giá trị giao dịch theo ngày"
+              note={
+                data.daily.length > 0
+                  ? `Tổng giao dịch: ${money(totalDailyGmv)} · ${totalDailyOrders} đơn trong kỳ`
+                  : undefined
+              }
             >
               {data.daily.length ? (
                 <div className="admin-chart" role="img" aria-label="Biểu đồ GMV theo ngày">
@@ -403,13 +504,14 @@ function Overview({ onLogout }: Props) {
                         <div
                           className="admin-bar"
                           tabIndex={0}
-                          title={`${day.day}: ${money(day.gmv)} · ${day.orders} đơn`}
+                          title={`${day.day}: ${money(day.gmv)} · ${day.orders} đơn hàng`}
                           aria-label={`${day.day}: ${money(day.gmv)}, ${day.orders} đơn`}
-                          style={{ height: `${Math.max(2, (day.gmv / max) * 100)}%` }}
+                          style={{ height: `${Math.max(4, (day.gmv / max) * 100)}%` }}
                         >
                           <span>
-                            {money(day.gmv)}
-                            <small>{day.orders} đơn</small>
+                            <strong>{money(day.gmv)}</strong>
+                            <small>{day.orders} giao dịch</small>
+                            <small className="chart-tip-date">{day.day}</small>
                           </span>
                         </div>
                         <small>
@@ -420,79 +522,114 @@ function Overview({ onLogout }: Props) {
                   </div>
                 </div>
               ) : (
-                <Empty>Chưa có đơn giao thành công trong kỳ này.</Empty>
+                <div className="admin-empty-chart">
+                  <Icon name="chart" />
+                  <p>Chưa có giao dịch sỉ nào phát sinh trong khoảng thời gian này.</p>
+                  <small>Các giao dịch giữa chủ tiệm tạp hóa và chủ vựa sẽ tự động tổng hợp vào biểu đồ.</small>
+                </div>
               )}
             </Panel>
-            <Panel
-              title="Mạng lưới đối tác"
-            >
+
+            <Panel title="Tổng quan kết nối">
               <div className="admin-network">
                 <div>
                   <Icon name="store" />
                   <span>
-                    Chủ tạp hóa<strong>{data.users.STORE_OWNER || 0}</strong>
+                    Chủ tiệm tạp hóa<strong>{data.users.STORE_OWNER || 0}</strong>
                   </span>
                 </div>
                 <div>
                   <Icon name="box" />
                   <span>
-                    Chủ vựa<strong>{data.users.SUPPLIER || 0}</strong>
+                    Chủ vựa cung ứng<strong>{data.users.SUPPLIER || 0}</strong>
                   </span>
                 </div>
-                <NavLink to="/admin/verification">
-                  <span>Hồ sơ chờ duyệt</span>
+                <NavLink to="/admin/verification" className="admin-network-action">
+                  <span>Hồ sơ vựa chờ thẩm định (KYC)</span>
                   <strong>{data.pendingVerifications} →</strong>
                 </NavLink>
               </div>
-              {/* <p className="admin-note">
-                Phí phát sinh trong kỳ: <b>{money(data.commissionAccrued)}</b>
-              </p> */}
+              <div className="admin-network-footer">
+                <small>Dữ liệu vận hành tự động đồng bộ theo múi giờ Việt Nam (UTC+7)</small>
+              </div>
             </Panel>
           </div>
+
           {data.legacyOrders > 0 && (
             <p className="admin-note">
               Có {data.legacyOrders} đơn cũ chưa ghi nhận ngày giao. Các đơn này chưa được đưa vào
               báo cáo theo kỳ.
             </p>
           )}
+
           <Panel
-            title="Mặt hàng bán sỉ nổi bật"
+            title="Giao dịch thực tế giữa Tạp hóa & Chủ vựa"
+            note="Danh sách đơn đặt hàng sỉ trực tiếp giữa chủ tiệm tạp hóa và nhà cung cấp chủ vựa trong kỳ"
           >
-            {data.topProducts.length ? (
+            {data.transactions && data.transactions.length > 0 ? (
               <div className="admin-table-wrap">
                 <table>
                   <thead>
                     <tr>
-                      <th>Mặt hàng</th>
-                      <th>Khu vực chủ vựa</th>
-                      <th>Số lượng</th>
+                      <th>Mã đơn</th>
+                      <th>Tiệm tạp hóa (Người mua)</th>
+                      <th>Chủ vựa (Nhà bán sỉ)</th>
+                      <th>Quy mô</th>
                       <th>Giá trị giao dịch</th>
+                      <th>Trạng thái</th>
+                      <th>Thời gian giao dịch</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.topProducts.map((p, index) => (
-                      <tr key={`${p.productId}-${index}`}>
+                    {data.transactions.map((tx) => (
+                      <tr key={tx.id}>
                         <td>
-                          <strong>{p.productName}</strong>
-                          <small>{p.packaging}</small>
+                          <span className="admin-order-code">{tx.orderCode}</span>
                         </td>
-                        <td>{p.region || 'Chưa có khu vực'}</td>
                         <td>
-                          {p.quantity.toLocaleString('vi-VN')} × {p.packaging}
+                          <div className="admin-party-info">
+                            <strong>{tx.buyerName}</strong>
+                            {tx.buyerPhone && <small>{tx.buyerPhone}</small>}
+                          </div>
                         </td>
-                        <td className="admin-money">{money(p.revenue)}</td>
+                        <td>
+                          <div className="admin-party-info">
+                            <strong>{tx.supplierName}</strong>
+                            {tx.region && tx.region !== '—' && (
+                              <span className="admin-region-pill">{tx.region}</span>
+                            )}
+                          </div>
+                        </td>
+                        <td>
+                          <span>{tx.itemCount} sản phẩm</span>
+                        </td>
+                        <td className="admin-money">
+                          <strong>{money(tx.subtotal || tx.total)}</strong>
+                        </td>
+                        <td>
+                          <Badge status={tx.status} />
+                        </td>
+                        <td>
+                          <span className="admin-tx-time">
+                            {dateTime(tx.deliveredAt || tx.createdAt)}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             ) : (
-              <Empty />
+              <div className="admin-tx-empty">
+                <Icon name="box" />
+                <p>Chưa có giao dịch sỉ nào phát sinh giữa tạp hóa và chủ vựa trong khoảng thời gian này.</p>
+                <small>Khi chủ tiệm tạp hóa đặt hàng từ chủ vựa, chi tiết giao dịch sẽ hiển thị tự động tại đây.</small>
+              </div>
             )}
           </Panel>
         </>
       )}
-    </>
+    </div>
   );
 }
 
@@ -2804,547 +2941,6 @@ function Audit({ onLogout }: Props) {
   );
 }
 
-type ModerationItem = {
-  id: number;
-  supplierId: number;
-  supplierName: string;
-  supplierOwner: string;
-  supplierPhone?: string;
-  supplierEmail?: string;
-  supplierUsername?: string;
-  supplierAddress?: string;
-  supplierTaxCode?: string | null;
-  supplierVerificationStatus?: string;
-  name: string;
-  category: string;
-  packaging: string;
-  wholesalePrice: number;
-  stockQty: number;
-  moq: number;
-  imageUrl?: string | null;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt?: string;
-  moderation: {
-    status: 'AUTO_APPROVED' | 'NEEDS_REVIEW' | 'AUTO_REJECTED' | 'FLAGGED';
-    riskScore: number;
-    reasons: string[];
-    criticalReasons?: string[];
-    isClean: boolean;
-  };
-};
-
-function ModerationDetailDialog({
-  item,
-  onClose,
-  onAction,
-  busy,
-}: {
-  item: ModerationItem;
-  onClose: () => void;
-  onAction: (id: number, action: 'APPROVE' | 'REJECT', reason: string) => Promise<void>;
-  busy: boolean;
-}) {
-  const [reason, setReason] = useState(
-    item.moderation.reasons.length ? item.moderation.reasons.join('; ') : ''
-  );
-
-  async function handleConfirm(action: 'APPROVE' | 'REJECT') {
-    const finalReason =
-      reason.trim() ||
-      (action === 'APPROVE'
-        ? 'Admin thẩm định hợp lệ, cho phép đăng bán'
-        : 'Vi phạm quy định kiểm duyệt hàng sỉ');
-    await onAction(item.id, action, finalReason);
-  }
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 10000,
-        padding: '16px',
-        backdropFilter: 'blur(3px)',
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !busy) onClose();
-      }}
-    >
-      <div
-        style={{
-          backgroundColor: '#FFFFFF',
-          borderRadius: '16px',
-          maxWidth: '720px',
-          width: '100%',
-          maxHeight: '92vh',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.3)',
-          overflow: 'hidden',
-          border: '1px solid #CBD5E1',
-        }}
-      >
-        <div
-          style={{
-            backgroundColor: '#FFFBEB',
-            padding: '18px 24px',
-            borderBottom: '1px solid #FDE68A',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span
-              style={{
-                backgroundColor: '#FEF3C7',
-                color: '#D97706',
-                width: '40px',
-                height: '40px',
-                borderRadius: '50%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '20px',
-                flexShrink: 0,
-              }}
-            >
-              AI
-            </span>
-            <div>
-              <h3 style={{ margin: 0, color: '#92400E', fontSize: '17px', fontWeight: 700 }}>
-                Chi tiết bài đăng đáng nghi (Mức 2: Cần Admin duyệt)
-              </h3>
-              <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: '#B45309' }}>
-                Mã sản phẩm: #{item.id} · Đăng lúc: {dateTime(item.createdAt)}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            style={{
-              background: 'none',
-              border: 'none',
-              fontSize: '20px',
-              cursor: 'pointer',
-              color: '#94A3B8',
-              padding: '4px 8px',
-            }}
-          >
-            ×
-          </button>
-        </div>
-
-        <div
-          style={{
-            padding: '24px',
-            overflowY: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '20px',
-          }}
-        >
-          {/* AI Assessment Box */}
-          <div
-            style={{
-              backgroundColor: '#FEF2F2',
-              border: '1px solid #FECDD3',
-              borderRadius: '12px',
-              padding: '16px',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <strong style={{ color: '#991B1B', fontSize: '14px' }}>
-                  Kết quả kiểm duyệt
-                </strong>
-              </div>
-              <span
-                style={{
-                  backgroundColor: item.moderation.riskScore >= 50 ? '#DC2626' : '#EA580C',
-                  color: '#FFFFFF',
-                  fontWeight: 700,
-                  fontSize: '12px',
-                  padding: '3px 10px',
-                  borderRadius: '20px',
-                }}
-              >
-                Mức rủi ro: {item.moderation.riskScore}%
-              </span>
-            </div>
-            <ul style={{ margin: '6px 0 0 18px', padding: 0, fontSize: '13px', color: '#B91C1C', lineHeight: 1.6 }}>
-              {item.moderation.reasons.map((r, idx) => (
-                <li key={idx}><strong>{r}</strong></li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Product Details Grid */}
-          <div>
-            <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              Thông tin sản phẩm đăng bán
-            </h4>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: '12px',
-                backgroundColor: '#F8FAFC',
-                padding: '16px',
-                borderRadius: '12px',
-                border: '1px solid #E2E8F0',
-              }}
-            >
-              <div>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Tên sản phẩm</small>
-                <strong style={{ color: '#0F172A', fontSize: '14px' }}>{item.name}</strong>
-              </div>
-              <div>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Danh mục ngành hàng</small>
-                <span style={{ color: '#0F172A', fontSize: '14px', fontWeight: 600 }}>{item.category}</span>
-              </div>
-              <div>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Quy cách đóng gói</small>
-                <span style={{ color: '#0F172A', fontSize: '14px' }}>{item.packaging}</span>
-              </div>
-              <div>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Giá bán sỉ đề xuất</small>
-                <strong style={{ color: '#16A34A', fontSize: '15px' }}>{money(item.wholesalePrice)}</strong>
-              </div>
-              <div>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Số lượng tồn kho</small>
-                <span style={{ color: '#0F172A', fontSize: '14px' }}>{item.stockQty.toLocaleString('vi-VN')} đơn vị</span>
-              </div>
-              <div>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Đặt tối thiểu (MOQ)</small>
-                <span style={{ color: '#0F172A', fontSize: '14px' }}>{item.moq.toLocaleString('vi-VN')}</span>
-              </div>
-              <div>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Trạng thái hiện tại</small>
-                <span
-                  style={{
-                    display: 'inline-block',
-                    marginTop: '2px',
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    backgroundColor: item.isActive ? '#DCFCE7' : '#FEF3C7',
-                    color: item.isActive ? '#15803D' : '#B45309',
-                  }}
-                >
-                  {item.isActive ? 'Đang hiển thị' : 'Đang tạm ẩn chờ duyệt'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Supplier Info */}
-          <div>
-            <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              Thông tin đối tác đăng bán (Chủ vựa)
-            </h4>
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: '12px',
-                backgroundColor: '#F8FAFC',
-                padding: '16px',
-                borderRadius: '12px',
-                border: '1px solid #E2E8F0',
-              }}
-            >
-              <div>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Tên cơ sở / Vựa hàng</small>
-                <strong style={{ color: '#0F172A', fontSize: '14px' }}>{item.supplierName}</strong>
-              </div>
-              <div>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Người đại diện</small>
-                <span style={{ color: '#0F172A', fontSize: '14px' }}>
-                  {item.supplierOwner} {item.supplierUsername && <small style={{ color: '#64748B' }}>(@{item.supplierUsername})</small>}
-                </span>
-              </div>
-              <div>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Số điện thoại</small>
-                <strong style={{ color: '#2563EB', fontSize: '14px' }}>{item.supplierPhone || '—'}</strong>
-              </div>
-              <div>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Email</small>
-                <span style={{ color: '#0F172A', fontSize: '14px' }}>{item.supplierEmail || '—'}</span>
-              </div>
-              <div style={{ gridColumn: '1 / -1' }}>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Địa chỉ kho hàng</small>
-                <span style={{ color: '#0F172A', fontSize: '14px' }}>{item.supplierAddress || 'Chưa cập nhật'}</span>
-              </div>
-              <div>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Mã số thuế</small>
-                <span style={{ color: '#0F172A', fontSize: '14px' }}>{item.supplierTaxCode || 'Chưa khai báo'}</span>
-              </div>
-              <div>
-                <small style={{ color: '#64748B', display: 'block', fontSize: '12px' }}>Xác minh vựa</small>
-                <span
-                  style={{
-                    display: 'inline-block',
-                    marginTop: '2px',
-                    padding: '2px 8px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    backgroundColor: item.supplierVerificationStatus === 'APPROVED' ? '#DCFCE7' : '#F1F5F9',
-                    color: item.supplierVerificationStatus === 'APPROVED' ? '#15803D' : '#64748B',
-                  }}
-                >
-                  {item.supplierVerificationStatus === 'APPROVED' ? 'Đã xác minh' : 'Chưa xác minh'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Admin Decision Reason Input */}
-          <div>
-            <label style={{ display: 'block', fontWeight: 600, fontSize: '13px', color: '#334155', marginBottom: '6px' }}>
-              Ghi chú thẩm định của Quản trị viên (Lưu vết kiểm toán):
-            </label>
-            <textarea
-              rows={2}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Nhập lý do duyệt hoặc lý do từ chối (ví dụ: Hàng có đầy đủ giấy phép lưu hành; hoặc Vi phạm định giá bất thường)..."
-              style={{
-                width: '100%',
-                padding: '10px 12px',
-                borderRadius: '8px',
-                border: '1px solid #CBD5E1',
-                fontSize: '13px',
-                boxSizing: 'border-box',
-                fontFamily: 'inherit',
-              }}
-            />
-          </div>
-        </div>
-
-        {/* Footer Actions */}
-        <div
-          style={{
-            padding: '16px 24px',
-            backgroundColor: '#F8FAFC',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            borderTop: '1px solid #E2E8F0',
-          }}
-        >
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            style={{
-              padding: '9px 18px',
-              borderRadius: '8px',
-              border: '1px solid #CBD5E1',
-              backgroundColor: '#FFFFFF',
-              color: '#334155',
-              fontWeight: 600,
-              fontSize: '13px',
-              cursor: 'pointer',
-            }}
-          >
-            Đóng
-          </button>
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void handleConfirm('REJECT')}
-              style={{
-                padding: '9px 18px',
-                borderRadius: '8px',
-                border: '1px solid #DC2626',
-                backgroundColor: '#DC2626',
-                color: '#FFFFFF',
-                fontWeight: 600,
-                fontSize: '13px',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
-            >
-              {busy ? 'Đang xử lý…' : 'Từ chối đăng bán'}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void handleConfirm('APPROVE')}
-              style={{
-                padding: '9px 20px',
-                borderRadius: '8px',
-                border: '1px solid #16A34A',
-                backgroundColor: '#16A34A',
-                color: '#FFFFFF',
-                fontWeight: 600,
-                fontSize: '13px',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px',
-              }}
-            >
-              {busy ? 'Đang xử lý…' : 'Duyệt đăng bán'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-type ModerationResponse = List & {
-  queue: ModerationItem[];
-  summary: { flaggedCount: number; autoApprovedCount: number; autoRejectedCount?: number; totalCount: number };
-};
-
-function ModerationQueue({ onLogout }: Props) {
-  const [query, setQuery] = useState({ page: 1 });
-  const [revision, setRevision] = useState(0);
-  const [actionBusy, setActionBusy] = useState<number | null>(null);
-  const [selectedItem, setSelectedItem] = useState<ModerationItem | null>(null);
-  const { data, loading, error } = useAdminData<ModerationResponse>('/admin/moderation/queue', query, onLogout, revision);
-
-  async function handleAction(id: number, action: 'APPROVE' | 'REJECT', actionReason?: string) {
-    setActionBusy(id);
-    try {
-      await api.post(`/admin/moderation/${id}/action`, {
-        action,
-        reason: actionReason || (action === 'APPROVE' ? 'Admin duyệt cho phép hiển thị' : 'Vi phạm quy định giá/nội dung sàn sỉ'),
-      });
-      setRevision((n) => n + 1);
-    } catch (e) {
-      alert(getApiError(e));
-    } finally {
-      setActionBusy(null);
-    }
-  }
-
-  return (
-    <>
-      <Heading
-        eyebrow="AI AUTO-MODERATION"
-        title="Hàng chờ kiểm duyệt AI"
-        description="Xem và xử lý các bài đăng cần duyệt."
-        action={<button onClick={() => setRevision((n) => n + 1)}>↻ Làm mới hàng chờ</button>}
-      />
-      <LoadState loading={loading} error={error} />
-      {data && (
-        <>
-          <div className="admin-metrics three">
-            <Metric label="Cần Admin duyệt (Mức 2)" value={data.summary.flaggedCount} />
-            <Metric label="AI đã tự cấm (Mức 3)" value={data.summary.autoRejectedCount ?? 0} />
-            <Metric label="AI duyệt tự động (Mức 1)" value={data.summary.autoApprovedCount} />
-          </div>
-          <Panel title="Danh sách sản phẩm cần Admin duyệt (Mức 2: Cảnh báo nhẹ)">
-            {data.queue.length ? (
-              <div className="admin-table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Sản phẩm / Quy cách</th>
-                      <th>Chủ vựa</th>
-                      <th>Giá sỉ</th>
-                      <th>Điểm rủi ro AI</th>
-                      <th>Lý do cảnh báo</th>
-                      <th>Thao tác</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.queue.map((item) => (
-                      <tr key={item.id}>
-                        <td>
-                          <strong>{item.name}</strong>
-                          <br />
-                          <small>
-                            {item.category} · {item.packaging}
-                          </small>
-                        </td>
-                        <td>
-                          <strong>{item.supplierName}</strong>
-                          <br />
-                          <small>{item.supplierOwner}</small>
-                        </td>
-                        <td className="admin-money">{money(item.wholesalePrice)}</td>
-                        <td>
-                          <span
-                            style={{
-                              background: item.moderation.riskScore >= 50 ? '#fce8e6' : '#fef7e0',
-                              color: item.moderation.riskScore >= 50 ? '#c5221f' : '#b06000',
-                              fontWeight: 700,
-                              padding: '2px 8px',
-                              borderRadius: '12px',
-                              fontSize: '12px',
-                            }}
-                          >
-                            Rủi ro {item.moderation.riskScore}%
-                          </span>
-                        </td>
-                        <td>
-                          <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '12px', color: '#d93025' }}>
-                            {item.moderation.reasons.map((r, idx) => (
-                              <li key={idx}>{r}</li>
-                            ))}
-                          </ul>
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="admin-primary"
-                            style={{
-                              padding: '6px 12px',
-                              fontSize: '13px',
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '6px',
-                              cursor: 'pointer',
-                            }}
-                            onClick={() => setSelectedItem(item)}
-                          >
-                            Xem chi tiết & Xử lý
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <Empty>Hiện không có bài đăng sỉ nào bị gắn cờ nghi vấn.</Empty>
-            )}
-            <Pager {...data} onPage={(page) => setQuery({ page })} />
-          </Panel>
-          {selectedItem && (
-            <ModerationDetailDialog
-              item={selectedItem}
-              onClose={() => setSelectedItem(null)}
-              onAction={handleAction}
-              busy={actionBusy === selectedItem.id}
-            />
-          )}
-        </>
-      )}
-    </>
-  );
-}
-
-
 type SystemConfig = {
   aiModeration: {
     autoModerationEnabled: boolean;
@@ -3421,9 +3017,8 @@ function AiSystemConfig({ onLogout }: Props) {
   }
 
   const [newForbiddenWord, setNewForbiddenWord] = useState('');
-  const [newRestrictedWord, setNewRestrictedWord] = useState('');
   const [forbiddenSearch, setForbiddenSearch] = useState('');
-  const [restrictedSearch, setRestrictedSearch] = useState('');
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState('');
@@ -3511,39 +3106,6 @@ function AiSystemConfig({ onLogout }: Props) {
     });
   }
 
-  function handleAddRestricted() {
-    const trimmed = newRestrictedWord.trim().toLowerCase();
-    if (!trimmed) return;
-    if (form.aiModeration.restrictedKeywords.includes(trimmed)) {
-      alert('Từ khóa này đã có trong danh sách.');
-      return;
-    }
-    setForm((curr) => {
-      if (!curr) return curr;
-      return {
-        ...curr,
-        aiModeration: {
-          ...curr.aiModeration,
-          restrictedKeywords: [...curr.aiModeration.restrictedKeywords, trimmed],
-        },
-      };
-    });
-    setNewRestrictedWord('');
-  }
-
-  function handleRemoveRestricted(word: string) {
-    setForm((curr) => {
-      if (!curr) return curr;
-      return {
-        ...curr,
-        aiModeration: {
-          ...curr.aiModeration,
-          restrictedKeywords: curr.aiModeration.restrictedKeywords.filter((w) => w !== word),
-        },
-      };
-    });
-  }
-
   async function handleSaveAll() {
     setSaving(true);
     setSaveError('');
@@ -3560,10 +3122,8 @@ function AiSystemConfig({ onLogout }: Props) {
     }
   }
 
-  async function handleResetDefault() {
-    if (!window.confirm('Bạn có chắc muốn khôi phục toàn bộ cấu hình hệ thống về mặc định ban đầu?')) {
-      return;
-    }
+  async function handleConfirmReset() {
+    setShowResetConfirm(false);
     setSaving(true);
     setSaveError('');
     setSaveSuccess('');
@@ -3583,10 +3143,6 @@ function AiSystemConfig({ onLogout }: Props) {
     !forbiddenSearch ? true : w.toLowerCase().includes(forbiddenSearch.toLowerCase())
   );
 
-  const filteredRestricted = form.aiModeration.restrictedKeywords.filter((w) =>
-    !restrictedSearch ? true : w.toLowerCase().includes(restrictedSearch.toLowerCase())
-  );
-
   return (
     <>
       <Heading
@@ -3597,7 +3153,7 @@ function AiSystemConfig({ onLogout }: Props) {
           <div style={{ display: 'flex', gap: '10px' }}>
             <button
               type="button"
-              onClick={handleResetDefault}
+              onClick={() => setShowResetConfirm(true)}
               disabled={saving}
               style={{
                 padding: '9px 16px',
@@ -4423,11 +3979,11 @@ function AiSystemConfig({ onLogout }: Props) {
           </section>
         )}
 
-        {/* CARD 7: QUẢN LÝ TỪ CẤM NGHIÊM TRỌNG (MỨC 3) */}
+        {/* CARD 7: QUẢN LÝ TỪ CẤM NGHIÊM TRỌNG */}
         {(configTab === 'all' || configTab === 'ai') && (
           <section className="admin-config-card">
             <div className="admin-config-card-header">
-              <span className="admin-mini-label" style={{ color: '#b91c1c' }}>MỨC 3 · TỰ ĐỘNG CẤM ĐĂNG BÁN</span>
+              <span className="admin-mini-label" style={{ color: '#b91c1c' }}>TỰ ĐỘNG CẤM ĐĂNG BÁN</span>
               <h2>Quản lý Danh sách Từ cấm Nghiêm trọng</h2>
               <p>
                 Khi sản phẩm có chứa bất kỳ từ cấm nào bên dưới (trong tên, danh mục, quy cách hoặc mô tả), AI sẽ ngay lập tức từ chối và cấm đăng bán thẳng để bảo vệ an toàn sàn.
@@ -4502,90 +4058,11 @@ function AiSystemConfig({ onLogout }: Props) {
           </section>
         )}
 
-        {/* CARD 8: QUẢN LÝ TỪ KHÓA HẠN CHẾ (MỨC 2) */}
-        {(configTab === 'all' || configTab === 'ai') && (
-          <section className="admin-config-card">
-            <div className="admin-config-card-header">
-              <span className="admin-mini-label" style={{ color: '#b45309' }}>MỨC 2 · CẦN ADMIN DUYỆT</span>
-              <h2>Quản lý Danh sách Từ khóa Hạn chế / Có điều kiện</h2>
-              <p>
-                Sản phẩm chứa các từ khóa này (thuốc lá, xì gà, rượu, thực phẩm chức năng...) sẽ không bị cấm ngay mà được đưa vào Hàng chờ duyệt để Admin kiểm tra giấy phép kinh doanh.
-              </p>
-            </div>
-
-            <div className="admin-tag-input-row">
-              <input
-                type="text"
-                placeholder="Nhập từ khóa hạn chế mới (VD: thuốc lào, shisha, vape, rượu ngoại...) rồi nhấn Thêm"
-                value={newRestrictedWord}
-                onChange={(e) => setNewRestrictedWord(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleAddRestricted();
-                  }
-                }}
-              />
-              <button
-                type="button"
-                className="admin-primary"
-                onClick={handleAddRestricted}
-                disabled={!newRestrictedWord.trim()}
-                style={{ padding: '9px 18px', whiteSpace: 'nowrap' }}
-              >
-                + Thêm từ hạn chế
-              </button>
-            </div>
-
-            <div style={{ marginTop: '14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>
-                Tổng cộng {form.aiModeration.restrictedKeywords.length} từ khóa hạn chế:
-              </span>
-              <input
-                type="text"
-                placeholder="Lọc từ hạn chế..."
-                value={restrictedSearch}
-                onChange={(e) => setRestrictedSearch(e.target.value)}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: '6px',
-                  border: '1px solid #cbd5e1',
-                  fontSize: '12px',
-                  maxWidth: '200px',
-                }}
-              />
-            </div>
-
-            <div className="admin-tag-cloud">
-              {filteredRestricted.length > 0 ? (
-                filteredRestricted.map((word) => (
-                  <span key={word} className="admin-tag-chip warning">
-                    <span>{word}</span>
-                    <button
-                      type="button"
-                      className="admin-tag-remove-btn"
-                      onClick={() => handleRemoveRestricted(word)}
-                      title={`Xóa từ "${word}" khỏi danh sách hạn chế`}
-                      aria-label={`Xóa ${word}`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))
-              ) : (
-                <span style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic', padding: '8px' }}>
-                  Không tìm thấy từ khóa nào khớp với tìm kiếm.
-                </span>
-              )}
-            </div>
-          </section>
-        )}
-
         {/* BOTTOM ACTION BUTTONS */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '14px', marginTop: '14px', marginBottom: '20px' }}>
           <button
             type="button"
-            onClick={handleResetDefault}
+            onClick={() => setShowResetConfirm(true)}
             disabled={saving}
             style={{
               padding: '11px 20px',
@@ -4618,6 +4095,137 @@ function AiSystemConfig({ onLogout }: Props) {
           </button>
         </div>
       </div>
+
+      {/* MODAL XÁC NHẬN KHÔI PHỤC MẶC ĐỊNH (THAY THẾ WINDOW.CONFIRM BROWSER DIALOG) */}
+      {showResetConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 10000,
+            padding: '16px',
+            backdropFilter: 'blur(3px)',
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !saving) setShowResetConfirm(false);
+          }}
+        >
+          <div
+            style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: '16px',
+              maxWidth: '480px',
+              width: '100%',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              overflow: 'hidden',
+              border: '1px solid #E2E8F0',
+            }}
+          >
+            <div
+              style={{
+                padding: '18px 24px 14px',
+                borderBottom: '1px solid #F1F5F9',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 700, color: '#0F172A' }}>
+                Xác nhận khôi phục mặc định
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(false)}
+                disabled={saving}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '22px',
+                  color: '#64748B',
+                  cursor: 'pointer',
+                  padding: '4px 8px',
+                  lineHeight: 1,
+                }}
+                aria-label="Đóng"
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ padding: '20px 24px' }}>
+              <p style={{ margin: '0 0 14px 0', fontSize: '14px', color: '#334155', lineHeight: 1.55 }}>
+                Bạn có chắc chắn muốn khôi phục toàn bộ tham số sàn và chính sách vận hành về giá trị mặc định ban đầu?
+              </p>
+              <div
+                style={{
+                  padding: '12px 14px',
+                  backgroundColor: '#FFFBEB',
+                  border: '1px solid #FDE68A',
+                  borderRadius: '8px',
+                  fontSize: '12.5px',
+                  color: '#92400E',
+                  lineHeight: 1.5,
+                }}
+              >
+                <strong>Lưu ý:</strong> Toàn bộ các thông số SLA giao hàng, tỷ lệ ký quỹ Escrow, hạn mức ví nạp/rút và cấu hình từ cấm AI sẽ được thiết lập lại về cấu hình gốc của hệ thống.
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: '16px 24px',
+                backgroundColor: '#F8FAFC',
+                borderTop: '1px solid #F1F5F9',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '10px',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowResetConfirm(false)}
+                disabled={saving}
+                style={{
+                  padding: '9px 16px',
+                  borderRadius: '8px',
+                  border: '1px solid #CBD5E1',
+                  backgroundColor: '#FFFFFF',
+                  color: '#475569',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                }}
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReset}
+                disabled={saving}
+                style={{
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: '#DC2626',
+                  color: '#FFFFFF',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  cursor: 'pointer',
+                  boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+                }}
+              >
+                {saving ? 'Đang khôi phục…' : 'Xác nhận khôi phục'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

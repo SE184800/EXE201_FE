@@ -10,10 +10,10 @@ const labels: Record<string, string> = {
   BANNED: 'Khóa vĩnh viễn',
   DELETED: 'Đã xóa',
   DRAFT: 'Chưa ký thỏa thuận',
-  PENDING: 'Đang chờ duyệt',
-  APPROVED: 'Đã xác minh',
+  PENDING: 'Chờ duyệt',
+  APPROVED: 'Đã duyệt',
   REJECTED: 'Cần điều chỉnh',
-  PAID: 'Đã thu',
+  PAID: 'Đã thanh toán',
   UNPAID: 'Chưa thu',
   NO_FEE: 'Miễn phí',
   UNTRACKED: 'Thiếu dữ liệu',
@@ -22,12 +22,20 @@ const labels: Record<string, string> = {
   STARTED: 'Chưa kết thúc',
   STORE_OWNER: 'Chủ tạp hóa',
   SUPPLIER: 'Chủ vựa',
+  DELIVERED: 'Đã giao thành công',
+  COMPLETED: 'Đã hoàn tất',
+  SHIPPING: 'Đang vận chuyển',
+  PREPARING: 'Đang soạn hàng',
+  CANCELLED: 'Đã hủy',
+  ISSUE_HANDLING: 'Đang kiểm hàng / xử lý',
 };
 export function Badge({ status }: { status: string }) {
+  const isGood = ['ACTIVE', 'TRIAL', 'APPROVED', 'PAID', 'SUCCESS', 'DELIVERED', 'COMPLETED'].includes(status);
+  const isBad = ['BANNED', 'DELETED', 'EXPIRED', 'ERROR', 'CANCELLED', 'REJECTED'].includes(status);
+  const isWarn = ['PENDING', 'UNPAID', 'PREPARING', 'SHIPPING', 'ISSUE_HANDLING', 'SUSPENDED', 'DRAFT'].includes(status);
+  const tone = isGood ? 'good' : isBad ? 'bad' : isWarn ? 'warn' : '';
   return (
-    <span
-      className={`admin-badge ${['ACTIVE', 'TRIAL', 'APPROVED', 'PAID', 'SUCCESS'].includes(status) ? 'good' : ['BANNED', 'DELETED', 'EXPIRED', 'ERROR'].includes(status) ? 'bad' : ''}`}
-    >
+    <span className={`admin-badge ${tone}`}>
       {labels[status] || status}
     </span>
   );
