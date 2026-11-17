@@ -278,7 +278,7 @@ export default function SupplierLayout({
           </div>
         </header>
 
-        <div className="dashboard-content" style={{ padding: '24px 38px' }}>
+        <div className="dashboard-content">
           {children}
         </div>
       </div>

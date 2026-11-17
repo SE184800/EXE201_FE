@@ -303,6 +303,53 @@
   gap: 26px;
   align-items: start;
 }
+.supplier-products-page,
+.supplier-quotes-page {
+  container: supplier-workspace / inline-size;
+  min-width: 0;
+}
+.supplier-products-page .supplier-field {
+  align-content: start;
+}
+.supplier-products-page .supplier-field :is(input, select, textarea),
+.publish-layout > *,
+.quote-layout > * {
+  min-width: 0;
+}
+.product-packaging-heading {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+.supplier-field > .product-packaging-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.product-packaging-grid > div:first-child {
+  grid-column: 1 / -1;
+}
+.product-packaging-grid > div {
+  min-width: 0;
+}
+.supplier-field > .product-packaging-custom {
+  grid-template-columns: minmax(0, 1fr);
+}
+.publish-pagination {
+  margin-top: 20px;
+  padding: 14px 18px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e5ebe2;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+.publish-pagination > div {
+  white-space: nowrap;
+}
 .publish-form {
   position: sticky;
   top: 20px;
@@ -1017,10 +1064,13 @@
 }
 .quote-line-builder {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(0, 0.9fr) minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 0.95fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   align-items: start;
   margin: 20px 0;
+}
+.quote-line-builder > label:first-child {
+  grid-column: 1 / -1;
 }
 .quote-line-builder label {
   min-width: 0;
@@ -1029,6 +1079,7 @@
   font-size: 11px;
   color: #53644f;
   font-weight: 650;
+  align-content: end;
 }
 .quote-line-builder input,
 .quote-line-builder select {
@@ -1055,13 +1106,18 @@
 }
 .quote-draft-lines > div {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
   padding: 11px 12px;
   background: #f7f9f3;
   border-radius: 8px;
   font-size: 12px;
+}
+.quote-draft-lines > div > span {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .quote-draft-lines span {
   display: grid;

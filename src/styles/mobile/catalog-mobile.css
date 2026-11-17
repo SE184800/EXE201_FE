@@ -216,12 +216,10 @@
     min-height: 46px;
   }
   .quote-draft-lines > div {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: start;
   }
   .quote-draft-lines > div > button {
-    grid-column: 2;
-    grid-row: 1/3;
     min-width: 42px;
     min-height: 42px;
   }
@@ -235,5 +233,54 @@
   }
   .quote-card .order-actions {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Use the available workspace width, including the desktop sidebar. */
+@container supplier-workspace (max-width: 900px) {
+  .publish-layout,
+  .quote-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+  .publish-form,
+  .quote-form {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+@container supplier-workspace (max-width: 540px) {
+  .supplier-mode-tabs {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .supplier-mode-tab {
+    min-width: 0;
+    padding: 10px;
+    white-space: normal;
+  }
+  .publish-item-layout {
+    flex-direction: column;
+    gap: 12px;
+  }
+  .publish-item-body {
+    width: 100%;
+  }
+  .publish-item-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .publish-item-actions button {
+    min-width: 0;
+    white-space: normal;
+  }
+  .publish-pagination > div {
+    order: -1;
+    flex-basis: 100%;
+    justify-content: center;
+  }
+  .quote-form .primary-button {
+    white-space: normal;
   }
 }
