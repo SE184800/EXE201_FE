@@ -96,10 +96,6 @@ export default function WalletQrCode({
           <dd>{accountHolder}</dd>
         </div>
         <div>
-          <dt>Số tiền</dt>
-          <dd className="wallet-qr-amount">{money(amount)}</dd>
-        </div>
-        <div>
           <dt>Nội dung CK</dt>
           <dd style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
             <span style={{ fontWeight: 700, color: '#166534' }}>{billNumber}</span>

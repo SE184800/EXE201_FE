@@ -142,7 +142,7 @@ export async function getWallet(): Promise<WalletOverview> {
 }
 
 export async function getWalletTransactions(
-  params: { page?: number; type?: string } = {},
+  params: { page?: number; type?: string; limit?: number } = {},
 ): Promise<WalletTransactionList> {
   return (await api.get<WalletTransactionList>('/wallet/transactions', { params })).data;
 }

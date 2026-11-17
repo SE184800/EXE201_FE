@@ -10,7 +10,6 @@ import ContractSigningModal from '../components/ContractSigningModal';
 import PartnerProfileEditModal from '../components/PartnerProfileEditModal';
 import { getContractStatus } from '../services/contract.api';
 import RestockPage from './RestockPage';
-import SalesCalendar from './SalesCalendar';
 import VoiceQuickSale from './VoiceQuickSale';
 import StoreCatalog from './StoreCatalog';
 import OrderList from '../components/OrderList';
@@ -91,7 +90,6 @@ const tabs = [
   { id: 'wallet', label: 'Ví tiền', icon: 'chart' },
   { id: 'history', label: 'Lịch sử giao dịch', icon: 'check' },
   { id: 'revenue', label: 'Doanh thu', icon: 'chart' },
-  { id: 'calendar', label: 'Lịch nhập dự kiến', icon: 'sparkle' },
   { id: 'restock', label: 'Kế hoạch nhập', icon: 'sparkle' },
   { id: 'subscription', label: 'Gói sử dụng', icon: 'shield' },
   { id: 'profile', label: 'Thông tin tiệm & Cá nhân', icon: 'user' },
@@ -940,7 +938,7 @@ export default function StoreInventory({
               })()}
               <section
                 hidden={
-                  activeTab === 'profile' || activeTab === 'restock' || activeTab === 'calendar' || activeTab === 'quick-sale'
+                  activeTab === 'profile' || activeTab === 'restock' || activeTab === 'quick-sale'
                 }
                 className="metric-grid"
                 aria-label="Tổng quan kho"
@@ -1341,13 +1339,6 @@ export default function StoreInventory({
               onLogout={onLogout}
               mode="history"
             />}
-          </div>
-          <div hidden={activeTab !== 'calendar'}>
-            <SalesCalendar
-              revision={revision}
-              onLogout={onLogout}
-              onChat={() => setChatOpen(true)}
-            />
           </div>
           <div hidden={activeTab !== 'restock'}>
             <RestockPage revision={revision} onLogout={onLogout} />
