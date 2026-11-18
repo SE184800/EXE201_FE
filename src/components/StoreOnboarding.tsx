@@ -7,7 +7,6 @@ import type { StoreProfile } from '../pages/ProfilePage';
 import { normalizePhone } from '../validation/registration';
 import { POPULAR_BANKS } from '../constants/banks';
 import { validateQrCodeImage } from '../utils/qrValidator';
-import { verifyAddressWithBackend } from '../services/address.api';
 
 type StoreOnboardingProps = {
   user: AuthUser;
@@ -41,14 +40,6 @@ export default function StoreOnboarding({
   const [locationType, setLocationType] = useState<'STREET_FRONT' | 'ALLEY'>('STREET_FRONT');
   const [alleyDetail, setAlleyDetail] = useState<'TRUCK' | 'MOTORBIKE'>('MOTORBIKE');
   const [alleyNote, setAlleyNote] = useState('');
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
-  const [isAddressVerified, setIsAddressVerified] = useState(false);
-  const [verifyingMap, setVerifyingMap] = useState(false);
-  const [mapVerifiedAddress, setMapVerifiedAddress] = useState<string | null>(null);
-  const [mapVerifyMessage, setMapVerifyMessage] = useState<string | null>(null);
-  const [mapStatus, setMapStatus] = useState<'idle' | 'success' | 'not_found' | 'error'>('idle');
-
   const [fieldErrors, setFieldErrors] = useState<StoreOnboardingErrors>({});
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -63,48 +54,6 @@ export default function StoreOnboarding({
   const [uploadingQr, setUploadingQr] = useState(false);
   const [qrUploadError, setQrUploadError] = useState('');
   const [bankingError, setBankingError] = useState('');
-
-  async function verifyAddressOnMap() {
-    const trimmed = storeAddress.trim();
-    if (!trimmed || trimmed.length < 5) {
-      setFieldErrors((prev) => ({
-        ...prev,
-        storeAddress: 'Vui lòng nhập địa chỉ trước khi định vị bản đồ.',
-      }));
-      return;
-    }
-    setVerifyingMap(true);
-    setMapStatus('idle');
-    setMapVerifyMessage(null);
-
-    try {
-      const result = await verifyAddressWithBackend(trimmed);
-      if (result.verified && result.lat !== null && result.lon !== null) {
-        setLatitude(result.lat);
-        setLongitude(result.lon);
-        setIsAddressVerified(true);
-        setMapVerifiedAddress(result.displayName || trimmed);
-        setMapStatus('success');
-        setFieldErrors((prev) => ({ ...prev, storeAddress: undefined }));
-      } else {
-        setLatitude(null);
-        setLongitude(null);
-        setIsAddressVerified(false);
-        setMapVerifiedAddress(null);
-        setMapVerifyMessage(result.message || null);
-        setMapStatus(result.status === 'error' ? 'error' : 'not_found');
-      }
-    } catch {
-      setLatitude(null);
-      setLongitude(null);
-      setIsAddressVerified(false);
-      setMapVerifiedAddress(null);
-      setMapVerifyMessage('Không thể kết nối dịch vụ bản đồ số lúc này. Vui lòng thử lại sau.');
-      setMapStatus('error');
-    } finally {
-      setVerifyingMap(false);
-    }
-  }
 
   function validate(): StoreOnboardingErrors {
     const errors: StoreOnboardingErrors = {};
@@ -254,9 +203,6 @@ export default function StoreOnboarding({
         businessType: 'Tạp hóa tổng hợp',
         locationType,
         alleyDetail: combinedAlley,
-        latitude,
-        longitude,
-        isAddressVerified,
         bankName: effectiveBankName,
         bankAccountNumber: cleanAccount,
         bankAccountHolder: cleanHolder.toUpperCase(),
@@ -748,26 +694,6 @@ export default function StoreOnboarding({
                   >
                     Địa chỉ cửa hàng chi tiết <span style={{ color: '#dc2626' }}>*</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={verifyAddressOnMap}
-                    disabled={verifyingMap || !storeAddress.trim()}
-                    style={{
-                      fontSize: '12px',
-                      color: '#1d4ed8',
-                      background: '#eff6ff',
-                      border: '1px solid #bfdbfe',
-                      padding: '4px 10px',
-                      borderRadius: '6px',
-                      cursor: verifyingMap || !storeAddress.trim() ? 'not-allowed' : 'pointer',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                    }}
-                  >
-                    {verifyingMap ? 'Đang định vị…' : 'Kiểm tra trên bản đồ số'}
-                  </button>
                 </div>
                 <input
                   id="onboarding-storeAddress"
@@ -779,7 +705,6 @@ export default function StoreOnboarding({
                   onChange={(e) => {
                     setStoreAddress(e.target.value);
                     if (fieldErrors.storeAddress) setFieldErrors({ ...fieldErrors, storeAddress: undefined });
-                    setMapStatus('idle');
                   }}
                   style={{
                     width: '100%',
@@ -791,62 +716,6 @@ export default function StoreOnboarding({
                     outline: 'none',
                   }}
                 />
-
-                {/* Map verification status badge */}
-                {mapStatus === 'success' && (
-                  <div
-                    style={{
-                      marginTop: '8px',
-                      padding: '10px 14px',
-                      background: '#f0fdf4',
-                      border: '1px solid #bbf7d0',
-                      borderRadius: '8px',
-                      fontSize: '13px',
-                      color: '#166534',
-                    }}
-                  >
-                    <strong>Đã tìm thấy trên bản đồ số:</strong> {mapVerifiedAddress}
-                    {latitude && longitude && (
-                      <div style={{ fontSize: '11px', color: '#15803d', marginTop: '2px' }}>
-                        Tọa độ: {latitude.toFixed(6)}, {longitude.toFixed(6)}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {mapStatus === 'not_found' && (
-                  <div
-                    style={{
-                      marginTop: '8px',
-                      padding: '10px 14px',
-                      background: '#fffbeb',
-                      border: '1px solid #fde68a',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      color: '#92400e',
-                    }}
-                  >
-                    <strong>Chưa xác minh được địa chỉ trên bản đồ số.</strong>{' '}
-                    {mapVerifyMessage ||
-                      'Vui lòng ghi rõ: Số nhà, Tên đường, Phường/Xã, Quận/Huyện, Tỉnh/Thành phố đầy đủ (ví dụ: 221 Đường Trịnh Đình Trọng, Tân Phú, TP. Hồ Chí Minh).'}
-                  </div>
-                )}
-
-                {mapStatus === 'error' && (
-                  <div
-                    style={{
-                      marginTop: '8px',
-                      padding: '8px 12px',
-                      background: '#f8fafc',
-                      border: '1px solid #e2e8f0',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      color: '#64748b',
-                    }}
-                  >
-                    {mapVerifyMessage || 'Tạm thời không kết nối được dịch vụ bản đồ số. Vui lòng thử lại sau.'}
-                  </div>
-                )}
 
                 <small style={{ color: '#64748b', display: 'block', marginTop: '6px', fontSize: '12px' }}>
                   Địa chỉ này sẽ dùng làm <strong>địa chỉ mặc định khi tạo đơn mua sỉ</strong> từ các
