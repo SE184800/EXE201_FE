@@ -18,6 +18,7 @@ import ContractKeyPage from './pages/ContractKeyPage';
 import { getMe, logout } from './services/auth.api';
 import { ROLE_DETAILS, type AuthUser } from './types/auth';
 import { isMobileApp } from './mobile/platform';
+import SystemNoticeBanner from './components/SystemNoticeBanner';
 
 
 function LogoutToast() {
@@ -29,6 +30,9 @@ function LogoutToast() {
         if (sessionStorage.getItem('idle_logged_out')) {
           sessionStorage.removeItem('idle_logged_out');
           setNotice('Phiên đăng nhập đã kết thúc sau 15 phút không hoạt động để bảo mật thông tin.');
+        } else if (sessionStorage.getItem('maintenance_logged_out')) {
+          sessionStorage.removeItem('maintenance_logged_out');
+          setNotice('Hệ thống đang bảo trì kỹ thuật. Phiên đăng nhập đã được tự động kết thúc để đảm bảo an toàn.');
         } else if (sessionStorage.getItem('just_logged_out')) {
           sessionStorage.removeItem('just_logged_out');
           setNotice('Đã đăng xuất thành công. Hẹn gặp lại bạn!');
@@ -98,27 +102,33 @@ function LogoutToast() {
 
 export default function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [checkingSession, setCheckingSession] = useState(() => isMobileApp() || sessionStorage.getItem('supplymind_active_tab') === 'true');
+  const isSessionActive = () =>
+    isMobileApp() ||
+    sessionStorage.getItem('supplymind_active_tab') === 'true' ||
+    localStorage.getItem('supplymind_active_tab') === 'true';
+
+  const [checkingSession, setCheckingSession] = useState(isSessionActive);
 
   const handleSetUser = useCallback((u: AuthUser | null) => {
     if (u) {
       sessionStorage.setItem('supplymind_active_tab', 'true');
+      localStorage.setItem('supplymind_active_tab', 'true');
     } else {
       sessionStorage.removeItem('supplymind_active_tab');
+      localStorage.removeItem('supplymind_active_tab');
     }
     setUser(u);
   }, []);
 
   const clearUser = useCallback(() => {
     sessionStorage.removeItem('supplymind_active_tab');
+    localStorage.removeItem('supplymind_active_tab');
     setUser(null);
   }, []);
 
   useEffect(() => {
     let active = true;
-    const isTabActive = isMobileApp() || sessionStorage.getItem('supplymind_active_tab') === 'true';
-    if (!isTabActive) {
-      // Khi mở tab mới hoặc tắt mở lại trình duyệt: yêu cầu đăng nhập lại
+    if (!isSessionActive()) {
       return;
     }
 
@@ -128,6 +138,7 @@ export default function App() {
       })
       .catch(() => {
         sessionStorage.removeItem('supplymind_active_tab');
+        localStorage.removeItem('supplymind_active_tab');
       })
       .finally(() => {
         if (active) setCheckingSession(false);
@@ -182,6 +193,7 @@ export default function App() {
   );
   return (
     <BrowserRouter>
+      <SystemNoticeBanner user={user} onLogout={clearUser} />
       <LogoutToast />
       <Routes>
         <Route

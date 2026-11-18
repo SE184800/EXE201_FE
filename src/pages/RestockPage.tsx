@@ -117,18 +117,6 @@ function budget(lines: { quantity: number; purchasePrice: number | null }[]) {
   return `${missing ? 'Tạm tính phần có giá' : 'Chi phí dự kiến'}: ${money(total)}${missing ? ` · ${missing} mặt hàng chưa có giá nhập` : ''}`;
 }
 
-const DEMO_HOLIDAYS: Holiday[] = [
-  {
-    id: 'CHRISTMAS_DEMO',
-    name: 'Lễ Giáng Sinh & Chào Đón Năm Mới',
-    categories: ['Bia', 'Nước giải khát', 'Bánh kẹo', 'Rượu', 'Snack'],
-    multiplier: 1.6,
-    description: 'Dự báo tiệc cuối năm & lễ hội làm nhu cầu Đồ uống, Bia & Bánh kẹo tăng vọt.',
-    daysUntil: 12,
-    isUpcoming: true,
-    isCurrent: false,
-  },
-];
 
 const DEMO_ITEMS: Forecast[] = [
   {
@@ -307,7 +295,6 @@ export default function RestockPage({
     }
   }
 
-  const displayHolidays = upcomingHolidays.length > 0 ? upcomingHolidays : DEMO_HOLIDAYS;
   const displayItems = items.length > 0 ? items : DEMO_ITEMS;
 
   // Lọc danh sách hàng cấp bách trong kho cần tái nhập
@@ -633,46 +620,69 @@ export default function RestockPage({
       {/* TAB 1: GỢI Ý NHẬP HÀNG */}
       {view === 'forecast' ? (
         <div>
-          {/* Banner sự kiện dịp lễ thu gọn */}
-          <div
-            style={{
-              backgroundColor: '#eff6ff',
-              border: '1px solid #bfdbfe',
-              borderRadius: '8px',
-              padding: '12px 16px',
-              marginTop: '12px',
-              marginBottom: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              flexWrap: 'wrap',
-              gap: '10px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '18px' }}>🎉</span>
-              <div>
-                <strong style={{ color: '#1e40af', fontSize: '14px' }}>
-                  {displayHolidays[0]?.name || 'Lễ Giáng Sinh & Năm Mới'}:
-                </strong>
-                <span style={{ color: '#1e3a8a', fontSize: '13px', marginLeft: '6px' }}>
-                  {displayHolidays[0]?.description}
-                </span>
-              </div>
-            </div>
-            <span
+          {/* Banner sự kiện dịp lễ hoặc thông báo không có ngày lễ */}
+          {upcomingHolidays.length > 0 ? (
+            <div
               style={{
-                backgroundColor: '#dbeafe',
-                color: '#1d4ed8',
-                fontWeight: 700,
-                fontSize: '12.5px',
-                padding: '4px 10px',
-                borderRadius: '20px',
+                backgroundColor: '#eff6ff',
+                border: '1px solid #bfdbfe',
+                borderRadius: '8px',
+                padding: '12px 16px',
+                marginTop: '12px',
+                marginBottom: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '10px',
               }}
             >
-              Dự kiến tăng nhu cầu x{displayHolidays[0]?.multiplier || 1.6} lần
-            </span>
-          </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '18px' }}>🎉</span>
+                <div>
+                  <strong style={{ color: '#1e40af', fontSize: '14px' }}>
+                    {upcomingHolidays[0].name}:
+                  </strong>
+                  <span style={{ color: '#1e3a8a', fontSize: '13px', marginLeft: '6px' }}>
+                    {upcomingHolidays[0].description || 'Dự báo tiệc & lễ hội làm nhu cầu tăng.'}
+                  </span>
+                </div>
+              </div>
+              <span
+                style={{
+                  backgroundColor: '#dbeafe',
+                  color: '#1d4ed8',
+                  fontWeight: 700,
+                  fontSize: '12.5px',
+                  padding: '4px 10px',
+                  borderRadius: '20px',
+                }}
+              >
+                Dự kiến tăng nhu cầu x{upcomingHolidays[0].multiplier} lần
+              </span>
+            </div>
+          ) : (
+            <div
+              style={{
+                backgroundColor: '#f8fafc',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '11px 16px',
+                marginTop: '12px',
+                marginBottom: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                color: '#64748b',
+                fontSize: '13.5px',
+              }}
+            >
+              <span style={{ fontSize: '16px' }}>🗓️</span>
+              <span>
+                <strong>Chưa có dịp lễ nào sắp tới:</strong> Gợi ý nhập hàng hiện tại được tính toán dựa trên mức bán bình thường của cửa hàng.
+              </span>
+            </div>
+          )}
 
           {/* Điều khiển chu kỳ */}
           <div className="restock-controls" style={{ marginBottom: '14px' }}>

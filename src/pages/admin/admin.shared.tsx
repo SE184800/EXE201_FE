@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import DatePicker from '../../components/DatePicker';
 const labels: Record<string, string> = {
   ACTIVE: 'Hoạt động',
-  INACTIVE: 'Chưa hoạt động',
+  INACTIVE: 'Dừng hoạt động',
   TRIAL: 'Đang dùng thử',
   EXPIRED: 'Hết hạn',
   NOT_STARTED: 'Chưa bắt đầu',
@@ -32,7 +32,7 @@ const labels: Record<string, string> = {
 export function Badge({ status }: { status: string }) {
   const isGood = ['ACTIVE', 'TRIAL', 'APPROVED', 'PAID', 'SUCCESS', 'DELIVERED', 'COMPLETED'].includes(status);
   const isBad = ['BANNED', 'DELETED', 'EXPIRED', 'ERROR', 'CANCELLED', 'REJECTED'].includes(status);
-  const isWarn = ['PENDING', 'UNPAID', 'PREPARING', 'SHIPPING', 'ISSUE_HANDLING', 'SUSPENDED', 'DRAFT'].includes(status);
+  const isWarn = ['PENDING', 'UNPAID', 'PREPARING', 'SHIPPING', 'ISSUE_HANDLING', 'SUSPENDED', 'DRAFT', 'INACTIVE'].includes(status);
   const tone = isGood ? 'good' : isBad ? 'bad' : isWarn ? 'warn' : '';
   return (
     <span className={`admin-badge ${tone}`}>
@@ -170,3 +170,47 @@ export function AdminDialog({
     </dialog>
   );
 }
+
+export function Heading({
+  eyebrow,
+  title,
+  description,
+  action,
+}: {
+  eyebrow: string;
+  title: string;
+  description?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="admin-heading">
+      <div>
+        <p>{eyebrow}</p>
+        <h1>{title}</h1>
+        {description && <span>{description}</span>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+export function Panel({
+  title,
+  note,
+  children,
+}: {
+  title: string;
+  note?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="admin-panel">
+      <div className="admin-panel-heading">
+        <h2>{title}</h2>
+        {note && <p>{note}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+

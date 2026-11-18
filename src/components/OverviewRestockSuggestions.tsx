@@ -12,6 +12,7 @@ type Holiday = {
   isCurrent: boolean;
 };
 
+
 type ForecastItem = {
   itemId: number;
   name: string;
@@ -139,11 +140,23 @@ export default function OverviewRestockSuggestions({
               <p className="holiday-overview-alert">
                 {actionableCount > 0
                   ? `${actionableCount} mặt hàng nên nhập thêm.`
-                  : 'Tồn kho hiện tại vẫn đủ theo dự báo.'}
+                  : (nearestHoliday.description || 'Dự báo tiệc cuối năm & lễ hội làm nhu cầu Đồ uống, Bia & Bánh kẹo tăng vọt.')}
               </p>
             </div>
             <b>×{nearestHoliday.multiplier}</b>
           </div>
+
+          {actionableCount === 0 && (
+            <button
+              type="button"
+              className="overview-restock-more"
+              style={{ marginTop: '12px' }}
+              onClick={onOpen}
+            >
+              Xem chi tiết Kế hoạch nhập hàng
+              <Icon name="arrow" />
+            </button>
+          )}
 
           {actionableCount > 0 && (
             <button
