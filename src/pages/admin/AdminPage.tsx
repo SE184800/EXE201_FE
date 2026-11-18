@@ -1098,9 +1098,9 @@ function DeleteUserDialog({
       >
         <div
           style={{
-            backgroundColor: '#FFF1F2',
-            padding: '18px 24px',
-            borderBottom: '1px solid #FFE4E6',
+            backgroundColor: '#FAFBFC',
+            padding: '16px 24px',
+            borderBottom: '1px solid #E5E7EB',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -1110,27 +1110,28 @@ function DeleteUserDialog({
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <span
               style={{
-                backgroundColor: '#FFE4E6',
-                color: '#E11D48',
-                width: '40px',
-                height: '40px',
-                borderRadius: '50%',
+                backgroundColor: '#FEE2E2',
+                color: '#DC2626',
+                width: '36px',
+                height: '36px',
+                borderRadius: '8px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '20px',
+                fontSize: '17px',
                 fontWeight: 700,
                 flexShrink: 0,
+                border: '1px solid #FECACA',
               }}
             >
               !
             </span>
             <div>
-              <h3 style={{ margin: 0, color: '#9F1239', fontSize: '17px', fontWeight: 700 }}>
+              <h3 style={{ margin: 0, color: '#111827', fontSize: '16px', fontWeight: 600 }}>
                 Kiểm tra điều kiện & xóa tài khoản
               </h3>
-              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#BE123C' }}>
-                Người dùng: <strong>{user.name}</strong> (@{user.username} · #{user.id})
+              <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: '#6B7280' }}>
+                Người dùng: <strong style={{ color: '#1F2937' }}>{user.name}</strong> (@{user.username} · #{user.id})
               </p>
             </div>
           </div>
@@ -1140,13 +1141,13 @@ function DeleteUserDialog({
             disabled={deleting}
             onClick={onClose}
             style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '10px',
-              border: '1px solid #FECDD3',
+              width: '32px',
+              height: '32px',
+              borderRadius: '8px',
+              border: '1px solid #E5E7EB',
               backgroundColor: '#FFFFFF',
-              color: '#9F1239',
-              fontSize: '20px',
+              color: '#6B7280',
+              fontSize: '18px',
               lineHeight: 1,
               cursor: deleting ? 'not-allowed' : 'pointer',
               display: 'inline-flex',
@@ -1159,16 +1160,16 @@ function DeleteUserDialog({
           </button>
         </div>
 
-        <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {loadingCheck ? (
             <div
               style={{
                 padding: '18px',
-                borderRadius: '10px',
-                backgroundColor: '#F8FAFC',
-                border: '1px solid #E2E8F0',
+                borderRadius: '8px',
+                backgroundColor: '#F9FAFB',
+                border: '1px solid #E5E7EB',
                 fontSize: '13.5px',
-                color: '#475569',
+                color: '#4B5563',
               }}
             >
               Đang kiểm tra đơn hàng, khiếu nại và số dư ví của tài khoản...
@@ -1192,17 +1193,17 @@ function DeleteUserDialog({
               <>
                 <div
                   style={{
-                    border: '1px solid #E2E8F0',
-                    borderRadius: '10px',
-                    padding: '14px 16px',
-                    backgroundColor: '#F8FAFC',
+                    border: '1px solid #E5E7EB',
+                    borderRadius: '8px',
+                    padding: '12px 14px',
+                    backgroundColor: '#F9FAFB',
                     display: 'flex',
                     flexDirection: 'column',
-                    gap: '10px',
+                    gap: '8px',
                   }}
                 >
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#0F172A' }}>
-                    3 điều kiện bắt buộc trước khi xóa
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#374151', marginBottom: '2px' }}>
+                    3 điều kiện bắt buộc trước khi xóa:
                   </div>
 
                   {[
@@ -1210,27 +1211,27 @@ function DeleteUserDialog({
                       label: 'Đơn hàng đang xử lý',
                       ok: check.checks.ordersClear,
                       detail: check.checks.ordersClear
-                        ? 'Đạt · 0 đơn mở'
-                        : `Chưa đạt · Còn ${check.checks.openOrdersCount} đơn chưa hoàn tất/hủy`,
+                        ? '0 đơn mở'
+                        : `Còn ${check.checks.openOrdersCount} đơn chưa hoàn tất/hủy`,
                     },
                     {
                       label: 'Khiếu nại / Tranh chấp',
                       ok: check.checks.complaintsClear,
                       detail: check.checks.complaintsClear
-                        ? 'Đạt · 0 khiếu nại mở'
-                        : `Chưa đạt · Còn ${check.checks.openComplaintsCount} khiếu nại đang xử lý`,
+                        ? '0 khiếu nại mở'
+                        : `Còn ${check.checks.openComplaintsCount} khiếu nại đang xử lý`,
                     },
                     {
                       label: 'Số dư ví & yêu cầu nạp/rút',
                       ok: check.checks.walletClear,
                       detail: check.checks.walletClear
-                        ? 'Đạt · Số dư 0 đ, không có lệnh nạp/rút chờ xử lý'
-                        : `Chưa đạt · Số dư ${formatVnd(check.checks.walletBalance)}` +
+                        ? 'Số dư 0 đ, không có lệnh chờ'
+                        : `Số dư ${formatVnd(check.checks.walletBalance)}` +
                         (check.checks.walletHeldBalance !== 0
                           ? ` (tạm giữ ${formatVnd(check.checks.walletHeldBalance)})`
                           : '') +
                         (pendingMoneyRequests > 0
-                          ? ` · ${pendingMoneyRequests} lệnh nạp/rút chờ xử lý`
+                          ? ` · ${pendingMoneyRequests} lệnh chờ duyệt`
                           : ''),
                     },
                   ].map((item) => (
@@ -1241,24 +1242,38 @@ function DeleteUserDialog({
                         justifyContent: 'space-between',
                         alignItems: 'center',
                         gap: '12px',
-                        padding: '8px 10px',
-                        borderRadius: '8px',
-                        backgroundColor: item.ok ? '#ECFDF5' : '#FEF2F2',
-                        border: `1px solid ${item.ok ? '#A7F3D0' : '#FECACA'}`,
+                        padding: '9px 12px',
+                        borderRadius: '6px',
+                        backgroundColor: item.ok ? '#F0FDF4' : '#FEF2F2',
+                        border: `1px solid ${item.ok ? '#DCFCE7' : '#FEE2E2'}`,
                       }}
                     >
-                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#1E293B' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 500, color: '#1E293B' }}>
                         {item.label}
                       </span>
                       <span
                         style={{
-                          fontSize: '12.5px',
+                          fontSize: '12px',
                           fontWeight: 600,
-                          color: item.ok ? '#047857' : '#B91C1C',
-                          textAlign: 'right',
+                          color: item.ok ? '#166534' : '#991B1B',
+                          backgroundColor: item.ok ? '#DCFCE7' : '#FEE2E2',
+                          padding: '3px 9px',
+                          borderRadius: '6px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
                         }}
                       >
-                        {item.detail}
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            width: '6px',
+                            height: '6px',
+                            borderRadius: '50%',
+                            backgroundColor: item.ok ? '#16A34A' : '#DC2626',
+                          }}
+                        />
+                        {item.ok ? 'Đạt' : 'Chưa đạt'} · {item.detail}
                       </span>
                     </div>
                   ))}
@@ -1267,29 +1282,27 @@ function DeleteUserDialog({
                 {check.mode === 'SOFT' ? (
                   <div
                     style={{
-                      backgroundColor: '#FFFBEB',
-                      border: '1px solid #FDE68A',
-                      borderRadius: '10px',
+                      backgroundColor: '#F0F7FF',
+                      border: '1px solid #BFDBFE',
+                      borderRadius: '8px',
                       padding: '12px 14px',
                     }}
                   >
-                    <p style={{ margin: 0, fontSize: '13px', color: '#92400E', lineHeight: 1.55 }}>
-                      <strong>Xóa mềm (giữ lịch sử):</strong> Tài khoản bị khóa đăng nhập vĩnh viễn;
-                      đơn hàng và sổ cái ví vẫn được giữ lại để đối soát.
+                    <p style={{ margin: 0, fontSize: '13px', color: '#1E40AF', lineHeight: 1.55 }}>
+                      <strong style={{ color: '#1E3A8A' }}>Xóa mềm (giữ lịch sử):</strong> Tài khoản sẽ bị khóa vĩnh viễn; đơn hàng và sổ cái ví vẫn được lưu trữ để phục vụ đối soát và báo cáo kế toán.
                     </p>
                   </div>
                 ) : (
                   <div
                     style={{
-                      backgroundColor: '#FEF2F2',
-                      border: '1px solid #FECACA',
-                      borderRadius: '10px',
+                      backgroundColor: '#F0F7FF',
+                      border: '1px solid #BFDBFE',
+                      borderRadius: '8px',
                       padding: '12px 14px',
                     }}
                   >
-                    <p style={{ margin: 0, fontSize: '13px', color: '#991B1B', lineHeight: 1.55 }}>
-                      <strong>Xóa vĩnh viễn:</strong> Tài khoản chưa có giao dịch, dữ liệu sẽ bị xóa hoàn toàn
-                      và có thể dùng lại tên đăng nhập, email, SĐT để đăng ký mới.
+                    <p style={{ margin: 0, fontSize: '13px', color: '#1E40AF', lineHeight: 1.55 }}>
+                      <strong style={{ color: '#1E3A8A' }}>Xóa hoàn toàn:</strong> Tài khoản chưa phát sinh giao dịch, dữ liệu sẽ được xóa sạch và có thể tái sử dụng tên đăng nhập, email, SĐT.
                     </p>
                   </div>
                 )}
@@ -1297,17 +1310,16 @@ function DeleteUserDialog({
                 {!check.canDelete && (
                   <div
                     style={{
-                      backgroundColor: '#FFF7ED',
-                      border: '1px solid #FED7AA',
-                      borderRadius: '10px',
+                      backgroundColor: '#FFFBEB',
+                      border: '1px solid #FDE68A',
+                      borderRadius: '8px',
                       padding: '12px 14px',
                       fontSize: '13px',
-                      color: '#9A3412',
+                      color: '#92400E',
                       lineHeight: 1.55,
                     }}
                   >
-                    <strong>Chưa thể xóa:</strong> Cần xử lý hết đơn mở, khiếu nại và đưa ví về 0 đ trước,
-                    hoặc bấm <strong>Chuyển sang quản lý</strong> để khóa tài khoản.
+                    <strong>Chưa thể xóa:</strong> Cần xử lý hết đơn mở, khiếu nại và đưa số dư ví về 0 đ trước khi xóa. Hoặc bấm <strong>Chuyển sang quản lý</strong> để khóa tài khoản.
                   </div>
                 )}
               </>
@@ -1333,14 +1345,14 @@ function DeleteUserDialog({
 
         <div
           style={{
-            padding: '16px 24px',
-            backgroundColor: '#F8FAFC',
+            padding: '14px 24px',
+            backgroundColor: '#F9FAFB',
             display: 'flex',
             justifyContent: 'flex-end',
             alignItems: 'center',
             flexWrap: 'wrap',
             gap: '10px',
-            borderTop: '1px solid #E2E8F0',
+            borderTop: '1px solid #E5E7EB',
           }}
         >
           {!loadingCheck && check && onSwitchToManage && (
@@ -1349,13 +1361,13 @@ function DeleteUserDialog({
               disabled={deleting}
               onClick={onSwitchToManage}
               style={{
-                padding: '8px 18px',
-                borderRadius: '8px',
-                border: '1px solid #D97706',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                border: '1px solid #FCD34D',
                 backgroundColor: '#FFFBEB',
-                color: '#B45309',
+                color: '#92400E',
                 fontWeight: 600,
-                fontSize: '14px',
+                fontSize: '13.5px',
                 cursor: deleting ? 'not-allowed' : 'pointer',
               }}
             >
@@ -1367,14 +1379,13 @@ function DeleteUserDialog({
             disabled={loadingCheck || Boolean(checkError) || !check?.canDelete || deleting}
             onClick={handleDelete}
             style={{
-              padding: '8px 20px',
-              borderRadius: '8px',
-              border: 'none',
-              backgroundColor: '#E11D48',
-              color: '#FFFFFF',
-              fontWeight: 600,
-              fontSize: '14px',
-              opacity: loadingCheck || Boolean(checkError) || !check?.canDelete || deleting ? 0.5 : 1,
+              padding: '8px 18px',
+              borderRadius: '6px',
+              border: check?.canDelete ? 'none' : '1px solid #E5E7EB',
+              backgroundColor: check?.canDelete ? '#DC2626' : '#F3F4F6',
+              color: check?.canDelete ? '#FFFFFF' : '#9CA3AF',
+              fontWeight: 500,
+              fontSize: '13.5px',
               cursor:
                 loadingCheck || Boolean(checkError) || !check?.canDelete || deleting
                   ? 'not-allowed'
@@ -3241,6 +3252,19 @@ const actionLabels: Record<string, string> = {
   INVENTORY_CREATED: 'Thêm hàng vào kho',
   INVENTORY_RECEIVED: 'Nhập hàng vào kho',
   INVENTORY_IMPORTED: 'Nhập hàng vào kho',
+  COMPLAINT_RESOLVED_CONSENSUS: 'Thống nhất xử lý khiếu nại',
+  COMPLAINT_WITHDRAWN: 'Rút khiếu nại',
+  COMPLAINT_AUTO_TIMEOUT_CLOSED: 'Tự động đóng khiếu nại (quá hạn)',
+  DELIVERY_TIME_REQUESTED: 'Đề xuất giờ giao hàng',
+  DELIVERY_TIME_RESPONDED: 'Phản hồi giờ giao hàng',
+  ORDER_CANCELLED_BY_STORE: 'Tạp hóa hủy đơn',
+  ORDER_COMPLETED: 'Đơn hàng hoàn tất',
+  ORDER_IMPORTED_TO_INVENTORY: 'Nhập đơn hàng vào kho',
+  SUPPLIER_VERIFICATION_RESUBMITTED: 'Nộp lại hồ sơ xác minh',
+  SUPPLIER_QUICK_VERIFIED: 'Kích hoạt xác minh nhanh',
+  PRODUCT_AI_MODERATION_APPROVED: 'Duyệt sản phẩm qua AI',
+  PRODUCT_AI_MODERATION_REJECTED: 'Từ chối sản phẩm qua AI',
+  WITHDRAWAL_COMPLETED_VIA_SEPAY: 'Chuyển khoản rút tiền qua SePay',
 };
 
 const entityLabels: Record<string, string> = {
@@ -3256,6 +3280,7 @@ const entityLabels: Record<string, string> = {
   QUOTE: 'Báo giá',
   SYSTEM: 'Hệ thống',
   INVENTORY: 'Kho tiệm',
+  COMPLAINT: 'Khiếu nại',
 };
 
 const fieldTranslations: Record<string, string> = {
@@ -3347,6 +3372,30 @@ function formatLogSummary(details: Record<string, unknown>): ReactNode {
           Sự kiện: <strong>{String(details.name)}</strong>
         </div>
         <small>Thời gian: {String(details.startDate || '')} → {String(details.endDate || '')}</small>
+      </div>
+    );
+  }
+
+  // 3.1. Thống nhất phương án khiếu nại
+  if (details.finalOutcome || details.proposedAction) {
+    const outcomeMap: Record<string, string> = {
+      AGREED_RETURN_REFUND: 'Trả hàng & Hoàn tiền',
+      AGREED_REPLACE_0VND: 'Đổi hàng mới 0đ',
+      AGREED_DEDUCT_COD: 'Khấu trừ tiền khi nhận hàng',
+      AGREED_DISCUSS: 'Hai bên tự trao đổi',
+      AGREED_REJECT: 'Từ chối khiếu nại',
+      RETURN_REFUND: 'Trả hàng & Hoàn tiền',
+      AGREE_REPLACE_0VND: 'Đổi hàng mới 0đ',
+      DEDUCT_COD: 'Khấu trừ tiền khi nhận hàng',
+      REJECT: 'Từ chối khiếu nại',
+    };
+    const outcome = outcomeMap[String(details.finalOutcome || details.proposedAction)] || String(details.finalOutcome || details.proposedAction);
+    const deduct = details.agreedDeductAmount ? `Khấu trừ: ${money(Number(details.agreedDeductAmount))}` : '';
+    const orderStr = details.orderId ? `Đơn hàng #${details.orderId}` : '';
+    return (
+      <div className="admin-log-summary">
+        <div>Phương án: <strong>{outcome}</strong></div>
+        <small>{[orderStr, deduct].filter(Boolean).join(' · ')}</small>
       </div>
     );
   }
@@ -4135,7 +4184,7 @@ function AiSystemConfig({ onLogout }: Props) {
               <span className="admin-mini-label">CHÍNH SÁCH BẢO ĐẢM TÀI CHÍNH</span>
               <h2>Tỷ lệ phần trăm ký quỹ (Escrow Deposit Rate)</h2>
               <p>
-                Admin điều chỉnh tỷ lệ phần trăm tiền cọc đảm bảo hợp đồng sỉ giữa tiệm tạp hóa và chủ vựa. Tiền cọc được tạm giữ an toàn trong hệ thống ký quỹ cho đến khi đơn hàng hoàn tất.
+                Điều chỉnh tỷ lệ phần trăm tiền cọc đảm bảo hợp đồng sỉ giữa tiệm tạp hóa và chủ vựa. Tiền cọc được tạm giữ an toàn trong hệ thống ký quỹ cho đến khi đơn hàng hoàn tất.
               </p>
             </div>
 
