@@ -212,6 +212,7 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
     try {
       const authedUser = await login({ username: username.trim(), password });
       sessionStorage.setItem('supplymind_active_tab', 'true');
+      localStorage.setItem('supplymind_active_tab', 'true');
       onLogin(authedUser);
     } catch (error) {
       if (isSubscriptionRequiredError(error)) {
@@ -262,6 +263,7 @@ export default function LoginPage({ onLogin }: { onLogin: (user: AuthUser) => vo
       }
       const authedUser = await login({ username: username.trim(), password });
       sessionStorage.setItem('supplymind_active_tab', 'true');
+      localStorage.setItem('supplymind_active_tab', 'true');
       onLogin(authedUser);
     } catch (error) {
       const balance = insufficientWalletBalance(error);

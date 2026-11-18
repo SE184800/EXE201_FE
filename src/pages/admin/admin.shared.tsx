@@ -2,7 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import DatePicker from '../../components/DatePicker';
 const labels: Record<string, string> = {
   ACTIVE: 'Hoạt động',
-  INACTIVE: 'Chưa hoạt động',
+  INACTIVE: 'Dừng hoạt động',
   TRIAL: 'Đang dùng thử',
   EXPIRED: 'Hết hạn',
   NOT_STARTED: 'Chưa bắt đầu',
@@ -32,7 +32,7 @@ const labels: Record<string, string> = {
 export function Badge({ status }: { status: string }) {
   const isGood = ['ACTIVE', 'TRIAL', 'APPROVED', 'PAID', 'SUCCESS', 'DELIVERED', 'COMPLETED'].includes(status);
   const isBad = ['BANNED', 'DELETED', 'EXPIRED', 'ERROR', 'CANCELLED', 'REJECTED'].includes(status);
-  const isWarn = ['PENDING', 'UNPAID', 'PREPARING', 'SHIPPING', 'ISSUE_HANDLING', 'SUSPENDED', 'DRAFT'].includes(status);
+  const isWarn = ['PENDING', 'UNPAID', 'PREPARING', 'SHIPPING', 'ISSUE_HANDLING', 'SUSPENDED', 'DRAFT', 'INACTIVE'].includes(status);
   const tone = isGood ? 'good' : isBad ? 'bad' : isWarn ? 'warn' : '';
   return (
     <span className={`admin-badge ${tone}`}>

@@ -2756,7 +2756,7 @@ function HolidaySettings({ onLogout }: Props) {
                     <th>Quy tắc nhu cầu</th>
                     <th>Nhóm hàng áp dụng</th>
                     <th>Trạng thái</th>
-                    <th>Thao tác</th>
+                    <th style={{ textAlign: 'center' }}>Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2767,8 +2767,9 @@ function HolidaySettings({ onLogout }: Props) {
                         <small>{item.description || 'Không có ghi chú'}</small>
                       </td>
                       <td>
-                        {new Date(item.startDate + 'T00:00:00').toLocaleDateString('vi-VN')} –{' '}
-                        {new Date(item.endDate + 'T00:00:00').toLocaleDateString('vi-VN')}
+                        {item.startDate === item.endDate
+                          ? new Date(item.endDate + 'T00:00:00').toLocaleDateString('vi-VN')
+                          : `${new Date(item.startDate + 'T00:00:00').toLocaleDateString('vi-VN')} – ${new Date(item.endDate + 'T00:00:00').toLocaleDateString('vi-VN')}`}
                         <small>Chuẩn bị trước {item.preparationDays} ngày</small>
                       </td>
                       <td>
@@ -2779,15 +2780,25 @@ function HolidaySettings({ onLogout }: Props) {
                       </td>
                       <td>{item.categoryKeywords}</td>
                       <td>
-                        <Badge status={item.isActive ? 'ACTIVE' : 'DRAFT'} />
+                        <Badge status={item.isActive ? 'ACTIVE' : 'INACTIVE'} />
                       </td>
-                      <td>
-                        <button disabled={deleting === item.id} onClick={() => setSelected(item)}>
-                          Chỉnh sửa
-                        </button>{' '}
-                        <button disabled={deleting !== null} onClick={() => void remove(item)}>
-                          {deleting === item.id ? 'Đang xóa…' : 'Xóa'}
-                        </button>
+                      <td style={{ whiteSpace: 'nowrap', textAlign: 'center' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                          <button
+                            className="admin-btn-edit"
+                            disabled={deleting === item.id}
+                            onClick={() => setSelected(item)}
+                          >
+                            Chỉnh sửa
+                          </button>
+                          <button
+                            className="admin-btn-delete"
+                            disabled={deleting !== null}
+                            onClick={() => void remove(item)}
+                          >
+                            {deleting === item.id ? 'Đang xóa…' : 'Xóa'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -2833,19 +2844,27 @@ function HolidayDialog({
       }
       : blankHoliday(),
   );
+  const [isRange, setIsRange] = useState<boolean>(() =>
+    holiday ? holiday.startDate !== holiday.endDate : false,
+  );
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   const lock = useRef(false);
   async function save(event: FormEvent) {
     event.preventDefault();
     if (lock.current) return;
+    const payload = isRange ? form : { ...form, startDate: form.endDate };
+    if (isRange && payload.startDate > payload.endDate) {
+      setError('Ngày bắt đầu không được sau ngày kết thúc.');
+      return;
+    }
     lock.current = true;
     setBusy(true);
     setError('');
     try {
       if (holiday)
-        await api.put(`/admin/holidays/${holiday.id}`, { ...form, version: holiday.version });
-      else await api.post('/admin/holidays', form);
+        await api.put(`/admin/holidays/${holiday.id}`, { ...payload, version: holiday.version });
+      else await api.post('/admin/holidays', payload);
       onSaved();
     } catch (issue) {
       setError(getApiError(issue));
@@ -2874,26 +2893,60 @@ function HolidayDialog({
               placeholder="Ví dụ: Tết Nguyên đán"
             />
           </label>
-          <div className="admin-holiday-dates">
+          <div className="admin-holiday-type-selector">
             <label>
-              Từ ngày
-              <DatePicker
-                required
-                value={form.startDate}
-                max={form.endDate}
-                onChange={(val) => setForm({ ...form, startDate: val })}
+              <input
+                type="radio"
+                name="holiday_range_type"
+                checked={!isRange}
+                onChange={() => {
+                  setIsRange(false);
+                  setForm((prev) => ({ ...prev, startDate: prev.endDate }));
+                }}
               />
+              <span>Lễ 1 ngày</span>
             </label>
             <label>
-              Đến ngày
-              <DatePicker
-                required
-                min={form.startDate}
-                value={form.endDate}
-                onChange={(val) => setForm({ ...form, endDate: val })}
+              <input
+                type="radio"
+                name="holiday_range_type"
+                checked={isRange}
+                onChange={() => setIsRange(true)}
               />
+              <span>Kỳ nghỉ nhiều ngày (như Tết, 30/4 - 1/5)</span>
             </label>
           </div>
+          {!isRange ? (
+            <label>
+              Ngày diễn ra lễ
+              <DatePicker
+                required
+                value={form.endDate}
+                onChange={(val) => setForm({ ...form, startDate: val, endDate: val })}
+              />
+            </label>
+          ) : (
+            <div className="admin-holiday-dates">
+              <label>
+                Từ ngày
+                <DatePicker
+                  required
+                  value={form.startDate}
+                  max={form.endDate}
+                  onChange={(val) => setForm({ ...form, startDate: val })}
+                />
+              </label>
+              <label>
+                Đến ngày
+                <DatePicker
+                  required
+                  min={form.startDate}
+                  value={form.endDate}
+                  onChange={(val) => setForm({ ...form, endDate: val })}
+                />
+              </label>
+            </div>
+          )}
           <div className="admin-holiday-dates">
             <label>
               Chuẩn bị trước (ngày)
@@ -3646,10 +3699,7 @@ type SystemConfig = {
   systemNotice?: {
     maintenanceMode?: boolean;
     maintenanceMessage?: string;
-    announcementEnabled?: boolean;
-    announcementTitle?: string;
-    announcementContent?: string;
-    announcementType?: 'INFO' | 'WARNING' | 'ALERT';
+    maintenanceUntil?: string | null;
   };
   updatedAt: string;
   updatedBy: string | null;
@@ -3728,10 +3778,7 @@ function AiSystemConfig({ onLogout }: Props) {
       maintenanceMessage:
         rawForm.systemNotice?.maintenanceMessage ??
         'Hệ thống SupplyMind đang bảo trì nâng cấp hệ thống định kỳ. Quý khách vui lòng quay lại sau.',
-      announcementEnabled: rawForm.systemNotice?.announcementEnabled ?? false,
-      announcementTitle: rawForm.systemNotice?.announcementTitle ?? 'Thông báo từ Ban Quản Trị Sàn SupplyMind',
-      announcementContent: rawForm.systemNotice?.announcementContent ?? '',
-      announcementType: rawForm.systemNotice?.announcementType ?? 'INFO',
+      maintenanceUntil: rawForm.systemNotice?.maintenanceUntil ?? null,
     },
   };
 
@@ -4352,10 +4399,10 @@ function AiSystemConfig({ onLogout }: Props) {
         {(configTab === 'all' || configTab === 'notice') && (
           <section className="admin-config-card">
             <div className="admin-config-card-header">
-              <span className="admin-mini-label" style={{ color: '#ea580c' }}>TRẠNG THÁI NỀN TẢNG & TRUYỀN THÔNG</span>
-              <h2>Thông báo Toàn sàn & Chế độ Bảo trì</h2>
+              <span className="admin-mini-label" style={{ color: '#ea580c' }}>TRẠNG THÁI NỀN TẢNG</span>
+              <h2>Chế độ Bảo trì Hệ thống</h2>
               <p>
-                Phát đi thông báo khẩn cấp (thời tiết, bão lũ, kỳ nghỉ lễ Tết) đến toàn bộ tiệm tạp hóa và chủ vựa hoặc bật chế độ bảo trì kỹ thuật.
+                Kích hoạt chế độ bảo trì kỹ thuật toàn sàn và thiết lập thời gian kết thúc dự kiến để tự động mở lại.
               </p>
             </div>
 
@@ -4367,119 +4414,154 @@ function AiSystemConfig({ onLogout }: Props) {
                 type="checkbox"
                 style={{ width: '20px', height: '20px', cursor: 'pointer' }}
                 checked={form.systemNotice?.maintenanceMode}
-                onChange={(e) =>
+                onChange={(e) => {
+                  const checked = e.target.checked;
                   setForm({
                     ...form,
                     systemNotice: {
                       ...form.systemNotice,
-                      maintenanceMode: e.target.checked,
+                      maintenanceMode: checked,
+                      maintenanceUntil: checked
+                        ? form.systemNotice?.maintenanceUntil || new Date(Date.now() + 60 * 60000).toISOString()
+                        : null,
                     },
-                  })
-                }
+                  });
+                }}
               />
             </div>
 
             {form.systemNotice?.maintenanceMode && (
-              <div className="admin-config-field" style={{ marginBottom: '16px' }}>
-                <label htmlFor="maintenanceMessage">Lời nhắn thông báo bảo trì hiển thị cho người dùng</label>
-                <textarea
-                  id="maintenanceMessage"
-                  rows={3}
-                  value={form.systemNotice?.maintenanceMessage}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      systemNotice: {
-                        ...form.systemNotice,
-                        maintenanceMessage: e.target.value,
-                      },
-                    })
-                  }
-                />
-              </div>
-            )}
-
-            <div className="admin-config-toggle">
-              <span>
-                <strong>Kích hoạt Banner thông báo khẩn cấp toàn sàn</strong>
-              </span>
-              <input
-                type="checkbox"
-                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
-                checked={form.systemNotice?.announcementEnabled}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    systemNotice: {
-                      ...form.systemNotice,
-                      announcementEnabled: e.target.checked,
-                    },
-                  })
-                }
-              />
-            </div>
-
-            {form.systemNotice?.announcementEnabled && (
-              <div className="admin-config-grid" style={{ marginTop: '12px' }}>
-                <div className="admin-config-field">
-                  <label htmlFor="announcementTitle">Tiêu đề thông báo</label>
-                  <input
-                    id="announcementTitle"
-                    type="text"
-                    placeholder="VD: Cảnh báo bão số 6 ảnh hưởng các tuyến vận chuyển nông sản miền Trung..."
-                    value={form.systemNotice?.announcementTitle}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        systemNotice: {
-                          ...form.systemNotice,
-                          announcementTitle: e.target.value,
-                        },
-                      })
-                    }
-                  />
-                </div>
-
-                <div className="admin-config-field">
-                  <label htmlFor="announcementType">Mức độ ưu tiên thông báo</label>
-                  <select
-                    id="announcementType"
-                    value={form.systemNotice?.announcementType}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        systemNotice: {
-                          ...form.systemNotice,
-                          announcementType: e.target.value as 'INFO' | 'WARNING' | 'ALERT',
-                        },
-                      })
-                    }
-                  >
-                    <option value="INFO">Thông tin chung (Màu xanh dương)</option>
-                    <option value="WARNING">Cảnh báo lưu ý (Màu vàng cam)</option>
-                    <option value="ALERT">Khẩn cấp nghiêm trọng (Màu đỏ)</option>
-                  </select>
-                </div>
-
-                <div className="admin-config-field" style={{ gridColumn: '1 / -1' }}>
-                  <label htmlFor="announcementContent">Nội dung chi tiết thông báo</label>
+              <>
+                <div className="admin-config-field" style={{ marginBottom: '16px' }}>
+                  <label htmlFor="maintenanceMessage">Lời nhắn thông báo bảo trì hiển thị cho người dùng</label>
                   <textarea
-                    id="announcementContent"
+                    id="maintenanceMessage"
                     rows={3}
-                    placeholder="Nhập nội dung chi tiết thông báo gửi đến các chủ tiệm và chủ vựa..."
-                    value={form.systemNotice?.announcementContent}
+                    value={form.systemNotice?.maintenanceMessage}
                     onChange={(e) =>
                       setForm({
                         ...form,
                         systemNotice: {
                           ...form.systemNotice,
-                          announcementContent: e.target.value,
+                          maintenanceMessage: e.target.value,
                         },
                       })
                     }
                   />
                 </div>
-              </div>
+
+                <div
+                  className="admin-config-field"
+                  style={{
+                    marginBottom: '20px',
+                    padding: '14px 16px',
+                    background: '#f8fafc',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  <label
+                    htmlFor="maintenanceUntil"
+                    style={{ fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    ⏰ Thời gian kết thúc bảo trì dự kiến (Tự động mở lại hệ thống sau mốc này)
+                  </label>
+                  <p style={{ margin: '4px 0 10px', fontSize: '12.5px', color: '#64748b' }}>
+                    Chọn thời điểm trong tương lai. Màn hình bảo trì sẽ hiển thị bộ đếm ngược. Khi hết giờ, hệ thống sẽ tự động chuyển về trạng thái hoạt động bình thường mà không cần Admin phải tắt thủ công.
+                  </p>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input
+                      id="maintenanceUntil"
+                      type="datetime-local"
+                      value={
+                        form.systemNotice?.maintenanceUntil
+                          ? new Date(new Date(form.systemNotice.maintenanceUntil).getTime() - new Date().getTimezoneOffset() * 60000)
+                              .toISOString()
+                              .slice(0, 16)
+                          : ''
+                      }
+                      onChange={(e) => {
+                        const val = e.target.value ? new Date(e.target.value).toISOString() : null;
+                        setForm({
+                          ...form,
+                          systemNotice: {
+                            ...form.systemNotice,
+                            maintenanceUntil: val,
+                          },
+                        });
+                      }}
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '14px',
+                        maxWidth: '240px',
+                      }}
+                    />
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      {[
+                        { label: '+30 phút', mins: 30 },
+                        { label: '+1 giờ', mins: 60 },
+                        { label: '+2 giờ', mins: 120 },
+                        { label: '+4 giờ', mins: 240 },
+                      ].map((preset) => (
+                        <button
+                          key={preset.mins}
+                          type="button"
+                          onClick={() => {
+                            const d = new Date(Date.now() + preset.mins * 60000);
+                            setForm({
+                              ...form,
+                              systemNotice: {
+                                ...form.systemNotice,
+                                maintenanceUntil: d.toISOString(),
+                              },
+                            });
+                          }}
+                          style={{
+                            padding: '6px 12px',
+                            borderRadius: '6px',
+                            background: '#ffffff',
+                            border: '1px solid #cbd5e1',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            color: '#334155',
+                          }}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                      {form.systemNotice?.maintenanceUntil && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForm({
+                              ...form,
+                              systemNotice: {
+                                ...form.systemNotice,
+                                maintenanceUntil: null,
+                              },
+                            });
+                          }}
+                          style={{
+                            padding: '6px 10px',
+                            borderRadius: '6px',
+                            background: '#fee2e2',
+                            border: '1px solid #fca5a5',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            color: '#b91c1c',
+                          }}
+                        >
+                          ✕ Bỏ hẹn giờ
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
           </section>
         )}

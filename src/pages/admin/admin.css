@@ -912,6 +912,39 @@
   gap: 10px;
 }
 
+.admin-dialog .admin-holiday-type-selector {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  margin: 4px 0 10px;
+  padding: 2px 0;
+}
+
+.admin-dialog .admin-holiday-type-selector label {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  cursor: pointer !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #2d3748 !important;
+  margin: 0 !important;
+  user-select: none;
+}
+
+.admin-dialog .admin-holiday-type-selector input[type="radio"] {
+  width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  max-height: 18px !important;
+  accent-color: #23563e;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  cursor: pointer !important;
+  flex-shrink: 0;
+}
+
 .admin-dialog .admin-holiday-check input {
   width: 18px;
   min-height: 18px;
@@ -924,6 +957,71 @@
   line-height: 1.6;
   color: #81907c;
   font-weight: 400;
+}
+
+/* DatePicker styling inside Admin Dialog */
+.admin-dialog .sm-dp-wrap {
+  width: 100%;
+}
+
+.admin-dialog .sm-dp-box {
+  width: 100%;
+  border: 1px solid #dce3d5;
+  background: #fff;
+  border-radius: 7px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 0 6px 0 0;
+  box-sizing: border-box;
+}
+
+.admin-dialog .sm-dp-box:focus-within {
+  outline: 2px solid #b9d391;
+  outline-offset: 1px;
+}
+
+.admin-dialog .sm-dp-box > input.sm-dp-input {
+  border: none !important;
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+  padding: 10px 12px !important;
+  min-height: 38px !important;
+  flex: 1 1 auto;
+  color: #28452f;
+}
+
+.admin-dialog .sm-dp-trigger-btn {
+  flex: 0 0 32px !important;
+  width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  color: #23563e !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  border-radius: 6px;
+  box-shadow: none !important;
+}
+
+.admin-dialog .sm-dp-trigger-btn:hover {
+  background: #eef5ec !important;
+  color: #17442e !important;
+}
+
+.admin-dialog .sm-dp-trigger-btn svg {
+  display: block !important;
+  width: 18px !important;
+  height: 18px !important;
+  stroke: #23563e !important;
+  fill: none !important;
 }
 
 .admin-dialog {
@@ -1032,6 +1130,42 @@
 
 .admin-table-wrap td button {
   margin-right: 6px;
+}
+
+.admin-table-wrap .admin-btn-edit {
+  color: #166534 !important;
+  background: #f0fdf4 !important;
+  border: 1px solid #86efac !important;
+  border-radius: 7px;
+  font-weight: 600;
+  padding: 8px 14px !important;
+  margin-right: 0 !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.admin-table-wrap .admin-btn-edit:hover:not(:disabled) {
+  background: #dcfce7 !important;
+  border-color: #4ade80 !important;
+  color: #14532d !important;
+}
+
+.admin-table-wrap .admin-btn-delete {
+  color: #dc2626 !important;
+  background: #fef2f2 !important;
+  border: 1px solid #fca5a5 !important;
+  border-radius: 7px;
+  font-weight: 600;
+  padding: 8px 14px !important;
+  margin-right: 0 !important;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.admin-table-wrap .admin-btn-delete:hover:not(:disabled) {
+  background: #fee2e2 !important;
+  border-color: #f87171 !important;
+  color: #b91c1c !important;
 }
 
 .admin-dialog-body {
