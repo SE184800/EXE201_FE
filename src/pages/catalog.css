@@ -1069,7 +1069,8 @@
   align-items: start;
   margin: 20px 0;
 }
-.quote-line-builder > label:first-child {
+.quote-line-builder > label:first-child,
+.quote-line-builder > .quote-line-unit {
   grid-column: 1 / -1;
 }
 .quote-line-builder label {
@@ -1084,6 +1085,12 @@
 .quote-line-builder input,
 .quote-line-builder select {
   height: 44px;
+}
+.quote-line-builder input[aria-invalid='true'] {
+  border-color: #b42318;
+}
+.quote-stock-error {
+  color: #b42318;
 }
 .quote-line-builder input[readonly] {
   background: #f3f7f2;
@@ -1788,3 +1795,31 @@
 .order-test-tools { width: 100%; }
 
 .order-panel .supplier-dialog button { font-size: 16px !important; padding: 10px 16px !important; }
+
+.order-reschedule-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.order-reschedule-fields .sm-dp-wrap,
+.order-reschedule-fields .sm-dp-box {
+  width: 100%;
+}
+.order-reschedule-fields .sm-dp-box > input.sm-dp-input,
+.order-reschedule-fields select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+}
+.order-reschedule-fields select {
+  padding: 0 6px;
+}
+@media (max-width: 480px) {
+  .order-reschedule-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

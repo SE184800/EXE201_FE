@@ -172,6 +172,7 @@ function parseComplaintDescription(desc: string) {
 }
 
 type Props = {
+  initialSearch?: string;
   kind: 'store' | 'supplier';
   onLogout: () => void;
   onInventoryChanged?: () => Promise<void>;
@@ -404,6 +405,7 @@ function getInitialRescheduleData() {
 export default function OrderList({
   kind,
   onLogout,
+  initialSearch = '',
   revision = 0,
   busy = false,
   onStatus,
@@ -412,8 +414,8 @@ export default function OrderList({
   onInventoryChanged,
   onViewHistory,
 }: Props) {
-  const [searchInput, setSearchInput] = useState('');
-  const [query, setQuery] = useState({ page: 1, status: '', q: '' });
+  const [searchInput, setSearchInput] = useState(initialSearch);
+  const [query, setQuery] = useState({ page: 1, status: '', q: initialSearch });
   const [data, setData] = useState<{ orders: SupplierOrder[]; total: number; hasMore: boolean }>({
     orders: [],
     total: 0,
@@ -759,13 +761,14 @@ export default function OrderList({
     const timeText = `${rescheduleTime} ngày ${formattedDate}`;
 
     try {
-      await rescheduleOrder(rescheduleOrderTarget.id, timeText, rescheduleReason.trim() || undefined);
-      setRescheduleMessage('Đã gửi yêu cầu đổi giờ giao.');
-      setTimeout(() => {
-        setRescheduleOrderTarget(null);
-        setRescheduleReason('');
-        setReload((n) => n + 1);
-      }, 1000);
+      const { order } = await rescheduleOrder(rescheduleOrderTarget.id, timeText, rescheduleReason.trim() || undefined);
+      setData((current) => ({
+        ...current,
+        orders: current.orders.map((row) => row.id === order.id ? order : row),
+      }));
+      setRescheduleOrderTarget(null);
+      setRescheduleReason('');
+      setReload((n) => n + 1);
     } catch (issue) {
       setRescheduleMessage(getApiError(issue));
       if (isUnauthenticated(issue)) onLogout();
@@ -939,16 +942,11 @@ export default function OrderList({
     setActionModalBusy(true);
     try {
       if (actionModal.type === 'cancel-order') {
-        const res = await fetch(`/api/orders/${actionModal.orderId}/cancel`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            reason: actionModalInput.trim() || 'Cửa hàng tự hủy khi đơn chưa được duyệt.',
-          }),
-        });
-        const resData = await res.json();
-        if (!res.ok) throw new Error(resData.message || 'Không thể hủy đơn hàng.');
-        setDepositNotice(resData.message || `Đã hủy đơn hàng #${actionModal.orderId}.`);
+        const { data } = await api.post<{ message?: string }>(
+          `/orders/${actionModal.orderId}/cancel`,
+          { reason: actionModalInput.trim() },
+        );
+        setDepositNotice(data.message || `Đã hủy đơn hàng #${actionModal.orderId}.`);
       } else if (actionModal.type === 'buyer-decision') {
         const note = actionModal.requireInput ? actionModalInput.trim() : undefined;
         const res = await api.post<{ success: boolean; message?: string }>(
@@ -1625,9 +1623,9 @@ export default function OrderList({
                     }}
                   >
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      {(order.driverInfo?.driverPhone || order.supplier?.phone) && (
+                      {!order.driverInfo?.driverPhone && order.supplier?.phone && (
                         <a
-                          href={`tel:${order.driverInfo?.driverPhone || order.supplier?.phone}`}
+                          href={`tel:${order.supplier.phone}`}
                           className="ghost-button"
                           style={{
                             fontSize: '11px',
@@ -1638,10 +1636,10 @@ export default function OrderList({
                             gap: '4px',
                           }}
                         >
-                          {order.driverInfo?.driverPhone ? 'Gọi tài xế' : 'Gọi chủ vựa'}
+                          Gọi chủ vựa
                         </a>
                       )}
-                      {kind === 'supplier' && onEditDriver && (
+                      {kind === 'supplier' && order.status === 'PREPARING' && onEditDriver && (
                         <button
                           type="button"
                           className="table-button primary-small"
@@ -1651,7 +1649,9 @@ export default function OrderList({
                           {order.driverInfo ? 'Sửa thông tin tài xế' : 'Gán tài xế'}
                         </button>
                       )}
-                      {kind === 'store' && (
+                      {kind === 'store' &&
+                        !order.driverInfo?.rescheduleRequest &&
+                        !order.note?.includes('[YÊU CẦU DỜI LỊCH GIAO') && (
                         <button
                           type="button"
                           className="table-button primary-small"
@@ -3383,7 +3383,9 @@ export default function OrderList({
           <div className="complaint-dialog-card" style={{ maxWidth: '480px' }} onClick={(e) => e.stopPropagation()}>
             <div className="complaint-dialog-header">
               <div>
-                <div className="complaint-dialog-eyebrow">Xác nhận thao tác</div>
+                {actionModal.type !== 'cancel-order' && (
+                  <div className="complaint-dialog-eyebrow">Xác nhận thao tác</div>
+                )}
                 <h2 id="order-action-modal-title" className="complaint-dialog-title">
                   {actionModal.title}
                 </h2>
@@ -3405,8 +3407,8 @@ export default function OrderList({
                 </p>
 
                 {'inputLabel' in actionModal && actionModal.inputLabel && (
-                  <div className="complaint-form-group" style={{ marginBottom: 0 }}>
-                    <label className="complaint-field-label" htmlFor="order-action-modal-input">
+                  <div className="complaint-field">
+                    <label className="complaint-label" htmlFor="order-action-modal-input">
                       {actionModal.inputLabel}
                       {actionModal.type === 'buyer-decision' && actionModal.requireInput && (
                         <span style={{ color: '#dc2626', marginLeft: '4px' }}>*</span>
@@ -3414,6 +3416,7 @@ export default function OrderList({
                     </label>
                     <textarea
                       id="order-action-modal-input"
+                      className="complaint-textarea"
                       rows={3}
                       value={actionModalInput}
                       placeholder={actionModal.inputPlaceholder || ''}
@@ -3440,7 +3443,7 @@ export default function OrderList({
                   disabled={actionModalBusy}
                   onClick={() => setActionModal(null)}
                 >
-                  Hủy
+                  {actionModal.type === 'cancel-order' ? 'Quay lại' : 'Hủy'}
                 </button>
                 <button
                   type="submit"
@@ -3565,7 +3568,7 @@ export default function OrderList({
                     </div>
                   )}
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="order-reschedule-fields">
                     <label style={{ display: 'block' }}>
                       <span style={{ fontSize: '12px', fontWeight: 650, color: '#334155', display: 'block', marginBottom: '5px' }}>
                         Chọn ngày nhận hàng:
@@ -3595,7 +3598,6 @@ export default function OrderList({
                           if (!nextAvailM.includes(nextM)) nextM = nextAvailM[0] || '00';
                           setRescheduleTime(`${nextH}:${nextM}`);
                         }}
-                        style={{ width: '100%', padding: '9px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box', backgroundColor: '#ffffff' }}
                       />
                     </label>
 
@@ -3605,7 +3607,7 @@ export default function OrderList({
                       </span>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                         <select
-                          value={rescheduleHour}
+                          aria-label="Giờ nhận hàng" value={rescheduleHour}
                           onChange={(e) => {
                             const newH = e.target.value;
                             const h = parseInt(newH, 10);
@@ -3618,19 +3620,17 @@ export default function OrderList({
                             if (!nextAvailM.includes(nextM)) nextM = nextAvailM[0] || '00';
                             setRescheduleTime(`${newH}:${nextM}`);
                           }}
-                          style={{ width: '100%', padding: '9px 6px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff', cursor: 'pointer', boxSizing: 'border-box' }}
                         >
-                          {!availableHours.includes(rescheduleHour) && <option value={rescheduleHour} disabled>{rescheduleHour} giờ · Chọn lại giờ</option>}
+                          {!availableHours.includes(rescheduleHour) && <option aria-label="Giờ nhận hàng" value={rescheduleHour} disabled>{rescheduleHour} giờ · Chọn lại giờ</option>}
                           {availableHours.map((h) => (
                             <option key={h} value={h}>{h} giờ</option>
                           ))}
                         </select>
                         <select
-                          value={rescheduleMinute}
+                          aria-label="Phút nhận hàng" value={rescheduleMinute}
                           onChange={(e) => setRescheduleTime(`${rescheduleHour}:${e.target.value}`)}
-                          style={{ width: '100%', padding: '9px 6px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff', cursor: 'pointer', boxSizing: 'border-box' }}
                         >
-                          {!availableMinutes.includes(rescheduleMinute) && <option value={rescheduleMinute} disabled>{rescheduleMinute} phút · Chọn lại phút</option>}
+                          {!availableMinutes.includes(rescheduleMinute) && <option aria-label="Phút nhận hàng" value={rescheduleMinute} disabled>{rescheduleMinute} phút · Chọn lại phút</option>}
                           {availableMinutes.map((m) => (
                             <option key={m} value={m}>{m} phút</option>
                           ))}
