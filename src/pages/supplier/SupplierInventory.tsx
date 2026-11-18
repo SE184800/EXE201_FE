@@ -11,13 +11,48 @@ import { exportSupplierInventoryToExcel, exportSupplierInventoryToPdf } from '..
 
 const empty = {
   name: '',
-  packaging: 'thùng',
   category: 'Khác',
   wholesalePrice: '',
   stockQty: '0',
   moq: '1',
   imageUrl: '',
 };
+
+const PACK_OPTIONS = ['thùng', 'két', 'lốc', 'kiện'] as const;
+const CUSTOM_PACK = 'tùy chỉnh';
+
+/** Gom các trường quy cách thành chuỗi packaging gửi lên API (vd: "thùng 24 lon"). */
+function composePackaging(pack: string, unitsPerPack: string, unit: string): string {
+  const count = unitsPerPack.trim();
+  const single = unit.trim();
+  if (pack === CUSTOM_PACK) return single;
+  if (!pack) return single;
+  return [pack, count, single].filter(Boolean).join(' ');
+}
+
+/** Tách chuỗi packaging sẵn có về lại pack / số lượng / đơn vị để sửa cho tiện. */
+function parsePackaging(packaging: string): {
+  pack: string;
+  unitsPerPack: string;
+  unit: string;
+} {
+  const text = (packaging || '').trim();
+  const known = PACK_OPTIONS.find((option) => text.toLowerCase().startsWith(option));
+  if (!known) return { pack: text ? CUSTOM_PACK : '', unitsPerPack: '', unit: text };
+  const rest = text.slice(known.length).trim();
+  const match = rest.match(/^(\d+)(?:\s+(.+))?$/);
+  if (!match) return { pack: known, unitsPerPack: '', unit: rest };
+  return { pack: known, unitsPerPack: match[1], unit: (match[2] || '').trim() };
+}
+
+/** Bỏ dấu để gợi ý sản phẩm tương tự, giống mục kho hàng của store. */
+function fold(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd');
+}
 
 async function processAndStoreImage(file: File): Promise<string> {
   return new Promise((resolve) => {
@@ -77,8 +112,14 @@ export default function SupplierInventory({ user, onLogout }: { user?: AuthUser;
 
   const [editing, setEditing] = useState<SupplierProduct | null>(null);
   const [form, setForm] = useState(empty);
+  const [pack, setPack] = useState('');
+  const [unitsPerPack, setUnitsPerPack] = useState('');
+  const [unit, setUnit] = useState('');
+  /** Quy cách gốc của sản phẩm đang sửa, dùng khi người dùng không đổi trường quy cách. */
+  const [originalPackaging, setOriginalPackaging] = useState('');
   const [saving, setSaving] = useState(false);
   const editor = useRef<HTMLDialogElement>(null);
+  const nameInput = useRef<HTMLInputElement>(null);
 
 
   useEffect(() => {
@@ -121,27 +162,49 @@ export default function SupplierInventory({ user, onLogout }: { user?: AuthUser;
 
   function add() {
     setForm(empty);
+    setPack('');
+    setUnitsPerPack('');
+    setUnit('');
+    setOriginalPackaging('');
     setEditing(null);
     setError('');
     setNotice('');
     editor.current?.showModal();
+    window.setTimeout(() => nameInput.current?.focus(), 0);
   }
 
   function edit(item: SupplierProduct) {
+    const parsed = parsePackaging(item.packaging);
     setForm({
       name: item.name,
-      packaging: item.packaging,
       category: item.category,
       wholesalePrice: String(item.wholesalePrice),
       stockQty: String(item.stockQty),
       moq: String(item.moq),
       imageUrl: item.imageUrl || '',
     });
+    setPack(parsed.pack);
+    setUnitsPerPack(parsed.unitsPerPack);
+    setUnit(parsed.unit);
+    setOriginalPackaging(item.packaging);
     setEditing(item);
     setError('');
     setNotice('');
     editor.current?.showModal();
+    window.setTimeout(() => nameInput.current?.focus(), 0);
   }
+
+  /** Gợi ý sản phẩm tương tự, giống mục kho hàng của store. */
+  const productSuggestions =
+    editing === null && form.name.trim().length > 0
+      ? items
+        .filter(
+          (item) =>
+            fold(item.name).includes(fold(form.name.trim())) ||
+            fold(form.name.trim()).includes(fold(item.name)),
+        )
+        .slice(0, 6)
+      : [];
 
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -149,13 +212,38 @@ export default function SupplierInventory({ user, onLogout }: { user?: AuthUser;
     setSaving(true);
     setError('');
     try {
+      const composed = composePackaging(pack, unitsPerPack, unit);
+      // Khi sửa mà người dùng không điền số lượng trong 1 quy cách thì giữ nguyên quy cách gốc.
+      const packaging =
+        editing !== null && pack && pack !== CUSTOM_PACK && !unitsPerPack.trim()
+          ? originalPackaging
+          : composed;
+      if (!packaging) {
+        setError('Vui lòng nhập quy cách đóng gói của sản phẩm.');
+        setSaving(false);
+        return;
+      }
+      if (packaging.length > 50) {
+        setError('Quy cách đóng gói tối đa 50 ký tự.');
+        setSaving(false);
+        return;
+      }
+      const stockQty = Number(form.stockQty);
+      const moq = Number(form.moq);
+      if (stockQty > 0 && moq > stockQty) {
+        setError(
+          `Số lượng tối thiểu (MOQ: ${moq}) không được lớn hơn tồn kho có sẵn (${stockQty}).`,
+        );
+        setSaving(false);
+        return;
+      }
       const payload = {
         name: form.name.trim(),
-        packaging: form.packaging.trim(),
+        packaging,
         category: form.category.trim(),
         wholesalePrice: Number(form.wholesalePrice),
-        stockQty: Number(form.stockQty),
-        moq: Number(form.moq),
+        stockQty,
+        moq,
         imageUrl: form.imageUrl || null,
         isActive: true, // Default to true when added from inventory
       };
@@ -350,7 +438,90 @@ export default function SupplierInventory({ user, onLogout }: { user?: AuthUser;
             </button>
           </div>
           <form className="inventory-form" onSubmit={save}>
-            <label className="supplier-field supplier-field-full" style={{ marginBottom: '16px' }}>
+            <label className="inventory-name">
+              Tên sản phẩm
+              <input
+                ref={nameInput}
+                required
+                minLength={2}
+                maxLength={150}
+                value={form.name}
+                disabled={saving}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="Ví dụ: Nước ngọt Coca Cola 330ml"
+              />
+              {productSuggestions.length > 0 && (
+                <div className="product-suggestions" role="listbox" aria-label="Sản phẩm tương tự">
+                  {productSuggestions.map((item) => (
+                    <button
+                      type="button"
+                      key={item.id}
+                      disabled={saving}
+                      onClick={() => {
+                        const parsed = parsePackaging(item.packaging);
+                        setForm({
+                          name: item.name,
+                          category: item.category,
+                          wholesalePrice: String(item.wholesalePrice),
+                          stockQty: String(item.stockQty),
+                          moq: String(item.moq),
+                          imageUrl: item.imageUrl || '',
+                        });
+                        setPack(parsed.pack);
+                        setUnitsPerPack(parsed.unitsPerPack);
+                        setUnit(parsed.unit);
+                        setError('');
+                      }}
+                    >
+                      <strong>{item.name}</strong>
+                      <small>
+                        Còn {item.stockQty} {item.packaging} · bấm để dùng lại thông tin
+                      </small>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </label>
+
+            <label className="inventory-name">
+              Nhập theo
+              <select
+                value={pack}
+                disabled={saving}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setPack(next);
+                  if (next === CUSTOM_PACK) {
+                    setUnitsPerPack('');
+                  } else if (next !== CUSTOM_PACK && /\s/.test(unit.trim())) {
+                    // Chuyển từ quy cách tùy chỉnh sang quy cách có sẵn: đơn vị cũ có thể chứa cả số lượng.
+                    setUnit('');
+                  }
+                }}
+              >
+                <option value="">Nhập lẻ</option>
+                {PACK_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option.charAt(0).toUpperCase() + option.slice(1)}
+                  </option>
+                ))}
+                <option value={CUSTOM_PACK}>Tùy chỉnh</option>
+              </select>
+            </label>
+
+            <label>
+              {pack === CUSTOM_PACK ? 'Quy cách' : 'Đơn vị bán lẻ'}
+              <input
+                required
+                maxLength={50}
+                value={unit}
+                disabled={saving}
+                onChange={(e) => setUnit(e.target.value)}
+                placeholder={pack === CUSTOM_PACK ? 'bao 25kg, thùng 24 lon…' : 'lon, chai, bịch…'}
+              />
+            </label>
+
+            <label>
               Danh mục
               <select
                 required
@@ -366,23 +537,87 @@ export default function SupplierInventory({ user, onLogout }: { user?: AuthUser;
                 <option value="Khác">Khác</option>
               </select>
             </label>
-            <label className="inventory-name">
-              Tên sản phẩm
+
+            <label>
+              {editing === null ? 'Số lượng nhập' : 'Số lượng tồn'}
               <input
                 required
-                minLength={2}
-                maxLength={150}
-                value={form.name}
+                type="number"
+                min="0"
+                max="50000"
+                step="1"
+                value={form.stockQty}
                 disabled={saving}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="Ví dụ: Nước ngọt Coca Cola 330ml"
+                onChange={(e) => setForm({ ...form, stockQty: e.target.value })}
               />
             </label>
 
-            <label className="supplier-field supplier-field-full" style={{ marginBottom: '16px' }}>
+            {pack && pack !== CUSTOM_PACK && (
+              <>
+                <label>
+                  Số {unit.trim() || 'món'} trong 1 {pack}
+                  <input
+                    required={editing === null}
+                    type="number"
+                    min="1"
+                    max="100"
+                    step="1"
+                    value={unitsPerPack}
+                    disabled={saving}
+                    onChange={(e) => setUnitsPerPack(e.target.value)}
+                  />
+                </label>
+                <output className="inventory-pack-total" aria-live="polite">
+                  {Number(unitsPerPack) > 0 &&
+                    `Tổng kho ${(Number(form.stockQty || 0) * Number(unitsPerPack)).toLocaleString('vi-VN')} ${unit.trim() || 'món'}`}
+                </output>
+              </>
+            )}
+
+            <output className="inventory-pack-total" aria-live="polite">
+              {(() => {
+                const composed = composePackaging(pack, unitsPerPack, unit);
+                const preview =
+                  editing !== null && pack && pack !== CUSTOM_PACK && !unitsPerPack.trim()
+                    ? originalPackaging
+                    : composed;
+                return preview ? `Quy cách gửi đến cửa hàng: ${preview}` : '';
+              })()}
+            </output>
+
+            <label>
+              Giá sỉ (₫ / {pack && pack !== CUSTOM_PACK ? pack : unit.trim() || 'đơn vị'})
+              <input
+                required
+                type="number"
+                min="0.01"
+                max="1000000000"
+                step="0.01"
+                placeholder="Nhập giá"
+                value={form.wholesalePrice}
+                disabled={saving}
+                onChange={(e) => setForm({ ...form, wholesalePrice: e.target.value })}
+              />
+            </label>
+
+            <label>
+              Mua tối thiểu (MOQ)
+              <input
+                required
+                type="number"
+                min="1"
+                max="50000"
+                step="1"
+                placeholder="MOQ"
+                value={form.moq}
+                disabled={saving}
+                onChange={(e) => setForm({ ...form, moq: e.target.value })}
+              />
+            </label>
+
+            <label className="inventory-name">
               Ảnh sản phẩm trong kho
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <input
+              <div style={{ display: 'flex', gap: '10px' }}>                <input
                   type="text"
                   value={form.imageUrl}
                   disabled={saving}
@@ -429,57 +664,6 @@ export default function SupplierInventory({ user, onLogout }: { user?: AuthUser;
               </div>
             </label>
 
-            <label>
-              Quy cách bán
-              <input
-                required
-                maxLength={50}
-                value={form.packaging}
-                disabled={saving}
-                onChange={(e) => setForm({ ...form, packaging: e.target.value })}
-                placeholder="Thùng 24 lon, bao 25kg…"
-              />
-            </label>
-            <label>
-              Số lượng tồn
-              <input
-                required
-                type="number"
-                min="0"
-                max="2147483647"
-                step="1"
-                value={form.stockQty}
-                disabled={saving}
-                onChange={(e) => setForm({ ...form, stockQty: e.target.value })}
-              />
-            </label>
-            <label>
-              Giá sỉ (₫)
-              <input
-                required
-                type="number"
-                min="0.01"
-                max="1000000000"
-                step="0.01"
-                placeholder="Nhập giá"
-                value={form.wholesalePrice}
-                disabled={saving}
-                onChange={(e) => setForm({ ...form, wholesalePrice: e.target.value })}
-              />
-            </label>
-            <label>
-              Mua tối thiểu (MOQ)
-              <input
-                required
-                type="number"
-                min="1"
-                step="1"
-                placeholder="MOQ"
-                value={form.moq}
-                disabled={saving}
-                onChange={(e) => setForm({ ...form, moq: e.target.value })}
-              />
-            </label>
             {error && (
               <p className="error-notice inventory-name" role="alert">
                 {error}
@@ -492,7 +676,7 @@ export default function SupplierInventory({ user, onLogout }: { user?: AuthUser;
                 disabled={saving}
                 onClick={() => editor.current?.close()}
               >
-                Hủy
+                Để sau
               </button>
               <button className="dash-primary" disabled={saving}>
                 {saving ? 'Đang lưu…' : editing === null ? '＋ Thêm vào kho' : 'Lưu thay đổi'}
