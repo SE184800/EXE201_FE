@@ -57,7 +57,7 @@ type SystemConfig = {
   updatedBy: string | null;
 };
 
-type ConfigTabKey = 'all' | 'order' | 'escrow' | 'consignment' | 'wallet' | 'ai' | 'notice';
+type ConfigTabKey = 'all' | 'order' | 'escrow' | 'wallet' | 'ai' | 'notice';
 
 export default function AdminSystemConfig({ onLogout }: AdminTabProps) {
   const [revision, setRevision] = useState(0);
@@ -251,7 +251,7 @@ export default function AdminSystemConfig({ onLogout }: AdminTabProps) {
       />
 
       {/* Metrics Row */}
-      <div className="admin-metrics four" style={{ marginBottom: '18px' }}>
+      <div className="admin-metrics three" style={{ marginBottom: '18px' }}>
         <Metric
           label="SLA Tự Hủy Đơn Sỉ"
           value={`${form.orderAndDelivery?.orderAutoCancelHours} giờ`}
@@ -259,10 +259,6 @@ export default function AdminSystemConfig({ onLogout }: AdminTabProps) {
         <Metric
           label="Ký quỹ Escrow Chuẩn"
           value={`${form.escrowDeposit.defaultDepositRate}%`}
-        />
-        <Metric
-          label="Ký Gửi Tiếp Thị Tối Đa"
-          value={`${form.consignment?.maxConsignmentItemsPerStore} mặt hàng`}
         />
         <Metric
           label="Duyệt Rút Tự Động"
@@ -295,31 +291,24 @@ export default function AdminSystemConfig({ onLogout }: AdminTabProps) {
         </button>
         <button
           type="button"
-          className={`admin-config-tab-btn ${configTab === 'consignment' ? 'active' : ''}`}
-          onClick={() => setConfigTab('consignment')}
-        >
-          3. Hàng ký gửi tiếp thị
-        </button>
-        <button
-          type="button"
           className={`admin-config-tab-btn ${configTab === 'wallet' ? 'active' : ''}`}
           onClick={() => setConfigTab('wallet')}
         >
-          4. Hạn mức Ví & Nạp rút
+          3. Hạn mức Ví & Nạp rút
         </button>
         <button
           type="button"
           className={`admin-config-tab-btn ${configTab === 'ai' ? 'active' : ''}`}
           onClick={() => setConfigTab('ai')}
         >
-          5. Kiểm duyệt AI & Từ cấm
+          4. Kiểm duyệt AI & Từ cấm
         </button>
         <button
           type="button"
           className={`admin-config-tab-btn ${configTab === 'notice' ? 'active' : ''}`}
           onClick={() => setConfigTab('notice')}
         >
-          6. Thông báo sàn & Bảo trì
+          5. Thông báo sàn & Bảo trì
         </button>
       </div>
 
@@ -581,82 +570,7 @@ export default function AdminSystemConfig({ onLogout }: AdminTabProps) {
           </section>
         )}
 
-        {/* CARD 3: CẤU HÌNH HÀNG KÝ GỬI TIẾP THỊ */}
-        {(configTab === 'all' || configTab === 'consignment') && (
-          <section className="admin-config-card">
-            <div className="admin-config-card-header">
-              <span className="admin-mini-label" style={{ color: '#0d9488' }}>MÔ HÌNH HÀNG TIẾP THỊ 0Đ</span>
-              <h2>Chính sách Hàng Ký Gửi & Bán Thử</h2>
-              <p>
-                Quản lý quy định đưa hàng vào bán thử tại tiệm tạp hóa không cần vốn nhập trước, hạn chế rủi ro nợ xấu và chu kỳ đối soát thanh toán.
-              </p>
-            </div>
-
-            <div className="admin-config-grid">
-              <div className="admin-config-field">
-                <label htmlFor="maxConsignmentItemsPerStore">Số lượng mặt hàng ký gửi tối đa tại 1 tiệm</label>
-                <input
-                  id="maxConsignmentItemsPerStore"
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={form.consignment?.maxConsignmentItemsPerStore}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      consignment: {
-                        ...form.consignment,
-                        maxConsignmentItemsPerStore: Number(e.target.value),
-                      },
-                    })
-                  }
-                />
-              </div>
-
-              <div className="admin-config-field">
-                <label htmlFor="settlementCycleDays">Chu kỳ nhắc nhở đối soát định kỳ (ngày)</label>
-                <input
-                  id="settlementCycleDays"
-                  type="number"
-                  min={1}
-                  max={60}
-                  value={form.consignment?.settlementCycleDays}
-                  onChange={(e) =>
-                    setForm({
-                      ...form,
-                      consignment: {
-                        ...form.consignment,
-                        settlementCycleDays: Number(e.target.value),
-                      },
-                    })
-                  }
-                />
-              </div>
-            </div>
-
-            <div style={{ marginTop: '16px' }} className="admin-config-toggle">
-              <span>
-                <strong>Yêu cầu Chủ vựa phải hoàn tất Xác minh uy tín (Approved) mới được đưa hàng ký gửi</strong>
-              </span>
-              <input
-                type="checkbox"
-                style={{ width: '20px', height: '20px', cursor: 'pointer' }}
-                checked={!form.consignment?.allowConsignmentForUnverified}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    consignment: {
-                      ...form.consignment,
-                      allowConsignmentForUnverified: !e.target.checked,
-                    },
-                  })
-                }
-              />
-            </div>
-          </section>
-        )}
-
-        {/* CARD 4: CẤU HÌNH HẠN MỨC VÍ & NẠP RÚT */}
+        {/* CARD 3: CẤU HÌNH HẠN MỨC VÍ & NẠP RÚT */}
         {(configTab === 'all' || configTab === 'wallet') && (
           <section className="admin-config-card">
             <div className="admin-config-card-header">
@@ -751,7 +665,7 @@ export default function AdminSystemConfig({ onLogout }: AdminTabProps) {
           </section>
         )}
 
-        {/* CARD 5: CẤU HÌNH THÔNG BÁO SÀN & BẢO TRÌ */}
+        {/* CARD 4: CẤU HÌNH THÔNG BÁO SÀN & BẢO TRÌ */}
         {(configTab === 'all' || configTab === 'notice') && (
           <section className="admin-config-card">
             <div className="admin-config-card-header">
@@ -1002,7 +916,7 @@ export default function AdminSystemConfig({ onLogout }: AdminTabProps) {
           </section>
         )}
 
-        {/* CARD 6: CÀI ĐẶT THUẬT TOÁN & NGƯỠNG RỦI RO AI */}
+        {/* CARD 5: CÀI ĐẶT THUẬT TOÁN & NGƯỠNG RỦI RO AI */}
         {(configTab === 'all' || configTab === 'ai') && (
           <section className="admin-config-card">
             <div className="admin-config-card-header">
@@ -1159,7 +1073,7 @@ export default function AdminSystemConfig({ onLogout }: AdminTabProps) {
           </section>
         )}
 
-        {/* CARD 7: QUẢN LÝ TỪ CẤM NGHIÊM TRỌNG */}
+        {/* CARD 6: QUẢN LÝ TỪ CẤM NGHIÊM TRỌNG */}
         {(configTab === 'all' || configTab === 'ai') && (
           <section className="admin-config-card">
             <div className="admin-config-card-header">
@@ -1408,4 +1322,4 @@ export default function AdminSystemConfig({ onLogout }: AdminTabProps) {
       )}
     </>
   );
-}
+}
