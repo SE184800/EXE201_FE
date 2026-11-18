@@ -349,7 +349,7 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                   </div>
                 </div>
               </div>
-              <div className="quote-line-builder" id="quote-line-editor">
+nguyên              <div className="quote-line-builder" id="quote-line-editor">
                 <label>
                   Sản phẩm
                   <select

@@ -340,7 +340,6 @@ export default function RegisterPage() {
             )}
           </button>
         </form>
-        <p className="register-note">Tài khoản quản trị viên chỉ được cấp bởi hệ thống.</p>
       </section>
 
       {/* Terms of Service Modal */}
