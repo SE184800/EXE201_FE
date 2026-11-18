@@ -127,6 +127,12 @@ export type ComplaintWorkflow = {
   proposedDeductAmount: number | null;
   agreedDeductAmount: number | null;
   proposedNote: string | null;
+  storeRejectedProposal?: boolean;
+  storeRejectionNote?: string | null;
+  storeRejectionAt?: string | null;
+  rejectedProposalAction?: string | null;
+  rejectedProposalDeductAmount?: number | null;
+  rejectedProposalNote?: string | null;
   finalOutcome: string | null;
   finalSummary: string | null;
   closedReason: string | null;
