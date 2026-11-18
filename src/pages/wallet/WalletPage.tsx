@@ -79,6 +79,7 @@ export default function WalletPage({
   const [qrLoading, setQrLoading] = useState(false);
   const [qr, setQr] = useState<QrCode | null>(null);
   const [qrTicketId, setQrTicketId] = useState<number | null>(null);
+  const [qrStatusError, setQrStatusError] = useState('');
 
   // Withdraw modal state
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -207,6 +208,7 @@ export default function WalletPage({
     }
     setQrLoading(true);
     setError('');
+    setQrStatusError('');
     try {
       const res = await createQrDepositRequest({
         amount: parsedAmount,
@@ -226,10 +228,14 @@ export default function WalletPage({
   useEffect(() => {
     if (!qrTicketId || !showDepositModal) return;
     let cancelled = false;
+    let polling = false;
     const interval = setInterval(async () => {
+      if (polling) return;
+      polling = true;
       try {
         const ticket = await getQrDepositTicket(qrTicketId);
         if (cancelled) return;
+        setQrStatusError('');
         if (ticket.status === 'APPROVED') {
           clearInterval(interval);
           setSuccessToast(`Nạp tiền thành công! Đã cộng +${money(ticket.amount)} vào ví SupplyMind AI.`);
@@ -248,8 +254,10 @@ export default function WalletPage({
           setQr(null);
           setQrTicketId(null);
         }
-      } catch {
-        // silent retry on network hiccups
+      } catch (issue) {
+        if (!cancelled) setQrStatusError(getApiError(issue));
+      } finally {
+        polling = false;
       }
     }, 2000);
     return () => {
@@ -906,6 +914,7 @@ export default function WalletPage({
                 </form>
               ) : (
                 <div>
+                  {qrStatusError && <p className="error-notice" role="alert">{qrStatusError}</p>}
                   <WalletQrCode
                     payload={qr.payload}
                     amount={qr.amount}
@@ -918,7 +927,11 @@ export default function WalletPage({
                       setQr(null);
                       setQrTicketId(null);
                     }}
-                    onChangeAmount={() => setQr(null)}
+                    onChangeAmount={() => {
+                      setQr(null);
+                      setQrTicketId(null);
+                      setQrStatusError('');
+                    }}
                   />
                 </div>
               )}

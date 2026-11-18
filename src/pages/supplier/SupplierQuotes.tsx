@@ -28,8 +28,7 @@ const nextWeek = () => {
   date.setDate(date.getDate() + 7);
   return localDate(date);
 };
-type DraftLine = { product: SupplierProduct; quantity: number; unitPrice: number; discountRate: number };
-const discountedPrice = (price: number, rate: number) => Math.round(price * (100 - rate)) / 100;
+type DraftLine = { product: SupplierProduct; quantity: number; unitPrice: number };
 const statusLabel: Record<string, string> = {
   SENT: 'Chờ cửa hàng',
   ACCEPTED: 'Đã chấp nhận',
@@ -54,11 +53,10 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
     buyerId: 0,
     title: 'Báo giá tiếp thị trực tiếp',
     validUntil: nextWeek(),
-    deliveryFee: 0,
     depositRate: 10,
   });
   const [lines, setLines] = useState<DraftLine[]>([]);
-  const [lineForm, setLineForm] = useState({ productId: 0, quantity: 1, unitPrice: 0, discountRate: 0 });
+  const [lineForm, setLineForm] = useState({ productId: 0, quantity: 1, unitPrice: 0 });
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -85,13 +83,11 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
         const configuredDepositRate = configRes.data?.defaultDepositRate ?? 10;
         setForm((current) => ({
           ...current,
-          deliveryFee: dashboard.profile?.deliveryFee || 0,
           buyerId: prospects[0]?.id || 0,
           depositRate: configuredDepositRate,
         }));
         if (available[0])
           setLineForm({
-        discountRate: 0,
             productId: available[0].id,
             quantity: Math.max(1, available[0].moq),
             unitPrice: available[0].wholesalePrice,
@@ -113,12 +109,13 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
   }, [onLogout, revision, navigate]);
 
   const subtotal = useMemo(
-    () => lines.reduce((sum, line) => sum + line.quantity * discountedPrice(line.unitPrice, line.discountRate), 0),
+    () => lines.reduce((sum, line) => sum + line.quantity * line.unitPrice, 0),
     [lines],
   );
-  const total = subtotal + form.deliveryFee;
+  const total = subtotal;
   const depositRate = form.depositRate;
   const selectedProduct = products.find((product) => product.id === lineForm.productId);
+  const exceedsStock = selectedProduct !== undefined && lineForm.quantity > selectedProduct.stockQty;
   const productsByName = new Map(products.map((product) => [product.name, product]));
   const unitOptions = selectedProduct
     ? products.filter((product) => product.name === selectedProduct.name &&
@@ -149,7 +146,6 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
     const product = products.find((item) => item.id === productId);
     if (product)
       setLineForm({
-        discountRate: 0,
         productId,
         quantity: Math.max(1, product.moq),
         unitPrice: product.wholesalePrice,
@@ -157,22 +153,21 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
   }
 
   function addLine() {
+    if (exceedsStock) return;
     const product = products.find((item) => item.id === lineForm.productId);
     if (
       !product ||
       !Number.isInteger(lineForm.quantity) || lineForm.quantity < 1 ||
-      lineForm.quantity > product.stockQty ||
-      discountedPrice(lineForm.unitPrice, lineForm.discountRate) <= 0 ||
-      !Number.isFinite(lineForm.discountRate) || lineForm.discountRate < 0 || lineForm.discountRate > 100
+      !Number.isFinite(lineForm.unitPrice) || lineForm.unitPrice <= 0
     ) {
-      setError('Chọn sản phẩm, số lượng không vượt tồn và giá báo hợp lệ.');
+      setError('Chọn sản phẩm, nhập số lượng và giá báo hợp lệ.');
       return;
     }
     if (lines.some((line) => line.product.id === product.id && line.product.id !== editingProductId)) {
       setError('Quy cách này đã có trong báo giá. Bấm Sửa để cập nhật.');
       return;
     }
-    const updatedLine = { product, quantity: lineForm.quantity, unitPrice: lineForm.unitPrice, discountRate: lineForm.discountRate };
+    const updatedLine = { product, quantity: lineForm.quantity, unitPrice: lineForm.unitPrice };
     setLines((current) => editingProductId === null
       ? [...current, updatedLine]
       : current.map((line) => line.product.id === editingProductId ? updatedLine : line));
@@ -186,7 +181,6 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
       productId: line.product.id,
       quantity: line.quantity,
       unitPrice: line.unitPrice,
-      discountRate: line.discountRate,
     });
     setError('');
   }
@@ -214,11 +208,11 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
     try {
       await createMarketingQuote({
         ...form,
+        deliveryFee: 0,
         lines: lines.map((line) => ({
           productId: line.product.id,
           quantity: line.quantity,
           unitPrice: line.unitPrice,
-          discountRate: line.discountRate,
           expectedUpdatedAt: line.product.updatedAt,
         })),
       });
@@ -354,22 +348,8 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                     <span>{depositRate}% tổng đơn</span>
                   </div>
                 </div>
-                <label className="supplier-field supplier-field-full">
-                  Phí giao hàng
-                  <input
-                    required
-                    type="number"
-                    min="0"
-                    max="1000000000"
-                    step="1"
-                    value={form.deliveryFee}
-                    onChange={(event) =>
-                      setForm({ ...form, deliveryFee: Number(event.target.value) })
-                    }
-                  />
-                </label>
               </div>
-              <div className="quote-line-builder" id="quote-line-editor">
+nguyên              <div className="quote-line-builder" id="quote-line-editor">
                 <label>
                   Sản phẩm
                   <select
@@ -386,8 +366,8 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                     ))}
                   </select>
                 </label>
-                <label>
-                  Đơn vị
+                <label className="quote-line-unit">
+                  Báo giá theo
                   <select
                     value={selectedProduct?.id ?? ''}
                     disabled={!selectedProduct}
@@ -404,15 +384,21 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                   <input
                     type="number"
                     min="1"
-                    max={selectedProduct?.stockQty ?? 1}
+                    aria-invalid={exceedsStock}
+                    aria-describedby={selectedProduct ? 'quote-stock-status' : undefined}
                     value={lineForm.quantity}
                     onChange={(event) =>
                       setLineForm({ ...lineForm, quantity: Number(event.target.value) })
                     }
                   />
+                  {selectedProduct && (
+                    <small id="quote-stock-status" aria-live="polite" className={exceedsStock ? 'quote-stock-error' : undefined}>
+                      {exceedsStock ? 'Vượt tồn kho. Chỉ còn ' : 'Còn '}{selectedProduct.stockQty.toLocaleString('vi-VN')} trong kho ({selectedProduct.packaging})
+                    </small>
+                  )}
                 </label>
                 <label>
-                  Giá báo / đơn vị
+                  Giá báo (đ / {selectedProduct?.packaging || 'đơn vị'})
                   <input
                     type="number"
                     min={0.01}
@@ -424,13 +410,8 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                     }
                   />
                 </label>
-                <label>
-                  Chiết khấu (%)
-                  <input type="number" min="0" max="100" step="0.01" value={lineForm.discountRate}
-                    onChange={e => setLineForm({ ...lineForm, discountRate: Number(e.target.value) })} />
-                </label>
                 <div className="quote-line-actions">
-                  <button type="button" className="ghost-button" onClick={addLine}>
+                  <button type="button" className="ghost-button" onClick={addLine} disabled={exceedsStock}>
                     {editingProductId === null ? '+ Thêm mặt hàng' : 'Lưu mặt hàng'}
                   </button>
                   {editingProductId !== null && (
@@ -440,9 +421,6 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                       setError('');
                     }}>Hủy sửa</button>
                   )}
-                  {selectedProduct && lineForm.discountRate > 0 && (
-                    <small>Giá sau giảm: {money(discountedPrice(lineForm.unitPrice, lineForm.discountRate))}</small>
-                  )}
                 </div>
               </div>
               <div className="quote-draft-lines">
@@ -451,11 +429,10 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
                     <span>
                       <strong>{line.product.name}</strong>
                       <small>
-                        {line.quantity} × {line.product.packaging} · {money(discountedPrice(line.unitPrice, line.discountRate))}
-                        {line.discountRate > 0 && ` (giảm ${line.discountRate}% từ ${money(line.unitPrice)})`}
+                        {line.quantity} × {line.product.packaging} · {money(line.unitPrice)}
                       </small>
                     </span>
-                    <b>{money(line.quantity * discountedPrice(line.unitPrice, line.discountRate))}</b>
+                    <b>{money(line.quantity * line.unitPrice)}</b>
                     <button type="button" className="quote-edit-line" aria-label={`Sửa ${line.product.name}`} onClick={() => {
                       editLine(line);
                       document.getElementById('quote-line-editor')?.scrollIntoView({ block: 'nearest' });
@@ -479,7 +456,6 @@ export default function SupplierQuotes({ user, onLogout }: { user?: AuthUser; on
               </div>
               <div className="quote-total">
                 <span>Tiền hàng: {money(subtotal)}</span>
-                <span>Phí giao: {money(form.deliveryFee)}</span>
                 <span>
                   Tiền cọc {depositRate}%: {money(Math.round(total * depositRate) / 100)}
                 </span>

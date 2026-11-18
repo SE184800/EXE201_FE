@@ -1,12 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import Icon from '../components/Icon';
-import { getApiError, isUnauthenticated } from '../services/api';
+import { api, getApiError, isUnauthenticated } from '../services/api';
 import {
   acceptMarketingQuote,
   getStoreQuotes,
   rejectMarketingQuote,
   type MarketingQuote,
 } from '../services/quote.api';
+import type { Profile } from './ProfilePage';
 import './catalog.css';
 
 const money = (value: number) => value.toLocaleString('vi-VN') + ' ₫';
@@ -23,6 +25,7 @@ export default function StoreQuotes({ onLogout }: { onLogout: () => void }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [createdOrderId, setCreatedOrderId] = useState<number | null>(null);
   const [status, setStatus] = useState('');
   const [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState<MarketingQuote | null>(null);
@@ -56,6 +59,7 @@ export default function StoreQuotes({ onLogout }: { onLogout: () => void }) {
     setBusy(true);
     setError('');
     setNotice('');
+    setCreatedOrderId(null);
     try {
       await rejectMarketingQuote(quote.id, responseNote);
       setRejecting(null);
@@ -113,6 +117,9 @@ export default function StoreQuotes({ onLogout }: { onLogout: () => void }) {
       {notice && (
         <p className="supplier-success" role="status">
           {notice}
+          {createdOrderId !== null && (
+            <> <Link to={`/store/orders?orderId=${createdOrderId}`}>Xem đơn #{createdOrderId}</Link></>
+          )}
         </p>
       )}
       {error && (
@@ -170,10 +177,12 @@ export default function StoreQuotes({ onLogout }: { onLogout: () => void }) {
                   <dt>Tiền hàng</dt>
                   <dd>{money(quote.subtotal)}</dd>
                 </div>
-                <div>
-                  <dt>Phí giao</dt>
-                  <dd>{money(quote.deliveryFee)}</dd>
-                </div>
+                {quote.deliveryFee > 0 && (
+                  <div>
+                    <dt>Phí giao</dt>
+                    <dd>{money(quote.deliveryFee)}</dd>
+                  </div>
+                )}
                 <div>
                   <dt>Cọc chuyển khoản {quote.depositRate}%</dt>
                   <dd>{money(quote.depositAmount)}</dd>
@@ -198,7 +207,7 @@ export default function StoreQuotes({ onLogout }: { onLogout: () => void }) {
               )}
               {quote.orderId && (
                 <p className="supplier-success">
-                  Đã tạo đơn mua #{quote.orderId}. Theo dõi tại mục Đơn mua hàng.
+                  Đã tạo đơn mua #{quote.orderId}. <Link to={`/store/orders?orderId=${quote.orderId}`}>Xem đơn hàng</Link>
                 </p>
               )}
               {quote.status === 'SENT' && (
@@ -231,9 +240,8 @@ export default function StoreQuotes({ onLogout }: { onLogout: () => void }) {
           onLogout={onLogout}
           onAccepted={(orderId) => {
             setSelected(null);
-            setNotice(
-              `Đã tạo đơn mua #${orderId}. ${selected.depositAmount > 0 ? 'Hãy vào Đơn mua hàng để xem thông tin chuyển cọc.' : ''}`,
-            );
+            setCreatedOrderId(orderId);
+            setNotice(`Đã tạo đơn mua #${orderId}.`);
             setRevision((value) => value + 1);
           }}
         />
@@ -265,12 +273,31 @@ function AcceptQuoteDialog({
 }) {
   const [form, setForm] = useState({
     recipientName: quote.buyer?.name || '',
-    recipientPhone: quote.buyer?.phone || '',
-    deliveryAddress: '',
     note: '',
   });
+  const [storeAddress, setStoreAddress] = useState('');
+  const [savedPhone, setSavedPhone] = useState('');
+  const [editedPhone, setEditedPhone] = useState<string | null>(null);
+  const recipientPhone = editedPhone ?? (savedPhone || quote.buyer?.phone || '');
+  const [customAddress, setCustomAddress] = useState('');
+  const [useCustomAddress, setUseCustomAddress] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api.get<{ profile: Profile }>('/profile', { signal: controller.signal })
+      .then(({ data }) => {
+        if (controller.signal.aborted) return;
+        const profile = data.profile;
+        setStoreAddress(profile?.storeProfile?.storeAddress?.trim() || '');
+        setSavedPhone(profile?.storeProfile?.storePhone?.trim() || profile?.phone?.trim() || '');
+      })
+      .catch((issue) => {
+        if (!controller.signal.aborted && isUnauthenticated(issue)) onLogout();
+      });
+    return () => controller.abort();
+  }, [onLogout]);
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (saving) return;
@@ -279,6 +306,8 @@ function AcceptQuoteDialog({
     try {
       const order = await acceptMarketingQuote(quote.id, {
         ...form,
+        recipientPhone: recipientPhone.trim(),
+        deliveryAddress: (!storeAddress || useCustomAddress ? customAddress : storeAddress).trim(),
         requestId: crypto.randomUUID(),
       });
       onAccepted(order.id);
@@ -320,21 +349,39 @@ function AcceptQuoteDialog({
             inputMode="tel"
             autoComplete="tel"
             placeholder="Ví dụ: 0912345678"
-            value={form.recipientPhone}
-            onChange={(event) => setForm({ ...form, recipientPhone: event.target.value })}
+            value={recipientPhone}
+            onChange={(event) => setEditedPhone(event.target.value)}
           />
         </label>
-        <label className="supplier-dialog-field">
-          <span>Địa chỉ giao hàng</span>
-          <textarea
-            required
-            minLength={10}
-            maxLength={500}
-            rows={3}
-            value={form.deliveryAddress}
-            onChange={(event) => setForm({ ...form, deliveryAddress: event.target.value })}
-          />
-        </label>
+        {storeAddress && (
+          <label className="supplier-dialog-field">
+            <span>Địa chỉ giao hàng</span>
+            <select
+              value={useCustomAddress ? 'custom' : 'store'}
+              onChange={(event) => setUseCustomAddress(event.target.value === 'custom')}
+            >
+              <option value="store">{storeAddress}</option>
+              <option value="custom">Nhập địa chỉ khác</option>
+            </select>
+          </label>
+        )}
+        {(!storeAddress || useCustomAddress) && (
+          <label className="supplier-dialog-field">
+            <span>{storeAddress ? 'Địa chỉ khác' : 'Địa chỉ giao hàng'}</span>
+            <textarea
+              required
+              minLength={10}
+              maxLength={500}
+              rows={3}
+              autoComplete="street-address"
+              value={customAddress}
+              onChange={(event) => {
+                setUseCustomAddress(true);
+                setCustomAddress(event.target.value);
+              }}
+            />
+          </label>
+        )}
         <label className="supplier-dialog-field">
           <span>Ghi chú thêm</span>
           <textarea

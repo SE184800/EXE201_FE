@@ -172,6 +172,7 @@ function parseComplaintDescription(desc: string) {
 }
 
 type Props = {
+  initialSearch?: string;
   kind: 'store' | 'supplier';
   onLogout: () => void;
   onInventoryChanged?: () => Promise<void>;
@@ -283,7 +284,7 @@ type ActionModalState =
   | {
       type: 'buyer-decision';
       complaintId: number;
-      decision: 'ACCEPT' | 'WITHDRAW';
+      decision: 'ACCEPT' | 'WITHDRAW' | 'REJECT_PROPOSAL';
       title: string;
       message: string;
       confirmLabel: string;
@@ -404,6 +405,7 @@ function getInitialRescheduleData() {
 export default function OrderList({
   kind,
   onLogout,
+  initialSearch = '',
   revision = 0,
   busy = false,
   onStatus,
@@ -412,8 +414,8 @@ export default function OrderList({
   onInventoryChanged,
   onViewHistory,
 }: Props) {
-  const [searchInput, setSearchInput] = useState('');
-  const [query, setQuery] = useState({ page: 1, status: '', q: '' });
+  const [searchInput, setSearchInput] = useState(initialSearch);
+  const [query, setQuery] = useState({ page: 1, status: '', q: initialSearch });
   const [data, setData] = useState<{ orders: SupplierOrder[]; total: number; hasMore: boolean }>({
     orders: [],
     total: 0,
@@ -759,13 +761,14 @@ export default function OrderList({
     const timeText = `${rescheduleTime} ngày ${formattedDate}`;
 
     try {
-      await rescheduleOrder(rescheduleOrderTarget.id, timeText, rescheduleReason.trim() || undefined);
-      setRescheduleMessage('Đã gửi yêu cầu đổi giờ giao.');
-      setTimeout(() => {
-        setRescheduleOrderTarget(null);
-        setRescheduleReason('');
-        setReload((n) => n + 1);
-      }, 1000);
+      const { order } = await rescheduleOrder(rescheduleOrderTarget.id, timeText, rescheduleReason.trim() || undefined);
+      setData((current) => ({
+        ...current,
+        orders: current.orders.map((row) => row.id === order.id ? order : row),
+      }));
+      setRescheduleOrderTarget(null);
+      setRescheduleReason('');
+      setReload((n) => n + 1);
     } catch (issue) {
       setRescheduleMessage(getApiError(issue));
       if (isUnauthenticated(issue)) onLogout();
@@ -896,7 +899,7 @@ export default function OrderList({
 
   const handleBuyerDecision = (
     complaintId: number,
-    decision: 'ACCEPT' | 'WITHDRAW',
+    decision: 'ACCEPT' | 'WITHDRAW' | 'REJECT_PROPOSAL',
   ) => {
     setActionModalError('');
     setActionModalInput('');
@@ -909,6 +912,23 @@ export default function OrderList({
         message: 'Xác nhận đồng ý với giải pháp Chủ vựa đã đề xuất và ghi nhận trạng thái Hoàn thành cho khiếu nại này?',
         confirmLabel: 'Đồng ý & Hoàn thành',
         tone: 'primary',
+      });
+      return;
+    }
+    if (decision === 'REJECT_PROPOSAL') {
+      setActionModal({
+        type: 'buyer-decision',
+        complaintId,
+        decision,
+        title: 'Từ chối phương án đề xuất',
+        message:
+          'Bạn không đồng ý với phương án Chủ vựa đề xuất. Hãy nêu rõ lý do để Chủ vựa điều chỉnh. Sau khi từ chối, bạn có thể gọi trực tiếp số điện thoại của Chủ vựa để thương lượng.',
+        confirmLabel: 'Từ chối phương án',
+        requireInput: true,
+        minLength: 3,
+        inputLabel: 'Lý do từ chối phương án',
+        inputPlaceholder: 'Ví dụ: Mức giảm trừ chưa phù hợp, đề nghị bù thêm hàng...',
+        tone: 'danger',
       });
       return;
     }
@@ -939,16 +959,11 @@ export default function OrderList({
     setActionModalBusy(true);
     try {
       if (actionModal.type === 'cancel-order') {
-        const res = await fetch(`/api/orders/${actionModal.orderId}/cancel`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            reason: actionModalInput.trim() || 'Cửa hàng tự hủy khi đơn chưa được duyệt.',
-          }),
-        });
-        const resData = await res.json();
-        if (!res.ok) throw new Error(resData.message || 'Không thể hủy đơn hàng.');
-        setDepositNotice(resData.message || `Đã hủy đơn hàng #${actionModal.orderId}.`);
+        const { data } = await api.post<{ message?: string }>(
+          `/orders/${actionModal.orderId}/cancel`,
+          { reason: actionModalInput.trim() },
+        );
+        setDepositNotice(data.message || `Đã hủy đơn hàng #${actionModal.orderId}.`);
       } else if (actionModal.type === 'buyer-decision') {
         const note = actionModal.requireInput ? actionModalInput.trim() : undefined;
         const res = await api.post<{ success: boolean; message?: string }>(
@@ -1625,9 +1640,9 @@ export default function OrderList({
                     }}
                   >
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      {(order.driverInfo?.driverPhone || order.supplier?.phone) && (
+                      {!order.driverInfo?.driverPhone && order.supplier?.phone && (
                         <a
-                          href={`tel:${order.driverInfo?.driverPhone || order.supplier?.phone}`}
+                          href={`tel:${order.supplier.phone}`}
                           className="ghost-button"
                           style={{
                             fontSize: '11px',
@@ -1638,10 +1653,10 @@ export default function OrderList({
                             gap: '4px',
                           }}
                         >
-                          {order.driverInfo?.driverPhone ? 'Gọi tài xế' : 'Gọi chủ vựa'}
+                          Gọi chủ vựa
                         </a>
                       )}
-                      {kind === 'supplier' && onEditDriver && (
+                      {kind === 'supplier' && order.status === 'PREPARING' && onEditDriver && (
                         <button
                           type="button"
                           className="table-button primary-small"
@@ -1651,7 +1666,9 @@ export default function OrderList({
                           {order.driverInfo ? 'Sửa thông tin tài xế' : 'Gán tài xế'}
                         </button>
                       )}
-                      {kind === 'store' && (
+                      {kind === 'store' &&
+                        !order.driverInfo?.rescheduleRequest &&
+                        !order.note?.includes('[YÊU CẦU DỜI LỊCH GIAO') && (
                         <button
                           type="button"
                           className="table-button primary-small"
@@ -2068,6 +2085,7 @@ export default function OrderList({
                     const st = order.complaint?.status || 'OPEN';
                     const isOpenComplaint = ['OPEN', 'IN_REVIEW', 'REJECTED', 'ESCALATED'].includes(st);
                     const pendingParty = wf?.pendingParty || (st === 'OPEN' ? 'SUPPLIER' : isOpenComplaint ? 'STORE_OWNER' : null);
+                    const supplierPhone = (order.supplier?.phone || '').trim() || null;
                     const rawHistory = Array.isArray(wf?.history) ? wf.history : [];
                     const cleanHistory = dedupeComplaintHistory(rawHistory);
                     const complaintId = order.complaint!.id;
@@ -2112,7 +2130,55 @@ export default function OrderList({
                           </div>
                         )}
 
-                        {isOpenComplaint && !wf?.proposedAction && order.complaint?.response && (
+                        {isOpenComplaint && wf?.storeRejectedProposal && (
+                          <div
+                            style={{
+                              marginTop: '10px',
+                              padding: '10px 12px',
+                              borderRadius: '6px',
+                              backgroundColor: '#fef2f2',
+                              border: '1px solid #fca5a5',
+                              color: '#991b1b',
+                            }}
+                          >
+                            <strong style={{ display: 'block', marginBottom: '3px' }}>
+                              {kind === 'store'
+                                ? 'Bạn đã từ chối phương án của Chủ vựa'
+                                : 'Tiệm tạp hóa đã từ chối phương án của Chủ vựa'}
+                            </strong>
+                            {wf.rejectedProposalAction && (
+                              <div style={{ marginTop: '3px', fontSize: '12.5px', color: '#7f1d1d' }}>
+                                Phương án bị từ chối:{' '}
+                                {SUPPLIER_RESOLUTIONS.find((p) => p.code === wf.rejectedProposalAction)?.label ||
+                                  wf.rejectedProposalAction}
+                                {wf.rejectedProposalAction === 'DEDUCT_COD' &&
+                                  Number(wf.rejectedProposalDeductAmount || 0) > 0 && (
+                                    <strong style={{ marginLeft: '6px' }}>
+                                      (-{money(Number(wf.rejectedProposalDeductAmount))})
+                                    </strong>
+                                  )}
+                              </div>
+                            )}
+                            {wf.rejectedProposalNote && (
+                              <div style={{ marginTop: '3px', fontSize: '12.5px', color: '#7f1d1d' }}>
+                                Giải trình của Chủ vựa: {wf.rejectedProposalNote}
+                              </div>
+                            )}
+                            {wf.storeRejectionNote && (
+                              <div style={{ marginTop: '3px', fontSize: '12.5px', color: '#7f1d1d' }}>
+                                {kind === 'store' ? 'Lý do: ' : 'Lý do của Tiệm: '}
+                                {wf.storeRejectionNote}
+                              </div>
+                            )}
+                            {kind === 'store' && (
+                              <div style={{ marginTop: '3px', fontSize: '12.5px', color: '#7f1d1d' }}>
+                                Khiếu nại vẫn đang mở. Bạn có thể gọi trực tiếp Chủ vựa để thương lượng phương án mới.
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {isOpenComplaint && !wf?.proposedAction && !wf?.storeRejectedProposal && order.complaint?.response && (
                           <div
                             style={{
                               marginTop: '10px',
@@ -2228,6 +2294,17 @@ export default function OrderList({
                                     : 'Chấp nhận giải trình & Hoàn thành'}
                                 </button>
                               )}
+                              {pendingParty === 'STORE_OWNER' && (
+                                <button
+                                  className="table-button"
+                                  type="button"
+                                  style={{ background: '#fff', color: '#b91c1c', borderColor: '#fca5a5', fontWeight: 600 }}
+                                  disabled={busy}
+                                  onClick={() => void handleBuyerDecision(order.complaint!.id, 'REJECT_PROPOSAL')}
+                                >
+                                  Từ chối phương án
+                                </button>
+                              )}
                               <button
                                 className="table-button"
                                 type="button"
@@ -2237,6 +2314,63 @@ export default function OrderList({
                                 Rút khiếu nại
                               </button>
                             </div>
+                          </div>
+                        )}
+
+                        {kind === 'store' && order.complaint && isOpenComplaint && (
+                          <div
+                            style={{
+                              marginTop: '8px',
+                              padding: '10px 12px',
+                              borderRadius: '8px',
+                              backgroundColor: '#eff6ff',
+                              border: '1px solid #bfdbfe',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '10px',
+                              flexWrap: 'wrap',
+                            }}
+                          >
+                            <div style={{ minWidth: 0 }}>
+                              <strong style={{ display: 'block', fontSize: '13px', color: '#1e3a8a' }}>
+                                {wf?.storeRejectedProposal
+                                  ? 'Bạn đã từ chối phương án · Gọi Chủ vựa để thương lượng trực tiếp'
+                                  : 'Cần thương lượng trực tiếp? Gọi Chủ vựa'}
+                              </strong>
+                              <span style={{ fontSize: '12px', color: '#475569' }}>
+                                {order.supplier?.businessName || 'Nhà cung cấp'}
+                                {order.supplier?.warehouseAddress
+                                  ? ` · ${order.supplier.warehouseAddress}`
+                                  : ''}
+                              </span>
+                              {!supplierPhone && (
+                                <div style={{ fontSize: '12px', color: '#b45309', marginTop: '2px' }}>
+                                  Chủ vựa chưa cập nhật số điện thoại. Vui lòng trao đổi qua khung tin nhắn.
+                                </div>
+                              )}
+                            </div>
+                            {supplierPhone && (
+                              <a
+                                href={`tel:${supplierPhone}`}
+                                className="table-button"
+                                style={{
+                                  background: '#1d4ed8',
+                                  color: '#fff',
+                                  borderColor: '#1e40af',
+                                  fontWeight: 700,
+                                  textDecoration: 'none',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  whiteSpace: 'nowrap',
+                                }}
+                                title={`Gọi cho ${order.supplier?.businessName || 'Chủ vựa'}`}
+                              >
+                                <Icon name="phone" className="complaint-contact-phone-icon" />
+                                <span>Gọi {supplierPhone}</span>
+                              </a>
+                            )}
                           </div>
                         )}
 
@@ -3383,7 +3517,9 @@ export default function OrderList({
           <div className="complaint-dialog-card" style={{ maxWidth: '480px' }} onClick={(e) => e.stopPropagation()}>
             <div className="complaint-dialog-header">
               <div>
-                <div className="complaint-dialog-eyebrow">Xác nhận thao tác</div>
+                {actionModal.type !== 'cancel-order' && (
+                  <div className="complaint-dialog-eyebrow">Xác nhận thao tác</div>
+                )}
                 <h2 id="order-action-modal-title" className="complaint-dialog-title">
                   {actionModal.title}
                 </h2>
@@ -3405,8 +3541,8 @@ export default function OrderList({
                 </p>
 
                 {'inputLabel' in actionModal && actionModal.inputLabel && (
-                  <div className="complaint-form-group" style={{ marginBottom: 0 }}>
-                    <label className="complaint-field-label" htmlFor="order-action-modal-input">
+                  <div className="complaint-field">
+                    <label className="complaint-label" htmlFor="order-action-modal-input">
                       {actionModal.inputLabel}
                       {actionModal.type === 'buyer-decision' && actionModal.requireInput && (
                         <span style={{ color: '#dc2626', marginLeft: '4px' }}>*</span>
@@ -3414,6 +3550,7 @@ export default function OrderList({
                     </label>
                     <textarea
                       id="order-action-modal-input"
+                      className="complaint-textarea"
                       rows={3}
                       value={actionModalInput}
                       placeholder={actionModal.inputPlaceholder || ''}
@@ -3440,7 +3577,7 @@ export default function OrderList({
                   disabled={actionModalBusy}
                   onClick={() => setActionModal(null)}
                 >
-                  Hủy
+                  {actionModal.type === 'cancel-order' ? 'Quay lại' : 'Hủy'}
                 </button>
                 <button
                   type="submit"
@@ -3565,7 +3702,7 @@ export default function OrderList({
                     </div>
                   )}
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="order-reschedule-fields">
                     <label style={{ display: 'block' }}>
                       <span style={{ fontSize: '12px', fontWeight: 650, color: '#334155', display: 'block', marginBottom: '5px' }}>
                         Chọn ngày nhận hàng:
@@ -3595,7 +3732,6 @@ export default function OrderList({
                           if (!nextAvailM.includes(nextM)) nextM = nextAvailM[0] || '00';
                           setRescheduleTime(`${nextH}:${nextM}`);
                         }}
-                        style={{ width: '100%', padding: '9px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box', backgroundColor: '#ffffff' }}
                       />
                     </label>
 
@@ -3605,7 +3741,7 @@ export default function OrderList({
                       </span>
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                         <select
-                          value={rescheduleHour}
+                          aria-label="Giờ nhận hàng" value={rescheduleHour}
                           onChange={(e) => {
                             const newH = e.target.value;
                             const h = parseInt(newH, 10);
@@ -3618,19 +3754,17 @@ export default function OrderList({
                             if (!nextAvailM.includes(nextM)) nextM = nextAvailM[0] || '00';
                             setRescheduleTime(`${newH}:${nextM}`);
                           }}
-                          style={{ width: '100%', padding: '9px 6px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff', cursor: 'pointer', boxSizing: 'border-box' }}
                         >
-                          {!availableHours.includes(rescheduleHour) && <option value={rescheduleHour} disabled>{rescheduleHour} giờ · Chọn lại giờ</option>}
+                          {!availableHours.includes(rescheduleHour) && <option aria-label="Giờ nhận hàng" value={rescheduleHour} disabled>{rescheduleHour} giờ · Chọn lại giờ</option>}
                           {availableHours.map((h) => (
                             <option key={h} value={h}>{h} giờ</option>
                           ))}
                         </select>
                         <select
-                          value={rescheduleMinute}
+                          aria-label="Phút nhận hàng" value={rescheduleMinute}
                           onChange={(e) => setRescheduleTime(`${rescheduleHour}:${e.target.value}`)}
-                          style={{ width: '100%', padding: '9px 6px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', backgroundColor: '#ffffff', cursor: 'pointer', boxSizing: 'border-box' }}
                         >
-                          {!availableMinutes.includes(rescheduleMinute) && <option value={rescheduleMinute} disabled>{rescheduleMinute} phút · Chọn lại phút</option>}
+                          {!availableMinutes.includes(rescheduleMinute) && <option aria-label="Phút nhận hàng" value={rescheduleMinute} disabled>{rescheduleMinute} phút · Chọn lại phút</option>}
                           {availableMinutes.map((m) => (
                             <option key={m} value={m}>{m} phút</option>
                           ))}

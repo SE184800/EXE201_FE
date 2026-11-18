@@ -340,7 +340,9 @@ export default function RegisterPage() {
             )}
           </button>
         </form>
-        <p className="register-note">Tài khoản quản trị viên chỉ được cấp bởi hệ thống.</p>
+        <Link className="register-login-link" to="/login">
+          Đã có tài khoản? <strong>Đăng nhập</strong>
+        </Link>
       </section>
 
       {/* Terms of Service Modal */}

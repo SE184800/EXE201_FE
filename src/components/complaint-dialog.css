@@ -444,6 +444,13 @@
   color: #92400e !important;
 }
 
+/* Store: contact supplier directly while negotiating a complaint */
+.complaint-contact-phone-icon {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
 
 /* Multi-Item Checklist Styles */
 .complaint-checklist-box {

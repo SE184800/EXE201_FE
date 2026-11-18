@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, getApiError, isUnauthenticated } from '../services/api';
 import './store-inventory.css';
 import StockActivity from './StockActivity';
@@ -141,6 +141,9 @@ export default function StoreInventory({
 
   const [revision, setRevision] = useState(0);
   const { '*': page = '' } = useParams();
+  const [searchParams] = useSearchParams();
+  const orderId = searchParams.get('orderId') ?? '';
+  const orderSearch = /^\d+$/.test(orderId) ? '#' + orderId : '';
   const activeTab = tabs.find((tab) => tab.id === (page || 'overview'))?.id;
   function setActiveTab(tab: StoreTab) {
     navigate(tab === 'overview' ? '/store' : `/store/${tab}`);
@@ -744,7 +747,7 @@ export default function StoreInventory({
           ) : activeTab === 'quotes' ? (
             <StoreQuotes onLogout={onLogout} />
           ) : activeTab === 'orders' ? (
-            <OrderList kind="store" onLogout={onLogout} onInventoryChanged={refresh} onViewHistory={() => setActiveTab('history')} />
+            <OrderList key={orderSearch} initialSearch={orderSearch} kind="store" onLogout={onLogout} onInventoryChanged={refresh} onViewHistory={() => setActiveTab('history')} />
           ) : activeTab === 'wallet' ? (
             <WalletPage onLogout={onLogout} role="STORE_OWNER" />
           ) : activeTab === 'revenue' ? (

@@ -1,4 +1,4 @@
-import { api, withTransientRetry } from './api';
+import { api, ApiCompatibilityError, isMissingApiRoute, withTransientRetry } from './api';
 
 export type WalletInfo = {
   userId?: number;
@@ -208,7 +208,23 @@ export async function createQrDepositRequest(input: {
 
 /** Polls the status of a specific QR deposit ticket. */
 export async function getQrDepositTicket(id: number): Promise<DepositRequest> {
-  return (await api.get<{ request: DepositRequest }>(`/wallet/deposits/qr/${id}`)).data.request;
+  try {
+    return (await api.get<{ request: DepositRequest }>(`/wallet/deposits/qr/${id}`)).data.request;
+  } catch (error) {
+    if (!isMissingApiRoute(error)) throw error;
+    // Older servers expose the owner's deposit list, but not a single-ticket
+    // status route. Read only; never confirm/credit a transfer from the client.
+    for (let page = 1; page <= 100; page += 1) {
+      const result = await getDepositRequests({ page });
+      if (!Array.isArray(result.requests) || result.page !== page) break;
+      const ticket = result.requests.find((request) => request.id === id);
+      if (ticket) return ticket;
+      if (!result.hasMore) break;
+    }
+    throw new ApiCompatibilityError(
+      'Chưa tìm thấy trạng thái phiếu nạp. Vui lòng kiểm tra lịch sử nạp tiền trước khi tạo phiếu mới.',
+    );
+  }
 }
 
 /** Confirms the transfer so the money is credited to the wallet. */
