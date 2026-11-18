@@ -270,6 +270,42 @@ try {
   assert.equal((await p.inventoryItem.findUnique({ where: { id: coca.id } })).quantity, 16);
   checks.push('offline before send + logout/re-login: same pending sale recovered and saved once');
 
+  // Emulate the deployed older API while exercising real SQL mutations through
+  // its existing single-item route. No customer account or live server writes.
+  const oldBatch = route => route.fulfill({ status: 404, json: { message: 'Không tìm thấy API.' } });
+  await page.route('**/api/inventory/sales/batch', oldBatch);
+  await page.getByRole('button', { name: 'Thêm Coca Cola 330ml', exact: true }).click();
+  let legacyId;
+  await page.route('**/api/inventory/*/movements', async route => {
+    legacyId = route.request().postDataJSON().requestId;
+    const saved = await route.fetch();
+    assert.equal(saved.status(), 200);
+    await route.abort('failed');
+  }, { times: 1 });
+  await page.getByRole('button', { name: 'Ghi nhận bán', exact: true }).click();
+  await page.getByRole('button', { name: 'Kiểm tra lại lượt bán', exact: true }).waitFor();
+  await page.reload();
+  await page.getByRole('button', { name: 'Kiểm tra lại lượt bán', exact: true }).click();
+  await page.locator('.mobile-sale-receipt').waitFor();
+  assert.equal((await p.inventoryItem.findUnique({ where: { id: coca.id } })).quantity, 15);
+  assert.equal(await p.stockMovement.count({ where: { id: legacyId } }), 1);
+  checks.push('legacy single sale + lost reply + reload: same ID, stock decremented once');
+
+  await p.inventoryItem.update({ where: { id: noodles.id }, data: { quantity: 27 } });
+  await page.reload();
+  await page.getByRole('button', { name: 'Thêm Coca Cola 330ml', exact: true }).click();
+  await page.getByRole('button', { name: 'Thêm Mì Hảo Hảo', exact: true }).click();
+  await page.getByRole('button', { name: 'Ghi nhận bán', exact: true }).click();
+  await page.getByText(/Máy chủ chưa hỗ trợ bán nhiều mặt hàng/).waitFor();
+  assert.equal((await p.inventoryItem.findUnique({ where: { id: coca.id } })).quantity, 15);
+  assert.equal((await p.inventoryItem.findUnique({ where: { id: noodles.id } })).quantity, 27);
+  await page.unroute('**/api/inventory/sales/batch', oldBatch);
+  await page.getByRole('button', { name: 'Ghi nhận bán', exact: true }).click();
+  await page.locator('.mobile-sale-receipt').waitFor();
+  assert.equal((await p.inventoryItem.findUnique({ where: { id: coca.id } })).quantity, 14);
+  assert.equal((await p.inventoryItem.findUnique({ where: { id: noodles.id } })).quantity, 26);
+  checks.push('legacy multi-item sale leaves stock intact; backend upgrade saves the same draft atomically');
+
   for (const width of [320, 390, 768]) {
     await page.setViewportSize({ width, height: 844 });
     for (const tab of ['quick-sale', 'inventory', 'orders', 'wallet']) {

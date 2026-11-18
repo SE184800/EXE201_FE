@@ -31,7 +31,23 @@ export async function withTransientRetry<T>(operation: () => Promise<T>, retries
   }
 }
 
+export function isMissingApiRoute(error: unknown): boolean {
+  if (!axios.isAxiosError<{ code?: string; message?: string }>(error)) return false;
+  return (
+    error.response?.status === 404 &&
+    (error.response.data?.code === 'API_ROUTE_NOT_FOUND' ||
+      error.response.data?.message === 'Không tìm thấy API.')
+  );
+}
+
+export class ApiCompatibilityError extends Error {
+  readonly response = { status: 404 };
+}
+
 export function getApiError(error: unknown): string {
+  if (error instanceof ApiCompatibilityError) return error.message;
+  if (isMissingApiRoute(error))
+    return 'Máy chủ chưa hỗ trợ chức năng này. Cần cập nhật backend SupplyMind để tiếp tục.';
   if (axios.isAxiosError<{ message?: string }>(error)) {
     return error.response?.data?.message || 'Chưa kết nối được máy chủ. Vui lòng thử lại sau.';
   }

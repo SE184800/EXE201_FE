@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { api, getApiError, isUnauthenticated } from '../services/api';
+import {
+  ApiCompatibilityError,
+  getApiError,
+  isMissingApiRoute,
+  isUnauthenticated,
+} from '../services/api';
+import { recordQuickSale } from '../services/quickSale.api';
 import {
   normalizeSaleText,
   parseSpokenSale,
@@ -132,19 +138,7 @@ export default function MobileQuickSale({
       const request: SaleJournal = { ...source, phase: 'pending' };
       persist(request);
       try {
-        const { data } = await api.post<{ movements: { id: string }[] }>(
-          '/inventory/sales/batch',
-          {
-            rows: request.rows.map(({ itemId, unit, quantity, unitSalePrice, requestId }) => ({
-              itemId,
-              unit,
-              quantity,
-              unitSalePrice,
-              requestId,
-            })),
-          },
-          { timeout: 30000 },
-        );
+        const data = await recordQuickSale(request.rows);
         if (
           !Array.isArray(data.movements) ||
           request.rows.some(
@@ -167,6 +161,11 @@ export default function MobileQuickSale({
           persist({ ...request, phase: 'draft' });
           setMessage(getApiError(error));
           await onRefresh().catch(() => {});
+        } else if (error instanceof ApiCompatibilityError || isMissingApiRoute(error)) {
+          setMessage(
+            getApiError(error) +
+              ' Không sửa lượt bán đang chờ xác nhận; thử lại sau khi máy chủ được cập nhật.',
+          );
         } else {
           setMessage(
             'Chưa xác nhận được kết quả. Giữ nguyên lượt bán và bấm “Kiểm tra lại lượt bán”; app sẽ không tạo lượt mới.',
