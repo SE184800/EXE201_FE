@@ -511,6 +511,18 @@
 .mobile-store-app .wallet-filter-tab {
   white-space: normal;
 }
+@media (max-width: 600px) {
+  .mobile-store-app .wallet-qr-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .mobile-store-app .wallet-qr-details dd {
+    flex-wrap: wrap;
+  }
+  .mobile-store-app .wallet-qr-details dd > span {
+    flex: 1 0 100%;
+    min-width: 0;
+  }
+}
 @media (min-width: 700px) {
   .mobile-sale-products {
     grid-template-columns: repeat(3, minmax(0, 1fr));

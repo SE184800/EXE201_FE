@@ -340,6 +340,9 @@ export default function RegisterPage() {
             )}
           </button>
         </form>
+        <Link className="register-login-link" to="/login">
+          Đã có tài khoản? <strong>Đăng nhập</strong>
+        </Link>
       </section>
 
       {/* Terms of Service Modal */}
