@@ -226,6 +226,7 @@ function WithdrawalRequests({ onLogout }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
   const [working, setWorking] = useState<number | null>(null);
   const [rejecting, setRejecting] = useState<WithdrawalRequest | null>(null);
   const [qrPayout, setQrPayout] = useState<WithdrawalRequest | null>(null);
@@ -264,6 +265,12 @@ function WithdrawalRequests({ onLogout }: Props) {
     return () => window.clearTimeout(timer);
   }, [load, revision]);
 
+  useEffect(() => {
+    if (!toastMessage) return;
+    const timer = window.setTimeout(() => setToastMessage(''), 4500);
+    return () => window.clearTimeout(timer);
+  }, [toastMessage]);
+
   // Tự động kiểm tra trạng thái khi mở modal chuyển tiền:
   // Khi SePay bắn webhook hoàn tất đơn, tự động thông báo và đóng cửa sổ
   useEffect(() => {
@@ -273,6 +280,7 @@ function WithdrawalRequests({ onLogout }: Props) {
       try {
         const updated = await getAdminWithdrawal(payoutId);
         if (updated && updated.status === 'COMPLETED') {
+          setToastMessage('Chuyển tiền thành công');
           setNotice('Chuyển tiền thành công!');
           setQrPayout(null);
           setRevision((n) => n + 1);
@@ -308,6 +316,61 @@ function WithdrawalRequests({ onLogout }: Props) {
 
   return (
     <>
+      {toastMessage && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            position: 'fixed',
+            top: '24px',
+            right: '24px',
+            zIndex: 999999,
+            backgroundColor: '#10b981',
+            color: '#ffffff',
+            padding: '14px 22px',
+            borderRadius: '12px',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            fontWeight: 600,
+            fontSize: '14.5px',
+          }}
+        >
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '24px',
+              height: '24px',
+              borderRadius: '50%',
+              backgroundColor: 'rgba(255, 255, 255, 0.25)',
+              fontSize: '13px',
+              fontWeight: 700,
+            }}
+          >
+            ✓
+          </span>
+          <span>{toastMessage}</span>
+          <button
+            type="button"
+            onClick={() => setToastMessage('')}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'rgba(255, 255, 255, 0.85)',
+              fontSize: '16px',
+              cursor: 'pointer',
+              marginLeft: '8px',
+              padding: 0,
+              lineHeight: 1,
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       <Heading
         eyebrow="WALLET MANAGEMENT · RÚT TIỀN"
         title="Yêu cầu rút tiền"
