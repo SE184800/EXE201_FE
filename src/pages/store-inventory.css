@@ -2550,7 +2550,73 @@
   border-top: 1px solid #e8eee6;
   overflow-wrap: anywhere;
 }
-.stock-history-quantity { text-align: right; }
+.stock-history-quantity {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  text-align: right;
+}
+.stock-change-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.stock-change-pill.is-in {
+  background: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+.stock-change-pill.is-out {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+.stock-balance-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #475569;
+  white-space: nowrap;
+}
+.stock-balance-title {
+  color: #64748b;
+  font-weight: 500;
+}
+.stock-balance-before {
+  color: #475569;
+  font-weight: 600;
+}
+.stock-balance-arrow {
+  color: #94a3b8;
+  font-weight: 700;
+  font-size: 11px;
+}
+.stock-balance-after {
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.stock-balance-after.is-in {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+.stock-balance-after.is-out {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
 .stock-history-rows details { grid-column: 1 / -1; color: #596b60; font-size: 13px; }
 .stock-history-rows summary { cursor: pointer; }
 .stock-history-rows details p { margin: 5px 0 0; }
@@ -2573,7 +2639,7 @@
   background: #f4f7f2;
 }
 .stock-history-tools button,
-.stock-history-search button,
+.stock-history-search > button,
 .stock-history-active-filter button {
   min-height: 34px;
   padding: 4px 9px;
@@ -2589,7 +2655,7 @@
 .stock-history-modes button { min-height: 28px; border-color: transparent; background: transparent; }
 .stock-history-tools button[aria-pressed="true"],
 .stock-history-tools button[aria-expanded="true"],
-.stock-history-search button {
+.stock-history-search > button {
   background: #235440;
   color: #fff;
 }
@@ -2602,7 +2668,7 @@
   margin-top: 12px;
 }
 .stock-history-search label { display: grid; gap: 4px; min-width: 0; font-size: 14px; }
-.stock-history-search input {
+.stock-history-search input:not(.sm-dp-input) {
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
@@ -2612,7 +2678,62 @@
   border-radius: 6px;
   font: inherit;
 }
-.stock-history-search button { min-height: 38px; }
+.stock-history-search .sm-dp-wrap {
+  width: 100%;
+}
+.stock-history-search .sm-dp-box {
+  min-height: 38px;
+  height: 38px;
+  border-radius: 6px;
+  border: 1px solid #d6e2d6;
+  background: #fff;
+  padding: 0 8px 0 10px;
+  box-sizing: border-box;
+}
+.stock-history-search .sm-dp-box:hover:not(.is-disabled) {
+  border-color: #235440;
+}
+.stock-history-search .sm-dp-box.is-open {
+  border-color: #235440;
+  box-shadow: 0 0 0 2px rgba(35, 84, 64, 0.15);
+}
+.stock-history-search .sm-dp-box > input.sm-dp-input {
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 4px 0 0 !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  font-size: 14px;
+  color: #1e293b;
+}
+.stock-history-search .sm-dp-trigger-btn {
+  flex: 0 0 26px !important;
+  width: 26px !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  max-height: 26px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  color: #235440 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  border-radius: 4px;
+  box-shadow: none !important;
+}
+.stock-history-search .sm-dp-trigger-btn svg {
+  width: 17px !important;
+  height: 17px !important;
+  stroke: #235440 !important;
+}
+.stock-history-search .sm-dp-trigger-btn:hover {
+  background: #ecf4ea !important;
+  color: #166534 !important;
+}
+.stock-history-search > button { min-height: 38px; }
 .stock-history-active-filter {
   display: flex;
   flex-wrap: wrap;

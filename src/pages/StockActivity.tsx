@@ -150,12 +150,14 @@ export default function StockActivity({
   onChanged,
   onLogout,
   mode = 'activity',
+  accountCreatedAt,
 }: {
   items: Product[];
   revision: number;
   onChanged: () => Promise<void>;
   onLogout: () => void;
   mode?: 'activity' | 'history';
+  accountCreatedAt?: string;
 }) {
   const [itemId, setItemId] = useState('');
   const type = 'RECEIPT';
@@ -170,11 +172,32 @@ export default function StockActivity({
   const request = useRef<{ signature: string; id: string } | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+
+  const today = useMemo(
+    () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }),
+    [],
+  );
+
+  const minDate = useMemo(() => {
+    if (accountCreatedAt && /^\d{4}-\d{2}-\d{2}/.test(accountCreatedAt)) {
+      return accountCreatedAt.slice(0, 10);
+    }
+    return undefined;
+  }, [accountCreatedAt]);
+
+  // Bộ lọc phân loại: 'OUT' (Xuất kho) hoặc 'IN' (Nhập kho) - Đã xóa lựa chọn "Tất cả"
+  const [direction, setDirection] = useState<'OUT' | 'IN'>('OUT');
+
+  // Tìm kiếm: Tên sản phẩm & Ngày giao dịch (1 ngày duy nhất)
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchDate, setSearchDate] = useState('');
   const [searchProduct, setSearchProduct] = useState('');
-  const [filters, setFilters] = useState({ date: '', product: '' });
+  const [filters, setFilters] = useState<{ date: string; product: string }>({
+    date: '',
+    product: '',
+  });
   const hasFilters = Boolean(filters.date || filters.product);
+
   const [historyError, setHistoryError] = useState('');
   const [rows, setRows] = useState<Movement[]>([]);
   const [page, setPage] = useState(1);
@@ -182,16 +205,45 @@ export default function StockActivity({
   const [more, setMore] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Chế độ hiển thị: theo từng đợt nhập hàng (batch) hoặc xem toàn bộ biến động (flat)
-  const [viewMode, setViewMode] = useState<'batch' | 'flat'>('batch');
+  // Nhóm các biến động theo đợt / đơn hàng
   const [expandedBatches, setExpandedBatches] = useState<Record<string, boolean>>({});
 
   const selected = items.find((item) => item.id === Number(itemId));
 
+  function handleFilterSubmit(e: FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setPage(1);
+    setExpandedBatches({});
+    setFilters({
+      date: searchDate,
+      product: searchProduct.trim(),
+    });
+  }
+
+  function handleResetFilters() {
+    setSearchDate('');
+    setSearchProduct('');
+    setLoading(true);
+    setPage(1);
+    setExpandedBatches({});
+    setFilters({ date: '', product: '' });
+  }
+
   useEffect(() => {
     let active = true;
+    setLoading(true);
     api
-      .get<{ movements: Movement[]; hasMore: boolean }>('/inventory/history', { params: { page, limit: 100, from: filters.date || undefined, to: filters.date || undefined, product: filters.product || undefined } })
+      .get<{ movements: Movement[]; hasMore: boolean }>('/inventory/history', {
+        params: {
+          page,
+          limit: 100,
+          direction,
+          from: filters.date || undefined,
+          to: filters.date || undefined,
+          product: filters.product || undefined,
+        },
+      })
       .then(({ data }) => {
         if (active) {
           setRows(data.movements);
@@ -211,10 +263,17 @@ export default function StockActivity({
     return () => {
       active = false;
     };
-  }, [page, reload, revision, onLogout, filters]);
+  }, [page, reload, revision, onLogout, direction, filters]);
 
-  // Gom các biến động thành từng đợt
-  const batches = useMemo(() => groupMovementsIntoBatches(rows), [rows]);
+  // Gom các biến động thành từng đợt theo đúng phân loại
+  const filteredRows = useMemo(() => {
+    if (direction === 'OUT') {
+      return rows.filter((r) => r.quantityChange < 0 || r.type === 'SALE');
+    }
+    return rows.filter((r) => r.quantityChange > 0 || ['RECEIPT', 'IMPORT', 'OPENING'].includes(r.type));
+  }, [rows, direction]);
+
+  const batches = useMemo(() => groupMovementsIntoBatches(filteredRows), [filteredRows]);
 
   function toggleBatch(batchId: string) {
     setExpandedBatches((prev) => ({ ...prev, [batchId]: !prev[batchId] }));
@@ -362,56 +421,106 @@ export default function StockActivity({
         <div className="inventory-heading stock-history-heading">
           <h3>Lịch sử nhập / xuất kho</h3>
           <div className="stock-history-tools">
-            <div className="stock-history-modes" role="group" aria-label="Cách xem lịch sử">
-              <button type="button" aria-pressed={viewMode === 'batch'} onClick={() => setViewMode('batch')}>
-                Theo nhóm
+            <div className="stock-history-modes" role="group" aria-label="Phân loại đơn">
+              <button
+                type="button"
+                aria-pressed={direction === 'OUT'}
+                onClick={() => {
+                  if (direction !== 'OUT') {
+                    setDirection('OUT');
+                    setPage(1);
+                    setExpandedBatches({});
+                  }
+                }}
+              >
+                Xuất kho
               </button>
-              <button type="button" aria-pressed={viewMode === 'flat'} onClick={() => setViewMode('flat')}>
-                Tất cả
+              <button
+                type="button"
+                aria-pressed={direction === 'IN'}
+                onClick={() => {
+                  if (direction !== 'IN') {
+                    setDirection('IN');
+                    setPage(1);
+                    setExpandedBatches({});
+                  }
+                }}
+              >
+                Nhập kho
               </button>
             </div>
-            <button type="button" aria-expanded={searchOpen} aria-controls="stock-history-search"
-              onClick={() => setSearchOpen((open) => !open)}>
+            <button
+              type="button"
+              aria-expanded={searchOpen}
+              aria-controls="stock-history-search"
+              onClick={() => setSearchOpen((open) => !open)}
+            >
               Tìm kiếm
             </button>
-            <button type="button" disabled={loading} onClick={() => {
-              setLoading(true);
-              setReload((value) => value + 1);
-            }}>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setLoading(true);
+                setReload((value) => value + 1);
+              }}
+            >
               Tải lại
             </button>
           </div>
         </div>
-        <form id="stock-history-search" className="stock-history-search" hidden={!searchOpen} onSubmit={(event) => {
-          event.preventDefault();
-          setLoading(true);
-          setPage(1);
-          setExpandedBatches({});
-          setFilters({ date: searchDate, product: searchProduct.trim() });
-        }}>
+
+        <form
+          id="stock-history-search"
+          className="stock-history-search"
+          hidden={!searchOpen}
+          onSubmit={handleFilterSubmit}
+        >
           <label>
             Tên sản phẩm
-            <input type="search" value={searchProduct} maxLength={100} onChange={(event) => setSearchProduct(event.target.value)} />
+            <input
+              type="search"
+              value={searchProduct}
+              maxLength={100}
+              placeholder="Tìm theo tên sản phẩm…"
+              onChange={(event) => setSearchProduct(event.target.value)}
+            />
           </label>
           <label>
             Ngày giao dịch
-            <input type="date" value={searchDate} min="1900-01-01" onChange={(event) => setSearchDate(event.target.value)} />
+            <DatePicker
+              min={minDate}
+              max={today}
+              value={searchDate}
+              clearable={false}
+              placeholder="Chọn ngày giao dịch"
+              onChange={(val) => {
+                let clamped = val;
+                if (clamped && clamped > today) clamped = today;
+                if (clamped && minDate && clamped < minDate) clamped = minDate;
+                setSearchDate(clamped);
+              }}
+            />
           </label>
           <button type="submit">Áp dụng</button>
         </form>
+
         {hasFilters && (
           <div className="stock-history-active-filter">
-            <span>{[filters.date.split('-').reverse().join('/'), filters.product].filter(Boolean).join(' · ')}</span>
-            <button type="button" onClick={() => {
-              setSearchDate('');
-              setSearchProduct('');
-              setLoading(true);
-              setPage(1);
-              setExpandedBatches({});
-              setFilters({ date: '', product: '' });
-            }}>Bỏ lọc</button>
+            <span>
+              {[
+                filters.date ? `Ngày ${filters.date.split('-').reverse().join('/')}` : '',
+                filters.product ? `Sản phẩm "${filters.product}"` : '',
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+            <button type="button" onClick={handleResetFilters}>
+              Bỏ lọc
+            </button>
           </div>
         )}
+
         {historyError ? (
           <p role="alert" className="error-notice">
             {historyError}
@@ -419,18 +528,27 @@ export default function StockActivity({
         ) : loading ? (
           <p role="status">Đang tải lịch sử…</p>
         ) : !rows.length ? (
-          <p className="inventory-empty">{hasFilters ? 'Không tìm thấy giao dịch phù hợp.' : 'Chưa có giao dịch ở trang này.'}</p>
-        ) : viewMode === 'batch' ? (
+          <p className="inventory-empty">
+            {hasFilters ? 'Không tìm thấy giao dịch phù hợp với bộ lọc.' : 'Chưa có giao dịch nào ở trang này.'}
+          </p>
+        ) : (
           <div className="stock-history-groups">
-            {batches.map(batch => {
+            {batches.map((batch) => {
               const isExpanded = Boolean(expandedBatches[batch.id]);
               return (
                 <article className="stock-history-group" key={batch.id}>
-                  <button type="button" className="stock-history-summary" aria-expanded={isExpanded}
-                    onClick={() => toggleBatch(batch.id)}>
+                  <button
+                    type="button"
+                    className="stock-history-summary"
+                    aria-expanded={isExpanded}
+                    onClick={() => toggleBatch(batch.id)}
+                  >
                     <span>
                       <strong>{batch.title}</strong>
-                      <small>{batch.subtitle}{batch.orderId ? ' · ' + toVnDateDisplay(batch.occurredAt) : ''}</small>
+                      <small>
+                        {batch.subtitle}
+                        {batch.orderId ? ' · ' + toVnDateDisplay(batch.occurredAt) : ''}
+                      </small>
                     </span>
                     <strong className={batch.batchType === 'DAILY_EXPORT' ? 'stock-out' : 'stock-in'}>
                       {summarizeBatchQuantities(batch.movements)}
@@ -439,23 +557,38 @@ export default function StockActivity({
                   </button>
                   {isExpanded && (
                     <ul className="stock-history-rows">
-                      {batch.movements.map(m => (
+                      {batch.movements.map((m) => (
                         <li key={m.id}>
                           <div>
                             <strong>{m.productName}</strong>
                             <small>
-                              {labels[m.type] || m.type} · {new Date(m.createdAt).toLocaleTimeString('vi-VN', {
-                                hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Ho_Chi_Minh',
+                              {labels[m.type] || m.type} ·{' '}
+                              {new Date(m.createdAt).toLocaleTimeString('vi-VN', {
+                                hour: '2-digit',
+                                minute: '2-digit',
+                                timeZone: 'Asia/Ho_Chi_Minh',
                               })}
                             </small>
                           </div>
                           <div className="stock-history-quantity">
-                            <strong className={m.quantityChange < 0 ? 'stock-out' : 'stock-in'}>
+                            <span className={`stock-change-pill ${m.quantityChange < 0 ? 'is-out' : 'is-in'}`}>
                               {m.quantityChange > 0 ? '+' : ''}{m.quantityChange} {m.unit}
-                            </strong>
-                            <small>Tồn {m.quantityBefore} → {m.quantityAfter}</small>
+                            </span>
+                            <div className="stock-balance-pill">
+                              <span className="stock-balance-title">Tồn kho:</span>
+                              <span className="stock-balance-before">{m.quantityBefore}</span>
+                              <span className="stock-balance-arrow" aria-hidden="true">→</span>
+                              <strong className={`stock-balance-after ${m.quantityChange < 0 ? 'is-out' : 'is-in'}`}>
+                                {m.quantityAfter} {m.unit}
+                              </strong>
+                            </div>
                           </div>
-                          {m.note && <details><summary>Ghi chú</summary><p>{m.note}</p></details>}
+                          {m.note && (
+                            <details>
+                              <summary>Ghi chú</summary>
+                              <p>{m.note}</p>
+                            </details>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -463,53 +596,6 @@ export default function StockActivity({
                 </article>
               );
             })}
-          </div>
-        ) : (
-          /* Chế độ xem toàn bộ biến động phẳng (flat) */
-          <div className="inventory-table-wrap">
-            <table className="inventory-table">
-              <thead>
-                <tr>
-                  <th>Thời gian</th>
-                  <th>Sản phẩm</th>
-                  <th>Thao tác</th>
-                  <th>Thay đổi</th>
-                  <th>Tồn trước → sau</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.id}>
-                    <td>{new Date(row.createdAt).toLocaleString('vi-VN')}</td>
-                    <td>
-                      <strong>{row.productName}</strong>
-                      <small>{row.note}</small>
-                    </td>
-                    <td>
-                      <span
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          fontSize: '11.5px',
-                          fontWeight: 600,
-                          backgroundColor: row.quantityChange > 0 ? '#dcfce7' : '#fee2e2',
-                          color: row.quantityChange > 0 ? '#15803d' : '#b91c1c',
-                        }}
-                      >
-                        {labels[row.type] || row.type}
-                      </span>
-                    </td>
-                    <td className={row.quantityChange < 0 ? 'stock-out' : 'stock-in'}>
-                      {row.quantityChange > 0 ? '+' : ''}
-                      {row.quantityChange} {row.unit}
-                    </td>
-                    <td>
-                      {row.quantityBefore} → {row.quantityAfter} {row.unit}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         )}
 

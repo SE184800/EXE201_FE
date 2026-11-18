@@ -4,9 +4,6 @@ import { getApiError, isUnauthenticated } from '../../services/api';
 import { AdminDialog, Empty, LoadState, Metric, Pager } from './admin.shared';
 import { dateTime, money } from './admin.data';
 import {
-  approveWithdrawal,
-  completeWithdrawal,
-  failWithdrawal,
   getAdminPayments,
   getAdminWithdrawal,
   getAdminWithdrawals,
@@ -172,6 +169,53 @@ function WalletOverview({ onLogout }: Props) {
   );
 }
 
+function getVietQrBankSlug(bankName: string): string {
+  if (!bankName) return 'ACB';
+  const clean = bankName.trim().toUpperCase();
+  const map: Record<string, string> = {
+    'MB': 'MB',
+    'MBBANK': 'MB',
+    'NGÂN HÀNG QUÂN ĐỘI': 'MB',
+    'VCB': 'VCB',
+    'VIETCOMBANK': 'VCB',
+    'NGOẠI THƯƠNG': 'VCB',
+    'TCB': 'TCB',
+    'TECHCOMBANK': 'TCB',
+    'KỸ THƯƠNG': 'TCB',
+    'ACB': 'ACB',
+    'Á CHÂU': 'ACB',
+    'VPB': 'VPB',
+    'VPBANK': 'VPB',
+    'VIỆT NAM THỊNH VƯỢNG': 'VPB',
+    'TPB': 'TPB',
+    'TPBANK': 'TPB',
+    'TIÊN PHONG': 'TPB',
+    'STB': 'STB',
+    'SACOMBANK': 'STB',
+    'SÀI GÒN THƯƠNG TÍN': 'STB',
+    'BIDV': 'BIDV',
+    'ĐẦU TƯ VÀ PHÁT TRIỂN': 'BIDV',
+    'CTG': 'CTG',
+    'VIETINBANK': 'CTG',
+    'CÔNG THƯƠNG': 'CTG',
+    'AGRIBANK': 'AGRIBANK',
+    'NÔNG NGHIỆP': 'AGRIBANK',
+    'VIB': 'VIB',
+    'QUỐC TẾ': 'VIB',
+    'HDB': 'HDB',
+    'HDBANK': 'HDB',
+    'SHB': 'SHB',
+    'OCB': 'OCB',
+    'MSB': 'MSB',
+    'TIMO': 'TIMO',
+    'CAKE': 'CAKE',
+  };
+  for (const [key, slug] of Object.entries(map)) {
+    if (clean.includes(key)) return slug;
+  }
+  return clean.replace(/\s+/g, '');
+}
+
 function WithdrawalRequests({ onLogout }: Props) {
   const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
@@ -183,11 +227,19 @@ function WithdrawalRequests({ onLogout }: Props) {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [working, setWorking] = useState<number | null>(null);
-  const [detail, setDetail] = useState<WithdrawalRequest | null>(null);
   const [rejecting, setRejecting] = useState<WithdrawalRequest | null>(null);
-  const [completing, setCompleting] = useState<WithdrawalRequest | null>(null);
+  const [qrPayout, setQrPayout] = useState<WithdrawalRequest | null>(null);
+  const [qrError, setQrError] = useState(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [adminNote, setAdminNote] = useState('');
-  const [reference, setReference] = useState('');
+
+  function copyToClipboard(val: string, field: string) {
+    if (navigator?.clipboard?.writeText) {
+      void navigator.clipboard.writeText(val);
+    }
+    setCopiedField(field);
+    window.setTimeout(() => setCopiedField((cur) => (cur === field ? null : cur)), 2000);
+  }
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -212,22 +264,25 @@ function WithdrawalRequests({ onLogout }: Props) {
     return () => window.clearTimeout(timer);
   }, [load, revision]);
 
-  async function approve(request: WithdrawalRequest) {
-    if (working !== null) return;
-    setWorking(request.id);
-    setError('');
-    try {
-      await approveWithdrawal(request.id, { adminNote: adminNote.trim() || undefined });
-      setNotice(`Đã duyệt yêu cầu rút ${money(request.amount)}.`);
-      setDetail(null);
-      setAdminNote('');
-      setRevision((n) => n + 1);
-    } catch (issue) {
-      setError(getApiError(issue));
-    } finally {
-      setWorking(null);
-    }
-  }
+  // Tự động kiểm tra trạng thái khi mở modal chuyển tiền:
+  // Khi SePay bắn webhook hoàn tất đơn, tự động thông báo và đóng cửa sổ
+  useEffect(() => {
+    if (!qrPayout) return;
+    const payoutId = qrPayout.id;
+    const interval = window.setInterval(async () => {
+      try {
+        const updated = await getAdminWithdrawal(payoutId);
+        if (updated && updated.status === 'COMPLETED') {
+          setNotice('Chuyển tiền thành công!');
+          setQrPayout(null);
+          setRevision((n) => n + 1);
+        }
+      } catch {
+        // ignore polling error
+      }
+    }, 1500);
+    return () => window.clearInterval(interval);
+  }, [qrPayout]);
 
   async function reject() {
     if (!rejecting || working !== null) return;
@@ -250,59 +305,6 @@ function WithdrawalRequests({ onLogout }: Props) {
     }
   }
 
-  async function complete() {
-    if (!completing || working !== null) return;
-    if (reference.trim().length < 3) {
-      setError('Cần nhập mã giao dịch chuyển khoản từ 3 ký tự trở lên.');
-      return;
-    }
-    setWorking(completing.id);
-    setError('');
-    try {
-      await completeWithdrawal(completing.id, {
-        reference: reference.trim(),
-        adminNote: adminNote.trim() || undefined,
-      });
-      setNotice(`Đã ghi nhận chuyển khoản ${money(completing.amount)}.`);
-      setCompleting(null);
-      setReference('');
-      setAdminNote('');
-      setRevision((n) => n + 1);
-    } catch (issue) {
-      setError(getApiError(issue));
-    } finally {
-      setWorking(null);
-    }
-  }
-
-  async function markFailed() {
-    if (!completing || working !== null) return;
-    if (adminNote.trim().length < 3) {
-      setError('Cần nhập lý do thất bại từ 3 ký tự trở lên.');
-      return;
-    }
-    setWorking(completing.id);
-    setError('');
-    try {
-      await failWithdrawal(completing.id, { adminNote: adminNote.trim() });
-      setNotice('Đã đánh dấu thất bại. Số tiền đã được hoàn lại ví.');
-      setCompleting(null);
-      setAdminNote('');
-      setRevision((n) => n + 1);
-    } catch (issue) {
-      setError(getApiError(issue));
-    } finally {
-      setWorking(null);
-    }
-  }
-
-  async function openDetail(request: WithdrawalRequest) {
-    try {
-      setDetail(await getAdminWithdrawal(request.id));
-    } catch (issue) {
-      setError(getApiError(issue));
-    }
-  }
 
   return (
     <>
@@ -357,7 +359,6 @@ function WithdrawalRequests({ onLogout }: Props) {
                 <tr>
                   <th>Người dùng</th>
                   <th>Số tiền</th>
-                  <th>Nguồn</th>
                   <th>Tài khoản nhận</th>
                   <th>Trạng thái</th>
                   <th>Ngày tạo</th>
@@ -375,13 +376,6 @@ function WithdrawalRequests({ onLogout }: Props) {
                       <strong>{money(request.amount)}</strong>
                     </td>
                     <td>
-                      <span
-                        className={`admin-badge ${request.isSandbox ? 'good' : ''}`}
-                      >
-                        {request.isSandbox ? 'Tiền ảo' : 'Thường'}
-                      </span>
-                    </td>
-                    <td>
                       <strong>{request.bankName}</strong>
                       <small>
                         {request.bankAccountNumber} · {request.bankAccountHolder}
@@ -394,17 +388,43 @@ function WithdrawalRequests({ onLogout }: Props) {
                       <small>{dateTime(request.createdAt)}</small>
                     </td>
                     <td>
-                      <button onClick={() => void openDetail(request)}>Chi tiết</button>
-                      {request.status === 'PENDING' && (
-                        <button
-                          disabled={working !== null}
-                          onClick={() => {
-                            setRejecting(request);
-                            setAdminNote('');
-                          }}
-                        >
-                          Từ chối
-                        </button>
+                      {['PENDING', 'APPROVED'].includes(request.status) ? (
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            className="admin-primary"
+                            style={{
+                              background: '#15803d',
+                              borderColor: '#15803d',
+                              color: '#ffffff',
+                              fontWeight: 600,
+                              padding: '6px 12px',
+                            }}
+                            onClick={() => {
+                              setQrPayout(request);
+                              setQrError(false);
+                            }}
+                          >
+                            Xác nhận
+                          </button>
+                          <button
+                            style={{
+                              background: '#ffffff',
+                              borderColor: '#ef4444',
+                              color: '#dc2626',
+                              fontWeight: 600,
+                              padding: '6px 12px',
+                            }}
+                            disabled={working !== null}
+                            onClick={() => {
+                              setRejecting(request);
+                              setAdminNote('');
+                            }}
+                          >
+                            Từ chối
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ color: '#94a3b8' }}>—</span>
                       )}
                     </td>
                   </tr>
@@ -417,101 +437,6 @@ function WithdrawalRequests({ onLogout }: Props) {
         )}
         <Pager page={page} total={total} hasMore={hasMore} onPage={setPage} />
       </Panel>
-
-      {detail && (
-        <AdminDialog
-          title={`Yêu cầu rút tiền #${detail.id}`}
-          busy={working !== null}
-          onClose={() => setDetail(null)}
-        >
-          <div className="admin-dialog-body">
-            <dl className="admin-detail-list">
-              <div>
-                <dt>Người dùng</dt>
-                <dd>
-                  {detail.userName} (@{detail.username})
-                </dd>
-              </div>
-              <div>
-                <dt>Số tiền</dt>
-                <dd>{money(detail.amount)}</dd>
-              </div>
-              <div>
-                <dt>Ngân hàng</dt>
-                <dd>{detail.bankName}</dd>
-              </div>
-              <div>
-                <dt>Số tài khoản</dt>
-                <dd>{detail.bankAccountNumber}</dd>
-              </div>
-              <div>
-                <dt>Chủ tài khoản</dt>
-                <dd>{detail.bankAccountHolder}</dd>
-              </div>
-              <div>
-                <dt>Trạng thái</dt>
-                <dd>{detail.statusLabel}</dd>
-              </div>
-              <div>
-                <dt>Ghi chú</dt>
-                <dd>{detail.note || '—'}</dd>
-              </div>
-              <div>
-                <dt>Mã giao dịch</dt>
-                <dd>{detail.reference || '—'}</dd>
-              </div>
-              <div>
-                <dt>Ngày tạo</dt>
-                <dd>{dateTime(detail.createdAt)}</dd>
-              </div>
-            </dl>
-            {['PENDING', 'APPROVED'].includes(detail.status) && (
-              <>
-                <label>
-                  Ghi chú kiểm duyệt
-                  <textarea
-                    rows={3}
-                    maxLength={500}
-                    value={adminNote}
-                    onChange={(e) => setAdminNote(e.target.value)}
-                    placeholder="Ghi chú cho người dùng (không bắt buộc)"
-                  />
-                </label>
-                <div className="admin-dialog-actions">
-                  {detail.status === 'PENDING' && (
-                    <button
-                      className="admin-primary"
-                      disabled={working !== null}
-                      onClick={() => void approve(detail)}
-                    >
-                      {working === detail.id ? 'Đang xử lý…' : 'Duyệt yêu cầu rút tiền'}
-                    </button>
-                  )}
-                  <button
-                    disabled={working !== null}
-                    onClick={() => {
-                      setCompleting(detail);
-                      setReference('');
-                      setAdminNote('');
-                    }}
-                  >
-                    Ghi nhận chuyển khoản
-                  </button>
-                  <button
-                    disabled={working !== null}
-                    onClick={() => {
-                      setRejecting(detail);
-                      setAdminNote('');
-                    }}
-                  >
-                    Từ chối
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </AdminDialog>
-      )}
 
       {rejecting && (
         <AdminDialog
@@ -528,67 +453,179 @@ function WithdrawalRequests({ onLogout }: Props) {
                 maxLength={500}
                 value={adminNote}
                 onChange={(e) => setAdminNote(e.target.value)}
-                placeholder="Ví dụ: Tài khoản không khớp chủ tài khoản"
+                placeholder="Ví dụ: Tài khoản nhận tiền không chính xác"
               />
             </label>
             <div className="admin-dialog-actions">
               <button
+                type="button"
+                disabled={working !== null}
+                onClick={() => setRejecting(null)}
+              >
+                Hủy
+              </button>
+              <button
                 className="admin-primary"
+                style={{ background: '#dc2626', borderColor: '#dc2626', color: '#ffffff', fontWeight: 600 }}
                 disabled={working !== null}
                 onClick={() => void reject()}
               >
-                {working === rejecting.id ? 'Đang xử lý…' : 'Xác nhận từ chối'}
+                {working === rejecting.id ? 'Đang xử lý…' : 'Xác nhận'}
               </button>
             </div>
           </div>
         </AdminDialog>
       )}
 
-      {completing && (
-        <AdminDialog
-          title={`Hoàn tất rút tiền #${completing.id}`}
-          busy={working !== null}
-          onClose={() => setCompleting(null)}
-        >
-          <div className="admin-dialog-body">
-            <p>
-              Nhập mã giao dịch chuyển khoản sau khi tiền đã được chuyển tới tài khoản của người
-              dùng.
-            </p>
-            <label>
-              Mã giao dịch chuyển khoản
-              <input
-                maxLength={100}
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-                placeholder="Ví dụ: CK 987654"
-              />
-            </label>
-            <label>
-              Ghi chú
-              <textarea
-                rows={3}
-                maxLength={500}
-                value={adminNote}
-                onChange={(e) => setAdminNote(e.target.value)}
-                placeholder="Ghi chú cho người dùng (không bắt buộc)"
-              />
-            </label>
-            <div className="admin-dialog-actions">
-              <button
-                className="admin-primary"
-                disabled={working !== null}
-                onClick={() => void complete()}
+      {qrPayout && (() => {
+        const bankSlug = getVietQrBankSlug(qrPayout.bankName);
+        const hasValidBank = Boolean(bankSlug && qrPayout.bankAccountNumber?.trim());
+        const qrUrl = hasValidBank
+          ? `https://img.vietqr.io/image/${bankSlug}-${qrPayout.bankAccountNumber.trim()}-compact2.png?amount=${qrPayout.amount}&addInfo=RUT%20${qrPayout.id}&accountName=${encodeURIComponent(qrPayout.bankAccountHolder)}`
+          : '';
+        return (
+          <AdminDialog
+            title={`Thông tin chuyển tiền · Đơn #${qrPayout.id}`}
+            busy={working !== null}
+            onClose={() => setQrPayout(null)}
+          >
+            <div className="admin-dialog-body" style={{ maxWidth: '440px' }}>
+              {/* Hiển thị mã QR lên đầu hoặc thông báo nếu không tạo được mã QR */}
+              {!hasValidBank || qrError ? (
+                <div
+                  style={{
+                    background: '#fff7ed',
+                    border: '1px solid #fed7aa',
+                    borderRadius: '8px',
+                    padding: '12px 14px',
+                    fontSize: '13px',
+                    color: '#9a3412',
+                    lineHeight: '1.5',
+                    textAlign: 'center',
+                  }}
+                >
+                  ⚠️ <strong>Không tạo được mã QR</strong> cho tài khoản ngân hàng này.
+                  <br />
+                  Vui lòng chuyển khoản thủ công theo <strong>thông tin tài khoản</strong> bên dưới.
+                </div>
+              ) : (
+                <div
+                  style={{
+                    textAlign: 'center',
+                    background: '#ffffff',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '1px solid #e2e8f0',
+                  }}
+                >
+                  <img
+                    src={qrUrl}
+                    alt={`VietQR ${qrPayout.id}`}
+                    onError={() => setQrError(true)}
+                    style={{
+                      maxWidth: '100%',
+                      height: 'auto',
+                      borderRadius: '6px',
+                      display: 'block',
+                      margin: '0 auto',
+                    }}
+                  />
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: 'grid',
+                  gap: '8px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  padding: '12px',
+                  fontSize: '13px',
+                }}
               >
-                {working === completing.id ? 'Đang lưu…' : 'Xác nhận đã chuyển khoản'}
-              </button>
-              <button disabled={working !== null} onClick={() => void markFailed()}>
-                Chuyển khoản thất bại
-              </button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#64748b' }}>Ngân hàng nhận:</span>
+                  <strong style={{ color: '#0f172a' }}>{qrPayout.bankName} ({bankSlug})</strong>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#64748b' }}>Số tài khoản:</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <strong style={{ color: '#0f172a', fontFamily: 'monospace', fontSize: '14px' }}>
+                      {qrPayout.bankAccountNumber}
+                    </strong>
+                    <button
+                      type="button"
+                      style={{ padding: '2px 8px', fontSize: '11px', height: 'auto', border: '1px solid #cbd5e1' }}
+                      onClick={() => copyToClipboard(qrPayout.bankAccountNumber, 'acc')}
+                    >
+                      {copiedField === 'acc' ? '✓ Đã chép' : 'Sao chép'}
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#64748b' }}>Chủ tài khoản:</span>
+                  <strong style={{ color: '#0f172a', textTransform: 'uppercase' }}>
+                    {qrPayout.bankAccountHolder}
+                  </strong>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#64748b' }}>Số tiền cần chuyển:</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <strong style={{ color: '#dc2626', fontSize: '15px' }}>
+                      {money(qrPayout.amount)}
+                    </strong>
+                    <button
+                      type="button"
+                      style={{ padding: '2px 8px', fontSize: '11px', height: 'auto', border: '1px solid #cbd5e1' }}
+                      onClick={() => copyToClipboard(String(qrPayout.amount), 'amount')}
+                    >
+                      {copiedField === 'amount' ? '✓ Đã chép' : 'Sao chép'}
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#64748b' }}>Nội dung chuyển khoản:</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <strong style={{ color: '#2563eb', fontFamily: 'monospace', fontSize: '14px' }}>
+                      RUT {qrPayout.id}
+                    </strong>
+                    <button
+                      type="button"
+                      style={{ padding: '2px 8px', fontSize: '11px', height: 'auto', border: '1px solid #cbd5e1' }}
+                      onClick={() => copyToClipboard(`RUT ${qrPayout.id}`, 'content')}
+                    >
+                      {copiedField === 'content' ? '✓ Đã chép' : 'Sao chép'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className="admin-dialog-actions"
+                style={{
+                  marginTop: '12px',
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  alignItems: 'center',
+                }}
+              >
+                <button
+                  type="button"
+                  disabled={working !== null}
+                  onClick={() => setQrPayout(null)}
+                >
+                  Đóng
+                </button>
+              </div>
             </div>
-          </div>
-        </AdminDialog>
-      )}
+          </AdminDialog>
+        );
+      })()}
     </>
   );
 }

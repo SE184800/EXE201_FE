@@ -110,6 +110,7 @@ export default function StoreInventory({
   const navigate = useNavigate();
   const [displayName, setDisplayName] = useState(user.name);
   const [storeProfile, setStoreProfile] = useState<StoreProfile | null>(null);
+  const [accountCreatedAt, setAccountCreatedAt] = useState<string>('');
   const [checkingStore, setCheckingStore] = useState(true);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
@@ -260,6 +261,7 @@ export default function StoreInventory({
         if (active) {
           setStoreProfile(data.profile.storeProfile || null);
           if (data.profile.name) setDisplayName(data.profile.name);
+          if (data.profile.createdAt) setAccountCreatedAt(data.profile.createdAt);
         }
       })
       .catch((issue: unknown) => {
@@ -938,7 +940,10 @@ export default function StoreInventory({
               })()}
               <section
                 hidden={
-                  activeTab === 'profile' || activeTab === 'restock' || activeTab === 'quick-sale'
+                  activeTab === 'profile' ||
+                  activeTab === 'restock' ||
+                  activeTab === 'quick-sale' ||
+                  activeTab === 'history'
                 }
                 className="metric-grid"
                 aria-label="Tổng quan kho"
@@ -1338,6 +1343,7 @@ export default function StoreInventory({
               onChanged={refresh}
               onLogout={onLogout}
               mode="history"
+              accountCreatedAt={accountCreatedAt || (storeProfile as any)?.createdAt || (user as any)?.createdAt}
             />}
           </div>
           <div hidden={activeTab !== 'restock'}>

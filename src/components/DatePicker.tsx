@@ -27,6 +27,8 @@ export type DatePickerProps = {
   defaultViewYear?: number;
   showTodayButton?: boolean;
   ariaLabel?: string;
+  clearable?: boolean;
+  hideClearButton?: boolean;
 };
 
 type ViewMode = 'days' | 'months' | 'years';
@@ -111,6 +113,8 @@ export default function DatePicker({
   defaultViewYear,
   showTodayButton = true,
   ariaLabel,
+  clearable = true,
+  hideClearButton = false,
 }: DatePickerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -712,7 +716,7 @@ export default function DatePicker({
             if (!open && !disabled) openPopover();
           }}
         />
-        {!required && value && !disabled && (
+        {clearable && !hideClearButton && !required && value && !disabled && (
           <button
             type="button"
             tabIndex={-1}

@@ -31,9 +31,9 @@ const TYPE_META: Record<
   SANDBOX_WITHDRAWAL: { label: 'Rút tiền thử nghiệm', tagClass: 'tag-warning', category: 'MOCK' },
   DEPOSIT: { label: 'Nạp tiền', tagClass: 'tag-success', category: 'DEPOSIT' },
   QR_DEPOSIT: { label: 'Nạp tiền qua QR', tagClass: 'tag-success', category: 'DEPOSIT' },
-  WITHDRAWAL_HOLD: { label: 'Tạm giữ tiền rút', tagClass: 'tag-warning', category: 'WITHDRAW' },
+  WITHDRAWAL_HOLD: { label: 'Đang rút tiền', tagClass: 'tag-warning', category: 'WITHDRAW' },
   WITHDRAWAL_RELEASE: { label: 'Hoàn lại tiền rút', tagClass: 'tag-info', category: 'WITHDRAW' },
-  WITHDRAWAL_PAYOUT: { label: 'Chuyển khoản rút tiền', tagClass: 'tag-danger', category: 'WITHDRAW' },
+  WITHDRAWAL_PAYOUT: { label: 'Rút tiền thành công', tagClass: 'tag-success', category: 'WITHDRAW' },
   ESCROW_LOCK: { label: 'Tạm khóa cọc đơn hàng', tagClass: 'tag-danger', category: 'ESCROW' },
   ESCROW_RELEASE: { label: 'Giải phóng cọc đơn hàng', tagClass: 'tag-info', category: 'ESCROW' },
   ESCROW_RECEIVED: { label: 'Nhận cọc đơn giao xong', tagClass: 'tag-success', category: 'ESCROW' },
@@ -84,7 +84,7 @@ export default function WalletPage({
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawForm, setWithdrawForm] = useState({
     amount: '',
-    bankName: 'Vietcombank',
+    bankName: '',
     bankAccountNumber: '',
     bankAccountHolder: '',
     note: '',
@@ -130,9 +130,9 @@ export default function WalletPage({
   }, [load]);
 
   // Load bank info from profile if available
-  useEffect(() => {
-    api
-      .get<{
+  const fetchProfileBankInfo = useCallback(async () => {
+    try {
+      const { data } = await api.get<{
         profile?: {
           name?: string;
           supplierProfile?: {
@@ -148,28 +148,54 @@ export default function WalletPage({
             storeName?: string;
           };
         };
-      }>('/profile')
-      .then(({ data }) => {
-        const supp = data?.profile?.supplierProfile;
-        const store = data?.profile?.storeProfile;
-        const bankInfo = supp?.bankAccountNumber ? supp : store?.bankAccountNumber ? store : null;
-        if (bankInfo) {
-          setWithdrawForm((prev) => ({
-            ...prev,
-            bankName: prev.bankName || bankInfo.bankName || 'Vietcombank',
-            bankAccountNumber: prev.bankAccountNumber || bankInfo.bankAccountNumber || '',
-            bankAccountHolder:
-              prev.bankAccountHolder ||
-              bankInfo.bankAccountHolder ||
-              supp?.businessName ||
-              store?.storeName ||
-              data?.profile?.name ||
-              '',
-          }));
-        }
-      })
-      .catch(() => { });
-  }, []);
+      }>('/profile');
+
+      const supp = data?.profile?.supplierProfile;
+      const store = data?.profile?.storeProfile;
+      const current = role === 'SUPPLIER' ? supp : store;
+      const fallback = role === 'SUPPLIER' ? store : supp;
+      const bankInfo =
+        (current?.bankAccountNumber ? current : null) ||
+        (fallback?.bankAccountNumber ? fallback : null) ||
+        current ||
+        fallback;
+
+      const resolvedBankName =
+        bankInfo?.bankName ||
+        current?.bankName ||
+        fallback?.bankName ||
+        '';
+
+      const resolvedAccountNumber =
+        bankInfo?.bankAccountNumber ||
+        current?.bankAccountNumber ||
+        fallback?.bankAccountNumber ||
+        '';
+
+      const resolvedAccountHolder =
+        bankInfo?.bankAccountHolder ||
+        current?.bankAccountHolder ||
+        fallback?.bankAccountHolder ||
+        (role === 'SUPPLIER' ? supp?.businessName : store?.storeName) ||
+        data?.profile?.name ||
+        '';
+
+      if (resolvedAccountNumber || resolvedBankName) {
+        setWithdrawForm((prev) => ({
+          ...prev,
+          bankName: resolvedBankName || 'Vietcombank',
+          bankAccountNumber: resolvedAccountNumber,
+          bankAccountHolder: resolvedAccountHolder,
+        }));
+      }
+    } catch {
+      // silent
+    }
+  }, [role]);
+
+  useEffect(() => {
+    void fetchProfileBankInfo();
+  }, [fetchProfileBankInfo]);
 
   // Create QR for official deposit
   async function handleGenerateQr(e?: FormEvent) {
@@ -255,7 +281,7 @@ export default function WalletPage({
     try {
       await createWithdrawalRequest({
         amount: parsedAmount,
-        bankName: withdrawForm.bankName,
+        bankName: withdrawForm.bankName || 'Vietcombank',
         bankAccountNumber: withdrawForm.bankAccountNumber.trim(),
         bankAccountHolder: withdrawForm.bankAccountHolder.trim(),
         note: withdrawForm.note || undefined,
@@ -273,7 +299,28 @@ export default function WalletPage({
   }
 
   // Filter transactions
-  const filteredTransactions = transactions.filter((t) => {
+  // Deduplicate historical WITHDRAWAL_HOLD if a corresponding WITHDRAWAL_PAYOUT exists
+  const completedWithdrawalIds = new Set(
+    transactions
+      .filter((t) => t.type === 'WITHDRAWAL_PAYOUT' && t.reference)
+      .map((t) => {
+        const m = t.reference.match(/(\d+)$/);
+        return m ? m[1] : null;
+      })
+      .filter(Boolean)
+  );
+
+  const cleanTransactions = transactions.filter((t) => {
+    if (t.type === 'WITHDRAWAL_HOLD' && t.reference) {
+      const m = t.reference.match(/(\d+)$/);
+      if (m && completedWithdrawalIds.has(m[1])) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  const filteredTransactions = cleanTransactions.filter((t) => {
     if (filter === 'ALL') return true;
     const meta = TYPE_META[t.type];
     return meta?.category === filter;
@@ -386,7 +433,8 @@ export default function WalletPage({
           <button
             type="button"
             className="secondary-button"
-            onClick={() => {
+            onClick={async () => {
+              await fetchProfileBankInfo();
               setShowWithdrawModal(true);
               setWithdrawError('');
             }}
@@ -963,7 +1011,171 @@ export default function WalletPage({
                 </div>
               )}
 
-              <div style={{ marginBottom: '14px' }}>
+              {/* Thẻ tóm tắt tài khoản nhận tiền đã lưu */}
+              {withdrawForm.bankAccountNumber?.trim() ? (
+                <div
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '12px 14px',
+                    marginBottom: '16px',
+                    fontSize: '13px',
+                  }}
+                >
+                  <div
+                    style={{
+                      color: '#64748b',
+                      fontSize: '11px',
+                      textTransform: 'uppercase',
+                      fontWeight: 700,
+                      marginBottom: '8px',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span>Tài khoản nhận tiền (Đã liên kết hồ sơ)</span>
+                    <Link
+                      to={role === 'SUPPLIER' ? '/supplier/profile' : '/store/profile'}
+                      onClick={() => setShowWithdrawModal(false)}
+                      style={{
+                        fontSize: '11.5px',
+                        color: '#059669',
+                        fontWeight: 600,
+                        textDecoration: 'none',
+                      }}
+                    >
+                      Đổi tài khoản ↗
+                    </Link>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ color: '#64748b' }}>Ngân hàng:</span>
+                    <strong style={{ color: '#0f172a' }}>{withdrawForm.bankName || 'Chưa cập nhật'}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ color: '#64748b' }}>Số tài khoản:</span>
+                    <strong style={{ color: '#0f172a', fontFamily: 'monospace', fontSize: '14px' }}>
+                      {withdrawForm.bankAccountNumber}
+                    </strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Chủ tài khoản:</span>
+                    <strong style={{ color: '#0f172a', textTransform: 'uppercase' }}>
+                      {withdrawForm.bankAccountHolder}
+                    </strong>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      background: '#fffbeb',
+                      border: '1px solid #fde68a',
+                      borderRadius: '8px',
+                      padding: '10px 14px',
+                      fontSize: '12.5px',
+                      color: '#92400e',
+                      marginBottom: '14px',
+                      lineHeight: '1.5',
+                    }}
+                  >
+                    ℹ️ Chưa ghi nhận thông tin tài khoản ngân hàng trong Hồ sơ. Vui lòng nhập thông tin bên dưới để rút tiền:
+                  </div>
+
+                  <div style={{ marginBottom: '14px' }}>
+                    <label
+                      htmlFor="withdraw-bank"
+                      style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
+                    >
+                      Ngân hàng thụ hưởng: <span style={{ color: '#dc2626' }}>*</span>
+                    </label>
+                    <select
+                      id="withdraw-bank"
+                      value={withdrawForm.bankName || 'Vietcombank'}
+                      onChange={(e) => setWithdrawForm({ ...withdrawForm, bankName: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                        backgroundColor: '#ffffff',
+                      }}
+                    >
+                      {POPULAR_BANKS.map((bank) => (
+                        <option key={bank} value={bank}>
+                          {bank}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ marginBottom: '14px' }}>
+                    <label
+                      htmlFor="withdraw-account-number"
+                      style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
+                    >
+                      Số tài khoản nhận tiền: <span style={{ color: '#dc2626' }}>*</span>
+                    </label>
+                    <input
+                      id="withdraw-account-number"
+                      type="text"
+                      required
+                      value={withdrawForm.bankAccountNumber}
+                      onChange={(e) =>
+                        setWithdrawForm({ ...withdrawForm, bankAccountNumber: e.target.value })
+                      }
+                      placeholder="Nhập số tài khoản ngân hàng…"
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: '14px' }}>
+                    <label
+                      htmlFor="withdraw-account-holder"
+                      style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
+                    >
+                      Tên chủ tài khoản: <span style={{ color: '#dc2626' }}>*</span>
+                    </label>
+                    <input
+                      id="withdraw-account-holder"
+                      type="text"
+                      required
+                      value={withdrawForm.bankAccountHolder}
+                      onChange={(e) =>
+                        setWithdrawForm({
+                          ...withdrawForm,
+                          bankAccountHolder: e.target.value.toUpperCase(),
+                        })
+                      }
+                      placeholder="NGUYEN VAN A"
+                      style={{
+                        width: '100%',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        border: '1px solid #cbd5e1',
+                        fontSize: '14px',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                        textTransform: 'uppercase',
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+
+              <div style={{ marginBottom: '16px' }}>
                 <label
                   htmlFor="withdraw-amount"
                   style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
@@ -977,6 +1189,7 @@ export default function WalletPage({
                   max={availableBalance}
                   step="10000"
                   required
+                  autoFocus
                   value={withdrawForm.amount}
                   onChange={(e) => setWithdrawForm({ ...withdrawForm, amount: e.target.value })}
                   placeholder="Ví dụ: 1000000"
@@ -985,99 +1198,10 @@ export default function WalletPage({
                     padding: '10px 14px',
                     borderRadius: '8px',
                     border: '1px solid #cbd5e1',
-                    fontSize: '14px',
+                    fontSize: '15px',
+                    fontWeight: 600,
                     boxSizing: 'border-box',
                     outline: 'none',
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '14px' }}>
-                <label
-                  htmlFor="withdraw-bank"
-                  style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
-                >
-                  Ngân hàng thụ hưởng:
-                </label>
-                <select
-                  id="withdraw-bank"
-                  value={withdrawForm.bankName}
-                  onChange={(e) => setWithdrawForm({ ...withdrawForm, bankName: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                    backgroundColor: '#ffffff',
-                  }}
-                >
-                  {POPULAR_BANKS.map((bank) => (
-                    <option key={bank} value={bank}>
-                      {bank}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div style={{ marginBottom: '14px' }}>
-                <label
-                  htmlFor="withdraw-account-number"
-                  style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
-                >
-                  Số tài khoản nhận tiền: <span style={{ color: '#dc2626' }}>*</span>
-                </label>
-                <input
-                  id="withdraw-account-number"
-                  type="text"
-                  required
-                  value={withdrawForm.bankAccountNumber}
-                  onChange={(e) =>
-                    setWithdrawForm({ ...withdrawForm, bankAccountNumber: e.target.value })
-                  }
-                  placeholder="Nhập số tài khoản ngân hàng…"
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                  }}
-                />
-              </div>
-
-              <div style={{ marginBottom: '14px' }}>
-                <label
-                  htmlFor="withdraw-account-holder"
-                  style={{ display: 'block', fontSize: '13px', fontWeight: 650, color: '#1e293b', marginBottom: '6px' }}
-                >
-                  Tên chủ tài khoản: <span style={{ color: '#dc2626' }}>*</span>
-                </label>
-                <input
-                  id="withdraw-account-holder"
-                  type="text"
-                  required
-                  value={withdrawForm.bankAccountHolder}
-                  onChange={(e) =>
-                    setWithdrawForm({
-                      ...withdrawForm,
-                      bankAccountHolder: e.target.value.toUpperCase(),
-                    })
-                  }
-                  placeholder="NGUYEN VAN A"
-                  style={{
-                    width: '100%',
-                    padding: '10px 14px',
-                    borderRadius: '8px',
-                    border: '1px solid #cbd5e1',
-                    fontSize: '14px',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                    textTransform: 'uppercase',
                   }}
                 />
               </div>
