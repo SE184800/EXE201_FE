@@ -61,9 +61,22 @@ export async function getStoreRevenue(
   page = 1,
   signal?: AbortSignal,
 ) {
-  return (
-    await api.get<StoreRevenueReport>('/inventory/revenue', { params: { from, to, page }, signal })
-  ).data;
+  const fetchPage = async (pageNumber: number) =>
+    (
+      await api.get<StoreRevenueReport>('/inventory/revenue', {
+        params: { from, to, page: pageNumber, detail: 'daily' },
+        signal,
+      })
+    ).data;
+
+  const report = await fetchPage(page);
+  const sales = [...report.sales];
+  let current = report;
+  while (current.hasMore) {
+    current = await fetchPage(current.page + 1);
+    sales.push(...current.sales);
+  }
+  return { ...report, sales, hasMore: false };
 }
 
 export async function getSupplierRevenue(
