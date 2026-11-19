@@ -131,15 +131,15 @@ const SUPPLIER_RESOLUTIONS: { code: string; label: string }[] = [
   { code: 'REJECT', label: 'Từ chối bồi thường (Hàng giao đúng quy chuẩn)' },
 ];
 
-async function compressImageFile(file: File): Promise<string> {
+async function compressImageToBlob(file: File): Promise<Blob> {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800;
-        const MAX_HEIGHT = 800;
+        const MAX_WIDTH = 1200;
+        const MAX_HEIGHT = 1200;
         let width = img.width;
         let height = img.height;
         if (width > height) {
@@ -157,25 +157,43 @@ async function compressImageFile(file: File): Promise<string> {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(img, 0, 0, width, height);
-        const base64 = canvas.toDataURL('image/jpeg', 0.7);
-        const key =
-          'https://local.supplymind.vn/img_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
-        try {
-          localStorage.setItem(key, base64);
-          resolve(key);
-        } catch {
-          resolve(base64);
-        }
+        canvas.toBlob(
+          (blob) => {
+            resolve(blob || file);
+          },
+          'image/jpeg',
+          0.8,
+        );
       };
+      img.onerror = () => resolve(file);
       img.src = e.target?.result as string;
     };
+    reader.onerror = () => resolve(file);
     reader.readAsDataURL(file);
   });
 }
 
+async function uploadComplaintImageFile(file: File): Promise<string> {
+  const blob = await compressImageToBlob(file);
+  const formData = new FormData();
+  formData.append('image', blob, (file.name || 'complaint').replace(/\.[^/.]+$/, '') + '.jpg');
+  const res = await api.post<{ success: boolean; imageUrl: string }>(
+    '/complaints/upload-image',
+    formData,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  );
+  if (!res.data?.imageUrl) {
+    throw new Error('Máy chủ không phản hồi đường dẫn ảnh.');
+  }
+  return res.data.imageUrl;
+}
+
 function resolveComplaintImage(url: string | null | undefined): string | undefined {
   if (!url) return undefined;
-  if (url.startsWith('https://local.supplymind.vn/img_')) return localStorage.getItem(url) || url;
+  if (url.startsWith('https://local.supplymind.vn/img_')) {
+    const cached = localStorage.getItem(url);
+    return cached || undefined;
+  }
   return url;
 }
 
@@ -201,7 +219,7 @@ function resolveComplaintImages(url: string | null | undefined): string[] {
 
 function parseComplaintDescription(desc: string) {
   const match = desc.match(
-    /^\[Sự cố:\s*([^|\]]+)(?:\s*\|\s*Bồi hoàn ước tính:\s*([^|\]]+))?(?:\s*\|\s*Đề xuất:\s*([^|\]]+))?\]\s*\n?([\s\S]*)$/,
+    /^\[Sự cố:\s*([^|\]]+)(?:\s*\|\s*(?:Bồi hoàn|Thiệt hại) ước tính:\s*([^|\]]+))?(?:\s*\|\s*Đề xuất:\s*([^|\]]+))?\]\s*\n?([\s\S]*)$/,
   );
   if (match) {
     return {
@@ -458,7 +476,6 @@ export default function OrderList({
   busy = false,
   onStatus,
   onEditDriver,
-  onReportIncident,
   onInventoryChanged,
   onViewHistory,
 }: Props) {
@@ -497,6 +514,7 @@ export default function OrderList({
   const [complaintActionBusy, setComplaintActionBusy] = useState(false);
   const [complaintSelectedItems, setComplaintSelectedItems] = useState<Record<number, number>>({});
   const [complaintImages, setComplaintImages] = useState<string[]>([]);
+  const [uploadingComplaintImage, setUploadingComplaintImage] = useState(false);
   const [supplierPlan, setSupplierPlan] = useState<string>('AGREE_REPLACE_0VND');
   const [supplierDeductAmount, setSupplierDeductAmount] = useState<string>('');
   const [viewingImage, setViewingImage] = useState<string | null>(null);
@@ -997,20 +1015,15 @@ export default function OrderList({
         const note = actionModal.requireInput ? actionModalInput.trim() : undefined;
         const res = await api.post<{ success: boolean; message?: string }>(
           `/complaints/${actionModal.complaintId}/buyer-decision`,
-          { decision: actionModal.decision, ...(note ? { note } : {}) },
+          {
+            decision: actionModal.decision === 'REJECT_PROPOSAL' ? 'COUNTER' : actionModal.decision,
+            ...(note ? { note } : {}),
+          },
         );
         setDepositNotice(res.data?.message || 'Đã cập nhật kết quả thương lượng.');
       } else if (actionModal.type === 'complete-supplementary') {
-        const payRes = await fetch(`/api/orders/${actionModal.orderId}/pay`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ method: 'COD', amount: 0 }),
-        });
-        const payData = await payRes.json().catch(() => ({}));
-        if (!payRes.ok) throw new Error(payData.message || 'Không thể xác nhận đơn giao bù.');
-        const compRes = await fetch(`/api/orders/${actionModal.orderId}/complete`, { method: 'POST' });
-        const compData = await compRes.json().catch(() => ({}));
-        if (!compRes.ok) throw new Error(compData.message || 'Không thể hoàn tất đơn giao bù.');
+        await submitOrderPayment(actionModal.orderId, 'COD', 0);
+        await completeOrder(actionModal.orderId);
         setDepositNotice(`Đã xác nhận nhận đủ hàng giao bù cho đơn #${actionModal.orderId}.`);
       }
       setActionModal(null);
@@ -1033,11 +1046,17 @@ export default function OrderList({
     setComplaintResponse('');
     const proposed = order.complaint?.workflow?.proposedAction;
     const isValidPlan = SUPPLIER_RESOLUTIONS.some((p) => p.code === proposed);
-    setSupplierPlan(isValidPlan && proposed ? proposed : SUPPLIER_RESOLUTIONS[0].code);
+    setSupplierPlan(isValidPlan && proposed ? proposed : 'DEDUCT_COD');
+    const parsed = parseComplaintDescription(order.complaint?.description || '');
+    let autoLoss = '';
+    if (parsed.claimValue) {
+      const num = parseInt(parsed.claimValue.replace(/\D/g, ''), 10);
+      if (num > 0) autoLoss = String(num);
+    }
     setSupplierDeductAmount(
       order.complaint?.workflow?.proposedDeductAmount
         ? String(Math.round(order.complaint.workflow.proposedDeductAmount))
-        : '',
+        : autoLoss,
     );
     setComplaintMessage('');
   };
@@ -2058,6 +2077,9 @@ export default function OrderList({
                               }}
                               onClick={() => setViewingImage(imgSrc)}
                               title="Bấm vào để xem ảnh phóng to"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLElement).style.display = 'none';
+                              }}
                             />
                           ))}
                         </div>
@@ -2376,8 +2398,9 @@ export default function OrderList({
                                 type="button"
                                 disabled={busy}
                                 onClick={() => openSupplierComplaint(order)}
+                                style={{ backgroundColor: '#ea580c', color: '#ffffff', fontWeight: 700 }}
                               >
-                                Đề xuất phương án xử lý
+                                Giải quyết khiếu nại
                               </button>
                             ) : isOpenComplaint && pendingParty === 'STORE_OWNER' ? (
                               <span
@@ -2766,17 +2789,6 @@ export default function OrderList({
                       </button>
                     )}
 
-                    {order.status === 'SHIPPING' && (
-                      <button
-                        type="button"
-                        className="table-button danger"
-                        style={{ backgroundColor: '#dc2626', color: '#ffffff', fontWeight: 650 }}
-                        onClick={() => onReportIncident?.(order)}
-                      >
-                        Báo sự cố
-                      </button>
-                    )}
-
                     {order.status === 'APPROVED' && (
                       <button
                         className="table-button primary-small"
@@ -2948,12 +2960,12 @@ export default function OrderList({
             <div className="complaint-dialog-header">
               <div>
                 <div className="complaint-dialog-eyebrow">
-                  {kind === 'store' ? 'HỖ TRỢ & KHIẾU NẠI ĐƠN HÀNG' : 'TIẾP NHẬN XỬ LÝ SỰ CỐ'}
+                  {kind === 'store' ? 'HỖ TRỢ & KHIẾU NẠI ĐƠN HÀNG' : 'TIẾP NHẬN & GIẢI QUYẾT SỰ CỐ'}
                 </div>
                 <h2 className="complaint-dialog-title">
                   {kind === 'store'
                     ? `Báo cáo sự cố đơn hàng #${complaintOrder.id}`
-                    : `Xử lý khiếu nại đơn #${complaintOrder.id}`}
+                    : `Giải quyết khiếu nại đơn #${complaintOrder.id}`}
                 </h2>
                 <p className="complaint-dialog-subtitle">
                   {kind === 'store'
@@ -3185,68 +3197,98 @@ export default function OrderList({
                           const remainingSlots = 5 - complaintImages.length;
                           if (remainingSlots <= 0) return;
                           const filesToProcess = files.slice(0, remainingSlots);
-                          const newCompressedList: string[] = [];
-                          for (const file of filesToProcess) {
-                            const compressed = await compressImageFile(file);
-                            newCompressedList.push(compressed);
+                          setUploadingComplaintImage(true);
+                          setComplaintMessage('');
+                          try {
+                            const newUrls: string[] = [];
+                            for (const file of filesToProcess) {
+                              const uploadedUrl = await uploadComplaintImageFile(file);
+                              if (uploadedUrl) newUrls.push(uploadedUrl);
+                            }
+                            if (newUrls.length > 0) {
+                              setComplaintImages((prev) => [...prev, ...newUrls]);
+                            }
+                          } catch (err: any) {
+                            setComplaintMessage(getApiError(err) || 'Không thể tải ảnh lên máy chủ.');
+                          } finally {
+                            setUploadingComplaintImage(false);
+                            e.target.value = '';
                           }
-                          setComplaintImages((prev) => [...prev, ...newCompressedList]);
-                          e.target.value = '';
                         }}
                       />
 
                       {complaintImages.length > 0 && (
                         <div className="complaint-gallery-grid">
-                          {complaintImages.map((imgSrc, idx) => (
-                            <div key={idx} className="complaint-gallery-thumb">
-                              <img
-                                src={resolveComplaintImage(imgSrc)}
-                                alt={`Ảnh bằng chứng ${idx + 1}`}
-                                onClick={() => setViewingImage(resolveComplaintImage(imgSrc) || null)}
-                                title="Bấm để xem ảnh to"
-                              />
-                              <button
-                                type="button"
-                                className="complaint-thumb-remove"
-                                onClick={() => setComplaintImages((prev) => prev.filter((_, i) => i !== idx))}
-                                title="Gỡ ảnh này"
-                              >
-                                ×
-                              </button>
-                            </div>
-                          ))}
+                          {complaintImages.map((imgSrc, idx) => {
+                            const resolvedSrc = resolveComplaintImage(imgSrc) || imgSrc;
+                            return (
+                              <div key={idx} className="complaint-gallery-thumb">
+                                <img
+                                  src={resolvedSrc}
+                                  alt={`Ảnh bằng chứng ${idx + 1}`}
+                                  onClick={() => setViewingImage(resolvedSrc || null)}
+                                  title="Bấm để xem ảnh to"
+                                  onError={(ev) => {
+                                    (ev.currentTarget as HTMLElement).style.display = 'none';
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  className="complaint-thumb-remove"
+                                  onClick={() => setComplaintImages((prev) => prev.filter((_, i) => i !== idx))}
+                                  title="Gỡ ảnh này"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
 
                       {complaintImages.length < 5 && (
                         <div
                           className="complaint-upload-zone"
-                          style={{ marginTop: complaintImages.length > 0 ? '8px' : 0 }}
-                          onClick={() => document.getElementById('complaint-file-input')?.click()}
+                          style={{
+                            marginTop: complaintImages.length > 0 ? '8px' : 0,
+                            opacity: uploadingComplaintImage ? 0.7 : 1,
+                            pointerEvents: uploadingComplaintImage ? 'none' : 'auto',
+                          }}
+                          onClick={() => {
+                            if (!uploadingComplaintImage) {
+                              document.getElementById('complaint-file-input')?.click();
+                            }
+                          }}
                         >
                           <div className="complaint-upload-icon">
-                            <svg
-                              width="20"
-                              height="20"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            >
-                              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                              <circle cx="12" cy="13" r="4" />
-                            </svg>
+                            {uploadingComplaintImage ? (
+                              <span style={{ fontSize: '18px' }}>⏳</span>
+                            ) : (
+                              <svg
+                                width="20"
+                                height="20"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                                <circle cx="12" cy="13" r="4" />
+                              </svg>
+                            )}
                           </div>
                           <div className="complaint-upload-info">
                             <span className="complaint-upload-title">
-                              {complaintImages.length === 0
+                              {uploadingComplaintImage
+                                ? 'Đang nén và tải ảnh lên máy chủ...'
+                                : complaintImages.length === 0
                                 ? 'Tải lên hoặc chụp ảnh kiện hàng / các món lỗi'
                                 : `Thêm ảnh bằng chứng khác (${complaintImages.length}/5 ảnh)`}
                             </span>
                             <span className="complaint-upload-sub">
-                              Định dạng JPG, PNG • Chọn nhiều ảnh cùng lúc • Hệ thống tự nén dung lượng
+                              Định dạng JPG, PNG • Tự động lưu lên server để Chủ vựa xem được ngay
                             </span>
                           </div>
                         </div>
@@ -3356,6 +3398,9 @@ export default function OrderList({
                                   className="complaint-preview-thumb"
                                   onClick={() => setViewingImage(imgSrc)}
                                   title="Bấm để xem ảnh phóng to"
+                                  onError={(e) => {
+                                    (e.currentTarget as HTMLElement).style.display = 'none';
+                                  }}
                                 />
                               ))}
                             </div>
@@ -3364,27 +3409,155 @@ export default function OrderList({
                       })()}
                     </div>
 
-                    <div className="complaint-field">
-                      <label className="complaint-label">
-                        <span>Phương án đề xuất gửi Tiệm tạp hóa</span>
-                      </label>
-                      <select
-                        className="complaint-select"
-                        value={supplierPlan}
-                        onChange={(e) => setSupplierPlan(e.target.value)}
+                    {/* 4. Phương án xử lý luồng tiền bồi thường */}
+                    <div
+                      style={{
+                        marginBottom: '14px',
+                        padding: '14px 16px',
+                        backgroundColor: '#f0fdf4',
+                        borderRadius: '10px',
+                        border: '1px solid #bbf7d0',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: '13.5px',
+                          fontWeight: 700,
+                          color: '#166534',
+                          display: 'block',
+                          marginBottom: '12px',
+                        }}
                       >
-                        {SUPPLIER_RESOLUTIONS.map((p) => (
-                          <option key={p.code} value={p.code}>
-                            {p.label}
-                          </option>
-                        ))}
-                      </select>
+                        Phương án xử lý luồng tiền bồi thường:
+                      </span>
+
+                      <label
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '10px',
+                          cursor: 'pointer',
+                          marginBottom: '12px',
+                          fontSize: '13px',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="supplierPlanOption"
+                          value="DEDUCT_COD"
+                          checked={supplierPlan === 'DEDUCT_COD'}
+                          onChange={() => setSupplierPlan('DEDUCT_COD')}
+                          style={{ marginTop: '3px', accentColor: '#166534' }}
+                        />
+                        <span>
+                          <strong style={{ color: '#14532d' }}>
+                            Trừ thẳng tiền hàng hỏng vào COD khi nhận hàng (Khuyên dùng)
+                          </strong>
+                          <small style={{ display: 'block', color: '#15803d', marginTop: '2px', lineHeight: 1.4 }}>
+                            Tiệm chỉ trả tiền cho các món nguyên vẹn. Khoản tiền hàng hỏng được trừ trực tiếp trên tiền mặt tài xế thu khi giao.
+                          </small>
+                        </span>
+                      </label>
+
+                      <label
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '10px',
+                          cursor: 'pointer',
+                          marginBottom: '12px',
+                          fontSize: '13px',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="supplierPlanOption"
+                          value="AGREE_REPLACE_0VND"
+                          checked={supplierPlan === 'AGREE_REPLACE_0VND'}
+                          onChange={() => setSupplierPlan('AGREE_REPLACE_0VND')}
+                          style={{ marginTop: '3px', accentColor: '#166534' }}
+                        />
+                        <span>
+                          <strong style={{ color: '#14532d' }}>
+                            Tiếp tục giao hàng lành & Tự động tạo đơn bù 0đ (Giao chuyến sau)
+                          </strong>
+                          <small style={{ display: 'block', color: '#15803d', marginTop: '2px', lineHeight: 1.4 }}>
+                            Tiệm nhận phần lành, hệ thống tự động khởi tạo đơn mới giá 0đ chứa các món hàng bị hư hỏng để giao bù miễn phí ở chuyến xe tiếp theo.
+                          </small>
+                        </span>
+                      </label>
+
+                      <label
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '10px',
+                          cursor: 'pointer',
+                          marginBottom: '8px',
+                          fontSize: '13px',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="supplierPlanOption"
+                          value="DISCUSS"
+                          checked={supplierPlan === 'DISCUSS'}
+                          onChange={() => setSupplierPlan('DISCUSS')}
+                          style={{ marginTop: '3px', accentColor: '#166534' }}
+                        />
+                        <span>
+                          <strong style={{ color: '#1e293b' }}>
+                            Trao đổi thêm phương án khác với cửa hàng
+                          </strong>
+                          <small style={{ display: 'block', color: '#64748b', marginTop: '2px' }}>
+                            Gửi phản hồi trao đổi thêm trước khi chốt giải pháp bồi thường.
+                          </small>
+                        </span>
+                      </label>
+
+                      <label
+                        style={{
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: '10px',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="supplierPlanOption"
+                          value="REJECT"
+                          checked={supplierPlan === 'REJECT'}
+                          onChange={() => setSupplierPlan('REJECT')}
+                          style={{ marginTop: '3px', accentColor: '#166534' }}
+                        />
+                        <span>
+                          <strong style={{ color: '#dc2626' }}>
+                            Từ chối bồi thường (Hàng giao đúng quy chuẩn)
+                          </strong>
+                          <small style={{ display: 'block', color: '#991b1b', marginTop: '2px' }}>
+                            Hàng hóa xuất kho đúng quy chuẩn và nguyên vẹn, giải trình nguyên nhân cho cửa hàng.
+                          </small>
+                        </span>
+                      </label>
                     </div>
 
                     {supplierPlan === 'DEDUCT_COD' && (
-                      <div className="complaint-field">
+                      <div
+                        className="complaint-field"
+                        style={{
+                          marginBottom: '14px',
+                          padding: '12px 14px',
+                          backgroundColor: '#fef2f2',
+                          borderRadius: '8px',
+                          border: '1px solid #fecaca',
+                        }}
+                      >
                         <label className="complaint-label">
-                          <span>Số tiền đề xuất giảm trừ vào COD (VNĐ)</span>
+                          <span style={{ fontWeight: 700, color: '#991b1b' }}>
+                            Số tiền đề xuất giảm trừ vào COD (VNĐ) <span style={{ color: '#ef4444' }}>*</span>
+                          </span>
                         </label>
                         <input
                           type="number"
@@ -3394,6 +3567,7 @@ export default function OrderList({
                           value={supplierDeductAmount}
                           onChange={(e) => setSupplierDeductAmount(e.target.value)}
                           placeholder="Ví dụ: 150000"
+                          style={{ borderColor: '#fca5a5' }}
                         />
                       </div>
                     )}
@@ -3406,14 +3580,15 @@ export default function OrderList({
                         border: '1px solid #bfdbfe',
                         fontSize: '12.5px',
                         color: '#1e3a8a',
+                        marginBottom: '12px',
                       }}
                     >
-                      Phương án bạn gửi sẽ chuyển tới Tiệm tạp hóa để xác nhận đồng ý trước khi hoàn thành và ghi nhận kết quả.
+                      Phương án bạn chọn sẽ được gửi trực tiếp tới Tiệm tạp hóa để xác nhận đồng ý trước khi hoàn thành và ghi nhận kết quả.
                     </div>
 
                     <div className="complaint-field">
                       <label className="complaint-label">
-                        <span>Phản hồi chi tiết gửi đến cửa hàng</span>
+                        <span>Ghi chú thêm về sự cố / Phản hồi đến cửa hàng</span>
                       </label>
                       <textarea
                         className="complaint-textarea"
@@ -3423,7 +3598,7 @@ export default function OrderList({
                         rows={3}
                         value={complaintResponse}
                         onChange={(e) => setComplaintResponse(e.target.value)}
-                        placeholder="Ghi rõ phương án giải quyết, số lượng bù, số tiền giảm hoặc thời gian xử lý..."
+                        placeholder="VD: Đã thống nhất với tài xế và cửa hàng trừ 150.000đ trực tiếp khi nhận hàng..."
                       />
                     </div>
                   </div>
@@ -3470,7 +3645,7 @@ export default function OrderList({
                       >
                         {complaintActionBusy
                           ? 'Đang gửi…'
-                          : 'Gửi phương án cho Tiệm xác nhận'}
+                          : 'Xác nhận giải quyết & Gửi phương án'}
                       </button>
                     ) : (
                       <span style={{ fontSize: '13px', color: '#64748b', fontStyle: 'italic', padding: '6px 12px' }}>

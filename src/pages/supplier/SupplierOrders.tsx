@@ -1157,22 +1157,6 @@ function SupplierIncidentDialog({
                 </small>
               </span>
             </label>
-
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', cursor: 'pointer', fontSize: '13px' }}>
-              <input
-                type="radio"
-                name="incidentAction"
-                checked={action === 'RETURN_ALL'}
-                onChange={() => setAction('RETURN_ALL')}
-                style={{ marginTop: '3px' }}
-              />
-              <span>
-                <strong>Thu hồi toàn bộ hàng về kho & Hoàn 100% tiền cọc</strong>
-                <small style={{ display: 'block', color: '#64748b', marginTop: '2px' }}>
-                  Tài xế mang toàn bộ hàng về kho vựa. Tiền cọc trong Escrow hoàn trả 100% về ví tiệm tạp hóa.
-                </small>
-              </span>
-            </label>
           </div>
 
           <label className="supplier-dialog-field" style={{ marginBottom: '8px' }}>
