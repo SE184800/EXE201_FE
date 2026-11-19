@@ -24,8 +24,8 @@ import type { AuthUser } from '../../types/auth';
 const money = (val: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
 
 const STATUS_ACTIONS: Record<string, { next: string; label: string }> = {
-  PENDING: { next: 'PREPARING', label: 'Duyệt đơn & Bắt đầu soạn hàng' },
-  APPROVED: { next: 'PREPARING', label: 'Bắt đầu soạn đơn' },
+  PENDING: { next: 'APPROVED', label: 'Xác nhận đơn' },
+  APPROVED: { next: 'PREPARING', label: 'Bắt đầu soạn hàng' },
   PREPARING: { next: 'SHIPPING', label: 'Bàn giao vận chuyển' },
 };
 
@@ -487,7 +487,7 @@ function DispatchDriverDialog({
   function computeEstimatedDeliveryTime(): string {
     const [year, month, day] = deliveryDate.split('-');
     const dateFormatted = `${day}/${month}/${year}`;
-    return `Ngày ${dateFormatted} lúc ${deliveryTime}`;
+    return `${deliveryTime} ngày ${dateFormatted}`;
   }
 
   function handleSubmit(shouldDispatch: boolean) {

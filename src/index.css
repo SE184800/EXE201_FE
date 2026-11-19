@@ -1837,10 +1837,18 @@ body:has(.register-page) #supplymind-native-notifications {
   font-size: 10px;
 }
 .order-status {
-  padding: 5px 8px;
+  padding: 5px 10px;
   border-radius: 20px;
-  font-size: 10px !important;
+  font-size: 11px !important;
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.order-completed {
+  color: #15803d !important;
+  background: #dcfce7 !important;
+  border: 1px solid #86efac;
 }
 .order-pending {
   color: #a86815 !important;

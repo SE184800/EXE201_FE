@@ -13,6 +13,16 @@ const ORDER_FLOW = [
   { key: 'DELIVERED', label: 'Hàng đã đến', defaultSub: 'Đã nhận hàng' },
 ];
 
+export function formatEtaTime(timeStr?: string): string {
+  if (!timeStr) return '';
+  const trimmed = timeStr.trim();
+  const m1 = trimmed.match(/^Ngày\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+lúc\s+(\d{1,2}:\d{2})$/i);
+  if (m1) return `${m1[2]} ngày ${m1[1]}`;
+  const m2 = trimmed.match(/^Ngày\s+(\d{1,2})-(\d{1,2})-(\d{4})\s+lúc\s+(\d{1,2}:\d{2})$/i);
+  if (m2) return `${m2[4]} ngày ${m2[1]}/${m2[2]}/${m2[3]}`;
+  return trimmed;
+}
+
 export default function OrderStepper({ order }: Props) {
   const { status, driverInfo, rejectReason, deliveredAt } = order;
 
@@ -69,7 +79,7 @@ export default function OrderStepper({ order }: Props) {
     }
     if (stepKey === 'PREPARING') {
       if (driverInfo?.estimatedDeliveryTime) {
-        return `Hẹn: ${driverInfo.estimatedDeliveryTime}`;
+        return `Hẹn: ${formatEtaTime(driverInfo.estimatedDeliveryTime)}`;
       }
       if (index === activeIndex) return 'Đang đóng gói';
       if (index < activeIndex) return 'Đã soạn xong';
@@ -108,16 +118,20 @@ export default function OrderStepper({ order }: Props) {
           let stepClass = '';
           if (isCancelled || isRejected) {
             stepClass = idx === 0 ? 'completed' : '';
+          } else if (status === 'COMPLETED') {
+            stepClass = 'completed';
           } else if (idx < activeIndex) {
             stepClass = 'completed';
           } else if (idx === activeIndex) {
             stepClass = isIssue && hasActiveIncident ? 'special-alert' : 'current';
           }
 
+          const isNodeChecked = (idx < activeIndex || status === 'COMPLETED') && !isCancelled && !isRejected;
+
           return (
             <div key={step.key} className={`order-stepper-step ${stepClass}`}>
               <div className="step-node">
-                {idx < activeIndex && !isCancelled && !isRejected ? '✓' : idx + 1}
+                {isNodeChecked ? '✓' : idx + 1}
               </div>
               <span className="step-label">{step.label}</span>
               <span className="step-subtext">{getSubtext(step.key, idx)}</span>
@@ -142,7 +156,7 @@ export default function OrderStepper({ order }: Props) {
       {driverInfo?.estimatedDeliveryTime && status === 'PREPARING' && (
         <div className="stepper-alert-bar info">
           <strong>Lịch hẹn giao hàng:</strong>
-          <span>Chủ vựa dự kiến giao hàng lúc {driverInfo.estimatedDeliveryTime}</span>
+          <span>Chủ vựa dự kiến giao hàng lúc {formatEtaTime(driverInfo.estimatedDeliveryTime)}</span>
         </div>
       )}
     </div>

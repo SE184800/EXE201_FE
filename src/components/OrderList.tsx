@@ -13,9 +13,7 @@ import {
   submitOrderPayment,
   completeOrder,
   importOrderToInventory,
-  previewOrderInventory,
   type InventoryImportOptions,
-  type InventoryImportPreview,
   confirmSupplierPayment,
   savePackingChecklist,
   type SupplierOrder,
@@ -36,7 +34,7 @@ const statuses = {
   SHIPPING: 'Đang vận chuyển',
   ISSUE_HANDLING: 'Đang kiểm hàng',
   DELIVERED: 'Đã giao',
-  COMPLETED: 'Hoàn tất',
+  COMPLETED: 'Hoàn thành',
   REJECTED: 'Đã từ chối',
   CANCELLED: 'Đã hủy',
 };
@@ -74,6 +72,56 @@ const REASON_LABELS: Record<string, string> = {
 };
 
 const money = (n: number) => Math.round(n).toLocaleString('vi-VN') + ' ₫';
+
+export function formatEtaTime(timeStr?: string): string {
+  if (!timeStr) return '';
+  const trimmed = timeStr.trim();
+  const m1 = trimmed.match(/^Ngày\s+(\d{1,2}\/\d{1,2}\/\d{4})\s+lúc\s+(\d{1,2}:\d{2})$/i);
+  if (m1) return `${m1[2]} ngày ${m1[1]}`;
+  const m2 = trimmed.match(/^Ngày\s+(\d{1,2})-(\d{1,2})-(\d{4})\s+lúc\s+(\d{1,2}:\d{2})$/i);
+  if (m2) return `${m2[4]} ngày ${m2[1]}/${m2[2]}/${m2[3]}`;
+  return trimmed;
+}
+
+export function guessRetailUnitAndPack(packaging?: string | null, productName?: string | null): { unitsPerPack: string; unit: string } {
+  const packStr = (packaging || '').trim().toLowerCase();
+  const nameStr = (productName || '').trim().toLowerCase();
+  const text = `${packStr} ${nameStr}`;
+
+  // 1. Explicit pattern in packaging or name: e.g. "thùng 30 gói", "thùng 24 lon", "thùng 12 chai", "thùng 48 hộp", "lốc 6 lon", "bịch 50 gói", etc.
+  const regex = /(\d+)\s*(gói|lon|chai|hộp|bịch|túi|vỉ|ly|cái|chiếc|thỏi|hũ|que)/i;
+  const match = packStr.match(regex) || nameStr.match(regex);
+  if (match) {
+    return { unitsPerPack: match[1], unit: match[2].toLowerCase() };
+  }
+
+  // 2. Pattern "30 gói/thùng"
+  const regex2 = /(\d+)\s*([a-zA-Z\u00C0-\u1EF9]+)\s*\/\s*(thùng|hộp|lốc|két|kiện)/i;
+  const match2 = packStr.match(regex2) || nameStr.match(regex2);
+  if (match2) {
+    return { unitsPerPack: match2[1], unit: match2[2].toLowerCase() };
+  }
+
+  // 3. Heuristic matching by keywords:
+  if (text.includes('bia') || text.includes('nước ngọt') || text.includes('coca') || text.includes('pepsi') || text.includes('sting') || text.includes('redbull') || text.includes('lon')) {
+    return { unitsPerPack: '24', unit: 'lon' };
+  }
+  if (text.includes('mì') || text.includes('cháo') || text.includes('phở') || text.includes('hảo hảo') || text.includes('omachi') || text.includes('gói')) {
+    return { unitsPerPack: '30', unit: 'gói' };
+  }
+  if (text.includes('dầu ăn') || text.includes('nước mắm') || text.includes('nước tương') || text.includes('nước suối') || text.includes('aquafina') || text.includes('lavie') || text.includes('chai')) {
+    return { unitsPerPack: '12', unit: 'chai' };
+  }
+  if (text.includes('sữa') || text.includes('vinamilk') || text.includes('milo') || text.includes('th true')) {
+    return { unitsPerPack: '48', unit: 'hộp' };
+  }
+  if (text.includes('cà phê') || text.includes('g7') || text.includes('snack') || text.includes('bánh') || text.includes('bịch')) {
+    return { unitsPerPack: '24', unit: 'bịch' };
+  }
+
+  // Default fallback: 1 cái
+  return { unitsPerPack: '1', unit: 'cái' };
+}
 
 const SUPPLIER_RESOLUTIONS: { code: string; label: string }[] = [
   { code: 'AGREE_REPLACE_0VND', label: 'Giao bù hàng mới (Tự động tạo đơn 0đ khi Tiệm đồng ý)' },
@@ -436,8 +484,8 @@ export default function OrderList({
 
   // Payment dialog state for Store Owner
   const [paymentOrder, setPaymentOrder] = useState<SupplierOrder | null>(null);
-  const [importDraft, setImportDraft] = useState<{ order: SupplierOrder; preview: InventoryImportPreview } | null>(null);
-  const [importUnits, setImportUnits] = useState<Record<number, { unit: string; count: string }>>({});
+  const [importModalOrder, setImportModalOrder] = useState<SupplierOrder | null>(null);
+  const [importConversions, setImportConversions] = useState<Record<number, { unitsPerPack: string; unit: string }>>({});
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
 
   const [complaintOrder, setComplaintOrder] = useState<SupplierOrder | null>(null);
@@ -494,18 +542,10 @@ export default function OrderList({
     setActionLoadingId(order.id);
     setError('');
     try {
-      if (!options) {
-        const preview = await previewOrderInventory(order.id);
-        setImportUnits(Object.fromEntries(preview.lines.map(line => [
-          line.id, { unit: line.needsConversion ? line.unit : '', count: '' },
-        ])));
-        setImportDraft({ order, preview });
-        return;
-      }
       const result = await importOrderToInventory(order.id, options);
-      setImportDraft(null);
+      setImportModalOrder(null);
       setData(current => ({ ...current, orders: current.orders.map(row => row.id === order.id ? result.order : row) }));
-      setDepositNotice(result.message);
+      setDepositNotice(result.message || `Đã nhập thành công ${result.count || ''} mặt hàng của đơn #${order.id} vào kho.`);
       setReload(value => value + 1);
       await onInventoryChanged?.();
     } catch (issue) {
@@ -515,17 +555,6 @@ export default function OrderList({
       setActionLoadingId(null);
     }
   }
-
-  const importLines = importDraft?.preview.lines.map(line => {
-    const choice = importUnits[line.id];
-    const count = Number(choice?.count);
-    const unit = line.existingUnit ?? (choice?.unit || line.unit);
-    const quantity = choice?.unit ? line.packs * count : line.quantity;
-    return { ...line, choice, count, unit, quantity,
-      valid: !line.incompatible && (!line.needsConversion || Boolean(choice?.unit)) &&
-        Number.isInteger(quantity) && quantity > 0 && quantity <= 2147483647 &&
-        (!choice?.unit || Number.isInteger(count)) };
-  }) ?? [];
 
   async function handleSupplierConfirmPayment(order: SupplierOrder) {
     if (actionLoadingId !== null) return;
@@ -1205,7 +1234,7 @@ export default function OrderList({
                   </span>
                 </div>
                 <span className={`order-status order-${order.status.toLowerCase()}`}>
-                  {order.statusLabel}
+                  {order.status === 'COMPLETED' ? '✓ Hoàn thành' : order.statusLabel}
                 </span>
               </div>
 
@@ -1371,8 +1400,6 @@ export default function OrderList({
                   !order.note?.includes('[VỰA ĐÃ ĐỒNG Ý DỜI LỊCH') &&
                   !order.note?.includes('[VỰA TỪ CHỐI DỜI LỊCH')
                 );
-                const isAccepted = request ? request.status === 'ACCEPTED' : Boolean(order.note?.includes('[VỰA ĐÃ ĐỒNG Ý DỜI LỊCH'));
-                const isRejected = request ? request.status === 'REJECTED' : Boolean(order.note?.includes('[VỰA TỪ CHỐI DỜI LỊCH'));
 
                 if (isPending) {
                   return kind === 'supplier' ? (
@@ -1448,48 +1475,6 @@ export default function OrderList({
                   );
                 }
 
-                if (isAccepted) {
-                  return (
-                    <div
-                      style={{
-                        margin: '8px 0',
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        backgroundColor: '#f0fdf4',
-                        border: '1px solid #bbf7d0',
-                        fontSize: '12px',
-                        color: '#166534',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}
-                    >
-                      <strong>Chủ vựa đã xác nhận giờ giao{request ? `: ${request.requestedTime}` : '.'}</strong>
-                    </div>
-                  );
-                }
-
-                if (isRejected) {
-                  return (
-                    <div
-                      style={{
-                        margin: '8px 0',
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        backgroundColor: '#fef2f2',
-                        border: '1px solid #fecaca',
-                        fontSize: '12px',
-                        color: '#b91c1c',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}
-                    >
-                      <strong>Giữ giờ giao cũ.{request?.responseNote ? ` ${request.responseNote}` : ' Gọi chủ vựa nếu cần đổi.'}</strong>
-                    </div>
-                  );
-                }
-
                 return null;
               })()}
 
@@ -1541,11 +1526,11 @@ export default function OrderList({
                         if (isAcceptedReschedule) {
                           const matchTime = order.note?.match(/\[YÊU CẦU DỜI LỊCH GIAO[^\]]*\]: Hẹn lúc ([^(—|\]]+)/);
                           if (matchTime && matchTime[1]) {
-                            return `Giờ giao mới: ${matchTime[1].trim()}`;
+                            return `Dự kiến giao: ${formatEtaTime(matchTime[1].trim())}`;
                           }
                         }
                         if (order.driverInfo?.estimatedDeliveryTime) {
-                          return `Dự kiến giao: ${order.driverInfo.estimatedDeliveryTime}`;
+                          return `Dự kiến giao: ${formatEtaTime(order.driverInfo.estimatedDeliveryTime)}`;
                         }
                         return order.status === 'PREPARING'
                           ? 'Chưa có giờ giao'
@@ -2665,42 +2650,62 @@ export default function OrderList({
               {order.status === 'COMPLETED' && (
                 <div
                   style={{
-                    margin: '10px 0',
-                    padding: '10px 14px',
+                    margin: '12px 0',
+                    padding: '12px 16px',
                     borderRadius: '8px',
-                    backgroundColor: '#f0fdf4',
-                    border: '1px solid #86efac',
-                    color: '#15803d',
-                    fontWeight: 650,
-                    fontSize: '12.5px',
+                    backgroundColor: '#ecfdf5',
+                    border: '1.5px solid #10b981',
+                    color: '#065f46',
+                    fontWeight: 700,
+                    fontSize: '13.5px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 1px 3px rgba(16, 185, 129, 0.12)',
                   }}
                 >
-                  Đơn đã hoàn tất · Đã thanh toán đủ
+                  <span style={{ fontSize: '16px', color: '#10b981', display: 'flex', alignItems: 'center' }}>✓</span>
+                  <span>Đơn đã hoàn tất · Đã thanh toán đủ</span>
                 </div>
               )}
 
               {kind === 'store' && order.status === 'COMPLETED' && (
                 <div className="order-inventory-import">
-                  <button
-                    type="button"
-                    className="primary-button"
-                    aria-label={order.inventoryImportedAt ? `Đơn #${order.id} đã thêm vào kho` : `Thêm đơn #${order.id} vào kho`}
-                    disabled={busy || actionLoadingId !== null || Boolean(order.inventoryImportedAt) || !order.canImportInventory}
-                    onClick={() => void handleImportInventory(order)}
-                  >
-                    {order.inventoryImportedAt ? 'Đã nhập kho' : actionLoadingId === order.id ? 'Đang nhập kho…' : 'Nhập kho'}
-                  </button>
-                  <p className="catalog-hint">
-                    {order.inventoryImportedAt
-                      ? `Nhập kho lúc ${new Date(order.inventoryImportedAt).toLocaleString('vi-VN')}`
-                      : order.inventoryImportBlockedReason || (order.canImportInventory
-                        ? 'Chỉ nhập khi đã kiểm đủ hàng. Mỗi đơn nhập một lần.'
-                        : 'Chưa thể nhập kho. Vui lòng tải lại đơn.')}
-                  </p>
-                  {order.inventoryImportedAt && onViewHistory && (
-                    <button type="button" className="secondary-button" onClick={onViewHistory}>
-                      Xem lịch sử nhập kho
-                    </button>
+                  {!order.inventoryImportedAt ? (
+                    <>
+                      <button
+                        type="button"
+                        className="primary-button"
+                        aria-label={`Thêm đơn #${order.id} vào kho`}
+                        disabled={busy || actionLoadingId !== null || !order.canImportInventory}
+                        onClick={() => {
+                          const initialMap: Record<number, { unitsPerPack: string; unit: string }> = {};
+                          for (const item of order.items) {
+                            initialMap[item.id] = guessRetailUnitAndPack(item.packaging, item.productName);
+                          }
+                          setImportConversions(initialMap);
+                          setImportModalOrder(order);
+                        }}
+                      >
+                        {actionLoadingId === order.id ? 'Đang nhập kho…' : 'Nhập kho'}
+                      </button>
+                      <p className="catalog-hint">
+                        {order.inventoryImportBlockedReason || (order.canImportInventory
+                          ? 'Chỉ nhập khi đã kiểm đủ hàng. Mỗi đơn nhập một lần.'
+                          : 'Chưa thể nhập kho. Vui lòng tải lại đơn.')}
+                      </p>
+                    </>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', padding: '10px 14px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                      <span style={{ color: '#15803d', fontWeight: 650, fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>📦</span> Đã nhập kho lúc {new Date(order.inventoryImportedAt).toLocaleString('vi-VN')}
+                      </span>
+                      {onViewHistory && (
+                        <button type="button" className="secondary-button" style={{ padding: '5px 12px', fontSize: '12px' }} onClick={onViewHistory}>
+                          Xem lịch sử nhập kho
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -2725,11 +2730,7 @@ export default function OrderList({
                       </div>
                     )}
                   </div>
-                ) : (
-                  <p className="catalog-hint">
-                    Hàng {money(order.subtotal)} · Phí giao {money(order.deliveryFee)}
-                  </p>
-                );
+                ) : null;
               })()}
 
               <div className="order-card-bottom">
@@ -2776,6 +2777,17 @@ export default function OrderList({
                       </button>
                     )}
 
+                    {order.status === 'APPROVED' && (
+                      <button
+                        className="table-button primary-small"
+                        disabled={busy}
+                        onClick={() => onStatus?.(order)}
+                        style={{ backgroundColor: '#059669', fontWeight: 650 }}
+                      >
+                        Bắt đầu soạn hàng
+                      </button>
+                    )}
+
                     {order.status === 'PENDING' && (
                       <>
                         <button
@@ -2788,7 +2800,7 @@ export default function OrderList({
                           }
                           onClick={() => onStatus?.(order)}
                         >
-                          Nhận đơn
+                          Xác nhận đơn
                         </button>
                         <button
                           className="table-button danger"
@@ -2896,35 +2908,6 @@ export default function OrderList({
               )}
 
 
-              {/* Nút báo cáo đơn hàng khi đã giao (DELIVERED) */}
-              {kind === 'store' && order.status === 'DELIVERED' && !order.complaint && (() => {
-                const isExpired = order.deliveredAt && (Date.now() - new Date(order.deliveredAt).getTime() > 24 * 60 * 60 * 1000);
-                return (
-                  <div
-                    className="order-card-bottom"
-                    style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #e8eee7' }}
-                  >
-                    {isExpired ? (
-                      <p className="catalog-hint" style={{ margin: 0, color: '#dc2626', fontWeight: 600 }}>
-                        Đã hết thời hạn khiếu nại (24 giờ kể từ khi nhận hàng lúc {new Date(order.deliveredAt!).toLocaleString('vi-VN')}).
-                      </p>
-                    ) : (
-                      <>
-                        <p className="catalog-hint" style={{ margin: 0 }}>
-                          Kiểm tra hàng thực nhận rồi cập nhật kho. Khiếu nại có hiệu lực trong vòng 24 giờ kể từ khi nhận hàng.
-                        </p>
-                        <button
-                          className="table-button complaint-card-report-btn"
-                          type="button"
-                          onClick={() => openStoreComplaint(order)}
-                        >
-                          Báo cáo sự cố
-                        </button>
-                      </>
-                    )}
-                  </div>
-                );
-              })()}
             </article>
           ))}
         </div>
@@ -3868,53 +3851,214 @@ export default function OrderList({
         </div>
       )}
 
-      {importDraft && (
+      {importModalOrder && (
         <div className="supplier-dialog-backdrop">
-          <form className="supplier-dialog" role="dialog" aria-modal="true" aria-labelledby="inventory-preview-title"
+          <form
+            className="supplier-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="inventory-import-title"
+            style={{ maxWidth: '580px', width: '92%', maxHeight: '90vh', overflowY: 'auto' }}
             onSubmit={event => {
               event.preventDefault();
-              if (!importLines.length || importLines.some(line => !line.valid)) return;
-              void handleImportInventory(importDraft.order, {
-                conversions: importLines.flatMap(line => line.choice?.unit
-                  ? [{ id: line.id, unit: line.choice.unit, unitsPerPack: line.count }] : []),
-                preview: importLines.map(({ id, unit, quantity }) => ({ id, unit, quantity })),
+              if (actionLoadingId !== null) return;
+
+              const conversions = importModalOrder.items.map(item => {
+                const conf = importConversions[item.id] || guessRetailUnitAndPack(item.packaging, item.productName);
+                const unitsPerPack = Math.max(1, parseInt(conf.unitsPerPack, 10) || 1);
+                const unit = (conf.unit || 'cái').trim();
+                return { id: item.id, unit, unitsPerPack };
               });
-            }}>
-            <h2 id="inventory-preview-title">Nhập kho đơn #{importDraft.order.id}</h2>
-            {importLines.map(line => (
-              <fieldset key={line.id} className="supplier-field" disabled={actionLoadingId !== null}>
-                <legend>{line.name}</legend>
-                <span>Đã mua {line.packs} × {line.packaging}</span>
-                {line.canConvert && !line.existingUnit && (
-                  <label className="supplier-field">
-                    Đơn vị nhập kho
-                    <select value={line.choice?.unit ?? ''} onChange={event => {
-                      const unit = event.target.value;
-                      setImportUnits(current => ({ ...current, [line.id]: { unit, count: '' } }));
-                    }}>
-                      <option value="">Chọn đơn vị bán lẻ</option>
-                      {importDraft.preview.units.filter(unit => unit !== line.packaging).map(unit => <option key={unit}>{unit}</option>)}
-                    </select>
-                  </label>
-                )}
-                {line.choice?.unit && (
-                  <label className="supplier-field">
-                    Số {line.choice.unit} trong mỗi {line.packaging}
-                    <input required type="number" min={1} step={1} value={line.choice.count} onChange={event => {
-                      const count = event.target.value;
-                      setImportUnits(current => ({ ...current, [line.id]: { ...current[line.id], count } }));
-                    }} />
-                  </label>
-                )}
-                {line.incompatible && <span>Kiểm tra đơn vị trong kho ({line.unit}) trước khi nhập mặt hàng này.</span>}
-                {line.valid && <strong>{line.multiplier > 1 || line.choice?.unit
-                  ? `${line.packs} × ${line.choice?.unit ? line.count : line.multiplier} = ` : 'Nhập '}{line.quantity} {line.unit}</strong>}
-              </fieldset>
-            ))}
-            {error && <p className="error-notice" role="alert">{error}</p>}
-            <div className="supplier-dialog-actions">
-              <button type="button" className="ghost-button" disabled={actionLoadingId !== null} onClick={() => setImportDraft(null)}>Hủy</button>
-              <button type="submit" className="primary-button" disabled={actionLoadingId !== null || !importLines.length || importLines.some(line => !line.valid)}>Xác nhận nhập kho</button>
+
+              const preview = importModalOrder.items.map(item => {
+                const conf = importConversions[item.id] || guessRetailUnitAndPack(item.packaging, item.productName);
+                const unitsPerPack = Math.max(1, parseInt(conf.unitsPerPack, 10) || 1);
+                const unit = (conf.unit || 'cái').trim();
+                const quantity = Math.max(1, item.quantity * unitsPerPack);
+                return { id: item.id, unit, quantity };
+              });
+
+              void handleImportInventory(importModalOrder, { conversions, preview });
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+              <h2 id="inventory-import-title" style={{ fontSize: '18px', fontWeight: 700, color: '#166534', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>📦</span> Nhập kho đơn #{importModalOrder.id}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setImportModalOrder(null)}
+                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}
+                aria-label="Đóng"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: '13px', color: '#475569', marginBottom: '16px', lineHeight: '1.5' }}>
+              Xác nhận số lượng và đơn vị lẻ có trong 1 thùng/kiện để hệ thống lưu số lượng thực tế vào kho và hỗ trợ tính năng <strong>Bán nhanh</strong> theo từng gói/lon/chai.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '16px' }}>
+              {importModalOrder.items.map(item => {
+                const conf = importConversions[item.id] || guessRetailUnitAndPack(item.packaging, item.productName);
+                const unitsPerPackNum = parseInt(conf.unitsPerPack, 10);
+                const validNum = Number.isInteger(unitsPerPackNum) && unitsPerPackNum > 0;
+                const totalUnits = validNum ? item.quantity * unitsPerPackNum : 0;
+                const retailUnit = conf.unit?.trim() || 'cái';
+
+                return (
+                  <div
+                    key={item.id}
+                    style={{
+                      border: '1px solid #e2e8f0',
+                      borderRadius: '10px',
+                      padding: '14px',
+                      backgroundColor: '#f8fafc',
+                    }}
+                  >
+                    <div style={{ marginBottom: '10px' }}>
+                      <div style={{ fontWeight: 650, fontSize: '14px', color: '#1e293b' }}>
+                        {item.productName}
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                        Đã mua: <strong style={{ color: '#0f172a' }}>{item.quantity} × {item.packaging || 'thùng'}</strong>
+                        {' · '}Thành tiền: <strong>{money(item.lineTotal || item.unitPrice * item.quantity)}</strong>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '5px' }}>
+                          Số lượng trong 1 {item.packaging?.split(/\s+/)[0] || 'thùng'} <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          required
+                          value={conf.unitsPerPack}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setImportConversions(curr => ({
+                              ...curr,
+                              [item.id]: { ...(curr[item.id] || guessRetailUnitAndPack(item.packaging, item.productName)), unitsPerPack: val }
+                            }));
+                          }}
+                          placeholder="VD: 24, 30..."
+                          style={{
+                            width: '100%',
+                            boxSizing: 'border-box',
+                            padding: '8px 10px',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                          }}
+                        />
+                      </div>
+
+                      <div>
+                        <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#334155', marginBottom: '5px' }}>
+                          Đơn vị bán lẻ <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
+                        <input
+                          list="retail-unit-options"
+                          type="text"
+                          required
+                          value={conf.unit}
+                          onChange={e => {
+                            const val = e.target.value;
+                            setImportConversions(curr => ({
+                              ...curr,
+                              [item.id]: { ...(curr[item.id] || guessRetailUnitAndPack(item.packaging, item.productName)), unit: val }
+                            }));
+                          }}
+                          placeholder="VD: gói, lon, chai..."
+                          style={{
+                            width: '100%',
+                            boxSizing: 'border-box',
+                            padding: '8px 10px',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '6px',
+                            fontSize: '13px',
+                          }}
+                        />
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: '10px',
+                        padding: '8px 12px',
+                        backgroundColor: '#f0fdf4',
+                        border: '1px solid #bbf7d0',
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '6px',
+                      }}
+                    >
+                      <div>
+                        <span style={{ color: '#166534', fontWeight: 600 }}>Quy đổi thực tế: </span>
+                        {validNum ? (
+                          <span style={{ color: '#15803d', fontWeight: 700, fontSize: '13px' }}>
+                            {totalUnits} {retailUnit}
+                            {unitsPerPackNum > 1 && (
+                              <span style={{ color: '#475569', fontWeight: 400, marginLeft: '4px', fontSize: '11px' }}>
+                                ({item.quantity} × {unitsPerPackNum} {retailUnit})
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <span style={{ color: '#dc2626' }}>Số lượng phải lớn hơn 0</span>
+                        )}
+                      </div>
+                      {validNum && (
+                        <div style={{ color: '#475569' }}>
+                          Giá vốn:~<strong>{money(Math.round(item.unitPrice / unitsPerPackNum))}/{retailUnit}</strong>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <datalist id="retail-unit-options">
+              <option value="gói" />
+              <option value="lon" />
+              <option value="chai" />
+              <option value="hộp" />
+              <option value="bịch" />
+              <option value="cái" />
+              <option value="túi" />
+              <option value="vỉ" />
+              <option value="ly" />
+              <option value="hũ" />
+              <option value="kg" />
+            </datalist>
+
+            {error && <p className="error-notice" role="alert" style={{ marginBottom: '12px' }}>{error}</p>}
+
+            <div className="supplier-dialog-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
+              <button
+                type="button"
+                className="ghost-button"
+                disabled={actionLoadingId !== null}
+                onClick={() => setImportModalOrder(null)}
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={actionLoadingId !== null}
+              >
+                {actionLoadingId === importModalOrder.id ? 'Đang nhập kho…' : 'Xác nhận nhập kho'}
+              </button>
             </div>
           </form>
         </div>

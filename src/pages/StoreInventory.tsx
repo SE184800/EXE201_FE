@@ -28,6 +28,7 @@ import OverviewRestockSuggestions from '../components/OverviewRestockSuggestions
 import TodayDeliveryAlert from '../components/TodayDeliveryAlert';
 import type { SupplierOrder } from '../services/supplier.api';
 import type { AuthUser } from '../types/auth';
+import { showUnverifiedNotice } from '../components/UnverifiedToast';
 
 type Item = {
   purchasePrice: number | null;
@@ -54,6 +55,7 @@ type Item = {
     expiryDate: string | null;
     purchasePrice: number | null;
     sourceOrderId?: number | null;
+    supplierName?: string | null;
   }[];
 };
 type Message = { from: 'bot' | 'user'; text: string; time?: string };
@@ -132,6 +134,60 @@ export default function StoreInventory({
   const [saleSaving, setSaleSaving] = useState(false);
   const saleDialog = useRef<HTMLDialogElement>(null);
   const importDialog = useRef<InventoryImportDialogHandle>(null);
+
+  const [lotExpiryModal, setLotExpiryModal] = useState<{
+    lotId: number;
+    itemId: number;
+    itemName: string;
+    unit: string;
+    currentExpiry: string;
+    quantity: number;
+  } | null>(null);
+  const [lotExpiryInput, setLotExpiryInput] = useState('');
+  const [lotExpirySaving, setLotExpirySaving] = useState(false);
+  const [lotExpiryError, setLotExpiryError] = useState('');
+
+  function openLotExpiryModal(item: Item, lot: NonNullable<Item['lots']>[number]) {
+    setLotExpiryModal({
+      lotId: lot.id,
+      itemId: item.id,
+      itemName: item.name,
+      unit: item.unit,
+      currentExpiry: lot.expiryDate || '',
+      quantity: lot.quantity,
+    });
+    setLotExpiryInput(lot.expiryDate || '');
+    setLotExpiryError('');
+  }
+
+  async function handleSaveLotExpiry(e: FormEvent) {
+    e.preventDefault();
+    if (!lotExpiryModal || lotExpirySaving) return;
+    if (!lotExpiryInput) {
+      setLotExpiryError('Vui lòng chọn ngày hạn sử dụng.');
+      return;
+    }
+    const tomorrow = vietnamTomorrowIso();
+    if (lotExpiryInput < tomorrow) {
+      setLotExpiryError('Hạn sử dụng phải là ngày trong tương lai (từ ngày mai trở đi).');
+      return;
+    }
+    setLotExpirySaving(true);
+    setLotExpiryError('');
+    try {
+      await api.patch(`/inventory/lots/${lotExpiryModal.lotId}/expiry`, {
+        expiryDate: lotExpiryInput,
+      });
+      setNotice(`Đã cập nhật hạn sử dụng cho Lô #${lotExpiryModal.lotId} thành công.`);
+      setLotExpiryModal(null);
+      await refresh();
+    } catch (err) {
+      setLotExpiryError(getApiError(err));
+      if (isUnauthenticated(err)) onLogout();
+    } finally {
+      setLotExpirySaving(false);
+    }
+  }
 
   const [storeOrders, setStoreOrders] = useState<SupplierOrder[]>([]);
   const [showContractModal, setShowContractModal] = useState(false);
@@ -490,6 +546,10 @@ export default function StoreInventory({
         (filter === 'expired' && expired.includes(item))),
   );
   function addProduct() {
+    if (storeProfile?.verificationStatus !== 'APPROVED') {
+      showUnverifiedNotice();
+      return;
+    }
     setPack('');
     setUnitsPerPack('');
     setEditing(null);
@@ -743,13 +803,13 @@ export default function StoreInventory({
         </header>
         <div className="dashboard-content">
           {activeTab === 'catalog' ? (
-            <StoreCatalog onLogout={onLogout} />
+            <StoreCatalog onLogout={onLogout} isVerified={storeProfile?.verificationStatus === 'APPROVED'} />
           ) : activeTab === 'quotes' ? (
             <StoreQuotes onLogout={onLogout} />
           ) : activeTab === 'orders' ? (
             <OrderList key={orderSearch} initialSearch={orderSearch} kind="store" onLogout={onLogout} onInventoryChanged={refresh} onViewHistory={() => setActiveTab('history')} />
           ) : activeTab === 'wallet' ? (
-            <WalletPage onLogout={onLogout} role="STORE_OWNER" />
+            <WalletPage onLogout={onLogout} role="STORE_OWNER" isVerified={storeProfile?.verificationStatus === 'APPROVED'} />
           ) : activeTab === 'revenue' ? (
             <StoreRevenue onLogout={onLogout} />
           ) : activeTab === 'subscription' ? (
@@ -787,7 +847,13 @@ export default function StoreInventory({
                       <button
                         type="button"
                         className="secondary-button"
-                        onClick={() => importDialog.current?.open()}
+                        onClick={() => {
+                          if (storeProfile?.verificationStatus !== 'APPROVED') {
+                            showUnverifiedNotice();
+                            return;
+                          }
+                          importDialog.current?.open();
+                        }}
                       >
                         <Icon name="box" /> Nhập từ Excel
                       </button>
@@ -1218,27 +1284,86 @@ export default function StoreInventory({
                                     NCC: <strong>{item.supplierName}</strong>
                                   </small>
                                 )}
-                                <details className="lot-details">
-                                  <summary>{item.lots?.length || 0} lô hàng</summary>
+                                <details className="lot-details" style={{ marginTop: '8px' }}>
+                                  <summary style={{ cursor: 'pointer', fontWeight: 650, color: '#166534', fontSize: '12px', userSelect: 'none' }}>
+                                    📦 {item.lots?.length || 0} lô hàng chi tiết
+                                  </summary>
                                   {item.lots?.length ? (
-                                    item.lots.map((lot) => (
-                                      <div className="lot-row" key={lot.id}>
-                                        <span>Lô #{lot.id}{lot.sourceOrderId ? ` · Đơn sỉ #${lot.sourceOrderId}` : ' · Lô hiện có / nhập tay'}</span>
-                                        <b>
-                                          {lot.quantity} {item.unit}
-                                        </b>
-                                        <small>
-                                          Nhập{' '}
-                                          {new Date(lot.receivedAt).toLocaleDateString('vi-VN')}
-                                          {lot.expiryDate
-                                            ? ` · HSD ${lot.expiryDate.split('-').reverse().join('/')}`
-                                            : ' · Chưa nhập HSD'}
-                                          {lot.purchasePrice == null
-                                            ? ''
-                                            : ` · ${lot.purchasePrice.toLocaleString('vi-VN')} ₫`}
-                                        </small>
-                                      </div>
-                                    ))
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '6px', minWidth: '320px' }}>
+                                      {item.lots.map((lot) => {
+                                        const isExpired = lot.expiryDate && new Date(lot.expiryDate).getTime() < Date.now();
+                                        const isExpiringSoon = lot.expiryDate && (new Date(lot.expiryDate).getTime() - Date.now()) / (1000 * 3600 * 24) <= 30;
+                                        return (
+                                          <div
+                                            key={lot.id}
+                                            style={{
+                                              backgroundColor: '#ffffff',
+                                              border: '1px solid #e2e8f0',
+                                              borderRadius: '6px',
+                                              padding: '7px 9px',
+                                              fontSize: '11px',
+                                              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+                                            }}
+                                          >
+                                            {/* Header: Lot ID, Order, Quantity */}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                              <span style={{ fontWeight: 650, color: '#0f172a' }}>
+                                                Lô #{lot.id} {lot.sourceOrderId ? `· Đơn sỉ #${lot.sourceOrderId}` : '· Nhập tay / tồn đầu'}
+                                              </span>
+                                              <span style={{ fontWeight: 700, color: '#15803d', fontSize: '12px' }}>
+                                                {lot.quantity} {item.unit}
+                                              </span>
+                                            </div>
+
+                                            {/* Info: Supplier, Received Date, Price */}
+                                            <div style={{ color: '#64748b', margin: '3px 0', fontSize: '11px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
+                                              <span>
+                                                Chủ vựa: <strong style={{ color: '#0284c7' }}>{lot.supplierName || item.supplierName || 'Chủ vựa'}</strong>
+                                              </span>
+                                              <span>
+                                                Nhập {new Date(lot.receivedAt).toLocaleDateString('vi-VN')}
+                                              </span>
+                                            </div>
+
+                                            {/* Footer: Expiry date & Update Button */}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', paddingTop: '4px', borderTop: '1px dashed #f1f5f9' }}>
+                                              <span style={{ fontSize: '11px' }}>
+                                                HSD:{' '}
+                                                {lot.expiryDate ? (
+                                                  <strong style={{ color: isExpired ? '#dc2626' : isExpiringSoon ? '#d97706' : '#15803d' }}>
+                                                    {lot.expiryDate.split('-').reverse().join('/')}
+                                                    {isExpired ? ' (Hết hạn)' : isExpiringSoon ? ' (Cận date)' : ''}
+                                                  </strong>
+                                                ) : (
+                                                  <span style={{ color: '#ea580c', fontStyle: 'italic', fontWeight: 500 }}>Chưa nhập HSD</span>
+                                                )}
+                                              </span>
+                                              {!lot.expiryDate && (
+                                                <button
+                                                  type="button"
+                                                  style={{
+                                                    fontSize: '10.5px',
+                                                    padding: '2px 8px',
+                                                    borderRadius: '4px',
+                                                    backgroundColor: '#f8fafc',
+                                                    color: '#0f172a',
+                                                    border: '1px solid #cbd5e1',
+                                                    cursor: 'pointer',
+                                                    fontWeight: 600,
+                                                  }}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    openLotExpiryModal(item, lot);
+                                                  }}
+                                                >
+                                                  📅 Cập nhật HSD
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
                                   ) : (
                                     <small>Chưa có dữ liệu lô.</small>
                                   )}
@@ -1671,61 +1796,321 @@ export default function StoreInventory({
         ref={saleDialog}
         aria-label="Xuất bán hàng"
         className="inventory-dialog"
+        style={{ width: 'min(460px, calc(100vw - 32px))', padding: '24px', borderRadius: '16px' }}
         onCancel={(event) => {
           if (saleSaving) event.preventDefault();
         }}
       >
-        <div className="dialog-heading">
-          <span className="product-avatar">
+        <div className="dialog-heading" style={{ marginBottom: '18px', alignItems: 'flex-start' }}>
+          <span className="product-avatar" style={{ marginTop: '2px', backgroundColor: '#eef8f2', color: '#166534' }}>
             <Icon name="box" />
           </span>
-          <div>
-            <span className="section-kicker">XUẤT HÀNG</span>
-            <h2>{selling?.name}</h2>
+          <div style={{ flex: 1, minWidth: 0, paddingRight: '8px' }}>
+            <span className="section-kicker" style={{ color: '#16a34a', fontWeight: 700, fontSize: '11px', letterSpacing: '0.6px' }}>
+              XUẤT BÁN HÀNG
+            </span>
+            <h2 style={{ fontSize: '17px', fontWeight: 700, color: '#0f172a', margin: '3px 0 0', lineHeight: 1.35, wordBreak: 'break-word' }}>
+              {selling?.name}
+            </h2>
           </div>
           <button
             disabled={saleSaving}
             className="dialog-close"
             aria-label="Đóng"
             onClick={() => saleDialog.current?.close()}
+            style={{ cursor: 'pointer' }}
           >
             ×
           </button>
         </div>
-        <form className="inventory-form" onSubmit={saveSale}>
-          <p className="stock-help">
-            Số {selling?.unit}: {selling?.quantity}
-          </p>
-          <label>
-            Số lượng bán
-            <input
-              required
-              type="number"
-              min="1"
-              max={selling?.quantity || 1}
-              step="1"
-              value={saleQuantity}
-              disabled={saleSaving}
-              onChange={(e) => setSaleQuantity(e.target.value)}
-            />
-          </label>
+
+        <form onSubmit={saveSale} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '12px',
+              padding: '12px 14px',
+              backgroundColor: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderRadius: '12px',
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 500, marginBottom: '2px' }}>
+                Tồn kho hiện có
+              </div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '5px' }}>
+                <span style={{ fontSize: '20px', fontWeight: 800, color: '#15803d' }}>
+                  {selling?.quantity ?? 0}
+                </span>
+                <span style={{ fontSize: '12px', fontWeight: 650, color: '#334155' }}>
+                  {selling?.unit}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 500, marginBottom: '2px' }}>
+                Giá bán niêm yết
+              </div>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: '#1e293b', marginTop: '3px' }}>
+                {selling?.sellingPrice != null ? (
+                  `${selling.sellingPrice.toLocaleString('vi-VN')} ₫`
+                ) : (
+                  <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 400 }}>Chưa đặt giá</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '8px' }}>
+              Số lượng xuất bán ({selling?.unit}) <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button
+                type="button"
+                disabled={saleSaving || Number(saleQuantity) <= 1}
+                onClick={() => setSaleQuantity(String(Math.max(1, (Number(saleQuantity) || 1) - 1)))}
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  fontSize: '20px',
+                  fontWeight: 700,
+                  color: Number(saleQuantity) <= 1 ? '#cbd5e1' : '#334155',
+                  cursor: Number(saleQuantity) <= 1 ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  userSelect: 'none',
+                }}
+                aria-label="Giảm 1"
+              >
+                −
+              </button>
+
+              <div style={{ position: 'relative', flex: 1 }}>
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  max={selling?.quantity || 1}
+                  step="1"
+                  value={saleQuantity}
+                  disabled={saleSaving}
+                  onChange={(e) => setSaleQuantity(e.target.value)}
+                  style={{
+                    width: '100%',
+                    height: '42px',
+                    boxSizing: 'border-box',
+                    textAlign: 'center',
+                    fontSize: '17px',
+                    fontWeight: 700,
+                    color: '#0f172a',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '10px',
+                    outline: 'none',
+                    backgroundColor: '#ffffff',
+                    paddingRight: '50px',
+                  }}
+                />
+                <span
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#64748b',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {selling?.unit}
+                </span>
+              </div>
+
+              <button
+                type="button"
+                disabled={saleSaving || Number(saleQuantity) >= (selling?.quantity || 1)}
+                onClick={() => setSaleQuantity(String(Math.min(selling?.quantity || 1, (Number(saleQuantity) || 0) + 1)))}
+                style={{
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '10px',
+                  border: '1px solid #cbd5e1',
+                  backgroundColor: '#ffffff',
+                  fontSize: '20px',
+                  fontWeight: 700,
+                  color: Number(saleQuantity) >= (selling?.quantity || 1) ? '#cbd5e1' : '#334155',
+                  cursor: Number(saleQuantity) >= (selling?.quantity || 1) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                  userSelect: 'none',
+                }}
+                aria-label="Tăng 1"
+              >
+                +
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '6px', marginTop: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', color: '#64748b', marginRight: '2px' }}>
+                Chọn nhanh:
+              </span>
+              {[1, 2, 5, 10].filter((qty) => (selling?.quantity || 0) >= qty).map((qty) => (
+                <button
+                  key={qty}
+                  type="button"
+                  disabled={saleSaving}
+                  onClick={() => setSaleQuantity(String(qty))}
+                  style={{
+                    padding: '3px 9px',
+                    borderRadius: '6px',
+                    border: Number(saleQuantity) === qty ? '1px solid #16a34a' : '1px solid #e2e8f0',
+                    backgroundColor: Number(saleQuantity) === qty ? '#f0fdf4' : '#f8fafc',
+                    color: Number(saleQuantity) === qty ? '#166534' : '#475569',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {qty}
+                </button>
+              ))}
+              {(selling?.quantity || 0) > 0 && (
+                <button
+                  type="button"
+                  disabled={saleSaving}
+                  onClick={() => setSaleQuantity(String(selling?.quantity || 1))}
+                  style={{
+                    padding: '3px 9px',
+                    borderRadius: '6px',
+                    border: Number(saleQuantity) === selling?.quantity ? '1px solid #16a34a' : '1px solid #e2e8f0',
+                    backgroundColor: Number(saleQuantity) === selling?.quantity ? '#f0fdf4' : '#f8fafc',
+                    color: Number(saleQuantity) === selling?.quantity ? '#166534' : '#475569',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Tất cả ({selling?.quantity})
+                </button>
+              )}
+            </div>
+          </div>
+
+          {(() => {
+            const qty = Number(saleQuantity) || 0;
+            const max = selling?.quantity || 0;
+            const remaining = Math.max(0, max - qty);
+            const isValid = qty > 0 && qty <= max;
+            const totalRevenue = selling?.sellingPrice != null ? selling.sellingPrice * qty : null;
+
+            return (
+              <div
+                style={{
+                  padding: '10px 14px',
+                  backgroundColor: isValid ? '#f0fdf4' : '#fef2f2',
+                  border: `1px solid ${isValid ? '#bbf7d0' : '#fecaca'}`,
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ color: '#475569' }}>Tồn kho sau khi bán:</span>
+                  <strong style={{ color: isValid ? '#166534' : '#dc2626', fontSize: '13px' }}>
+                    {isValid ? `${remaining} ${selling?.unit}` : 'Số lượng không hợp lệ'}
+                  </strong>
+                </div>
+
+                {totalRevenue !== null && isValid && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderTop: '1px dashed #cbd5e1',
+                      paddingTop: '6px',
+                      marginTop: '2px',
+                    }}
+                  >
+                    <span style={{ color: '#475569' }}>Doanh thu dự kiến:</span>
+                    <strong style={{ color: '#0f172a', fontSize: '14px' }}>
+                      {totalRevenue.toLocaleString('vi-VN')} ₫
+                    </strong>
+                  </div>
+                )}
+
+                {qty > max && (
+                  <span style={{ color: '#dc2626', fontSize: '12px', fontWeight: 500 }}>
+                    ⚠️ Vượt quá tồn kho ({max} {selling?.unit}).
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+
           {error && (
-            <p className="error-notice inventory-name" role="alert">
+            <p className="error-notice" role="alert" style={{ margin: 0, padding: '8px 12px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#dc2626', fontSize: '13px' }}>
               {error}
             </p>
           )}
-          <div className="inventory-actions">
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: '10px',
+              borderTop: '1px solid #f1f5f9',
+              paddingTop: '14px',
+              marginTop: '4px',
+            }}
+          >
             <button
               className="secondary-button"
               type="button"
               disabled={saleSaving}
               onClick={() => saleDialog.current?.close()}
+              style={{
+                padding: '9px 18px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
             >
               Hủy
             </button>
             <button
               className="dash-primary"
-              disabled={saleSaving || !selling || selling.quantity === 0}
+              disabled={
+                saleSaving ||
+                !selling ||
+                selling.quantity === 0 ||
+                Number(saleQuantity) < 1 ||
+                Number(saleQuantity) > (selling?.quantity || 0)
+              }
+              style={{
+                padding: '9px 20px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                fontWeight: 700,
+                backgroundColor: '#166534',
+                color: '#ffffff',
+                cursor: 'pointer',
+              }}
             >
               {saleSaving ? 'Đang lưu...' : 'Xác nhận bán'}
             </button>
@@ -1766,6 +2151,82 @@ export default function StoreInventory({
           setNotice('Cập nhật thông tin thành công, vui lòng đợi Admin phê duyệt');
         }}
       />
+      {lotExpiryModal && (
+        <div className="mobile-menu-backdrop" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backgroundColor: 'rgba(15, 23, 42, 0.45)' }}>
+          <form
+            className="inventory-dialog"
+            style={{ display: 'block', maxWidth: '420px', width: '90%', margin: '0 auto', maxHeight: '90vh', overflowY: 'auto' }}
+            onSubmit={handleSaveLotExpiry}
+          >
+            <div className="dialog-heading">
+              <span className="product-avatar">
+                <Icon name="box" />
+              </span>
+              <div>
+                <span className="section-kicker">CẬP NHẬT HẠN SỬ DỤNG</span>
+                <h2>Lô #{lotExpiryModal.lotId}</h2>
+                <small style={{ color: '#64748b', display: 'block', marginTop: '2px' }}>
+                  {lotExpiryModal.itemName} · Tồn lô: <strong>{lotExpiryModal.quantity} {lotExpiryModal.unit}</strong>
+                </small>
+              </div>
+              <button
+                type="button"
+                className="dialog-close"
+                disabled={lotExpirySaving}
+                onClick={() => setLotExpiryModal(null)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ marginTop: '14px' }}>
+              <label className="inventory-name" style={{ display: 'block' }}>
+                <span style={{ fontSize: '13px', fontWeight: 650, color: '#334155', display: 'block', marginBottom: '6px' }}>
+                  Chọn ngày hạn sử dụng:
+                </span>
+                <DatePicker
+                  value={lotExpiryInput}
+                  disabled={lotExpirySaving}
+                  min={vietnamTomorrowIso()}
+                  onChange={(val) => {
+                    setLotExpiryInput(val);
+                    if (lotExpiryError) setLotExpiryError('');
+                  }}
+                  placeholder="DD/MM/YYYY"
+                  required
+                />
+              </label>
+              <small style={{ color: '#64748b', fontSize: '11.5px', display: 'block', marginTop: '6px', lineHeight: 1.4 }}>
+                💡 Hạn sử dụng phải là ngày trong tương lai (từ ngày mai trở đi). Lô có HSD gần nhất sẽ tự động được ưu tiên xuất bán trước (FEFO) và hiển thị trên cột Hạn sử dụng của sản phẩm.
+              </small>
+            </div>
+
+            {lotExpiryError && (
+              <p role="alert" className="error-notice" style={{ marginTop: '10px' }}>
+                {lotExpiryError}
+              </p>
+            )}
+
+            <div className="inventory-actions" style={{ marginTop: '16px' }}>
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={lotExpirySaving}
+                onClick={() => setLotExpiryModal(null)}
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="dash-primary"
+                disabled={lotExpirySaving || !lotExpiryInput}
+              >
+                {lotExpirySaving ? 'Đang lưu…' : 'Lưu hạn sử dụng'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </main>
   );
 }

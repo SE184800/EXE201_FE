@@ -36,7 +36,7 @@
 
 .order-stepper-line-fill {
   height: 100%;
-  background: linear-gradient(90deg, #16a34a, #2563eb);
+  background: #16a34a;
   transition: width 0.3s ease;
 }
 
@@ -91,6 +91,11 @@
 
 .order-stepper-step.completed .step-label {
   color: #16a34a;
+}
+
+.order-stepper-step.completed .step-subtext {
+  color: #16a34a;
+  font-weight: 500;
 }
 
 .order-stepper-step.current .step-label {

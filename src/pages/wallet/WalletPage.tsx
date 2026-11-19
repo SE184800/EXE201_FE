@@ -18,6 +18,7 @@ import {
 import WalletQrCode from './WalletQrCode';
 import { dateTime, money } from './walletFormat';
 import { POPULAR_BANKS } from '../../constants/banks';
+import { showUnverifiedNotice } from '../../components/UnverifiedToast';
 
 const TYPE_META: Record<
   string,
@@ -54,11 +55,21 @@ const ITEMS_PER_PAGE = 15;
 export default function WalletPage({
   onLogout,
   role,
+  isVerified,
 }: {
   onLogout: () => void;
   role?: 'STORE_OWNER' | 'SUPPLIER';
+  isVerified?: boolean;
 }) {
   const [searchParams] = useSearchParams();
+  const [profileVerificationStatus, setProfileVerificationStatus] = useState<string | null>(null);
+
+  const isAccountVerified =
+    typeof isVerified === 'boolean'
+      ? isVerified
+      : profileVerificationStatus !== null
+        ? profileVerificationStatus === 'APPROVED'
+        : true; // fallback until fetched or if not applicable
   const [overview, setOverview] = useState<WalletOverview | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,12 +148,14 @@ export default function WalletPage({
         profile?: {
           name?: string;
           supplierProfile?: {
+            verificationStatus?: string;
             bankName?: string;
             bankAccountNumber?: string;
             bankAccountHolder?: string;
             businessName?: string;
           };
           storeProfile?: {
+            verificationStatus?: string;
             bankName?: string;
             bankAccountNumber?: string;
             bankAccountHolder?: string;
@@ -154,6 +167,8 @@ export default function WalletPage({
       const supp = data?.profile?.supplierProfile;
       const store = data?.profile?.storeProfile;
       const current = role === 'SUPPLIER' ? supp : store;
+      const vStatus = current?.verificationStatus || (role === 'SUPPLIER' ? supp?.verificationStatus : store?.verificationStatus) || 'DRAFT';
+      setProfileVerificationStatus(vStatus);
       const fallback = role === 'SUPPLIER' ? store : supp;
       const bankInfo =
         (current?.bankAccountNumber ? current : null) ||
@@ -201,6 +216,11 @@ export default function WalletPage({
   // Create QR for official deposit
   async function handleGenerateQr(e?: FormEvent) {
     if (e) e.preventDefault();
+    if (!isAccountVerified) {
+      showUnverifiedNotice();
+      setShowDepositModal(false);
+      return;
+    }
     const parsedAmount = Number(depositAmount);
     if (!parsedAmount || parsedAmount < 10000) {
       setError('Số tiền nạp tối thiểu là 10.000 ₫.');
@@ -419,6 +439,10 @@ export default function WalletPage({
             type="button"
             className="dash-primary"
             onClick={() => {
+              if (!isAccountVerified) {
+                showUnverifiedNotice();
+                return;
+              }
               setShowDepositModal(true);
               setQr(null);
               setDepositAmount('500000');

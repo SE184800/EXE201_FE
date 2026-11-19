@@ -7,6 +7,7 @@ import { getWallet, type WalletInfo } from '../services/wallet.api';
 import { calculateDeliveryFee, type DeliveryFeeResult } from '../utils/geo';
 import type { Profile } from '../pages/ProfilePage';
 import { checkoutRequestId } from '../utils/checkoutRequests';
+import { showUnverifiedNotice } from './UnverifiedToast';
 
 const roundToThousand = (val: number) => Math.round(val / 1000) * 1000;
 const money = (n: number) => Math.round(n).toLocaleString('vi-VN') + ' ₫';
@@ -63,6 +64,7 @@ export default function CheckoutDialog({
   }, [product, products]);
 
   const [items, setItems] = useState<CatalogProduct[]>(initialList);
+  const [isStoreVerified, setIsStoreVerified] = useState<boolean>(true);
   const [quantities, setQuantities] = useState<Record<number, number>>(() => {
     try {
       const saved = localStorage.getItem('supplymind_checkout_quantities');
@@ -133,6 +135,9 @@ export default function CheckoutDialog({
       .then(({ data }) => {
         const p = data.profile;
         const sp = p?.storeProfile;
+        if (sp?.verificationStatus) {
+          setIsStoreVerified(sp.verificationStatus === 'APPROVED');
+        }
         const sAddr = sp?.storeAddress || '';
         setStoreAddress(sAddr);
         if (sp?.locationType) setStoreLocationType(sp.locationType);
@@ -230,6 +235,10 @@ export default function CheckoutDialog({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (lock.current) return;
+    if (!isStoreVerified) {
+      showUnverifiedNotice();
+      return;
+    }
     if (items.length === 0) {
       setError('Vui lòng chọn ít nhất một mặt hàng để đặt.');
       return;
@@ -620,6 +629,10 @@ export default function CheckoutDialog({
                         type="button"
                         className="table-button primary-small"
                         onClick={() => {
+                          if (!isStoreVerified) {
+                            showUnverifiedNotice();
+                            return;
+                          }
                           onClose();
                           navigate('/store/wallet');
                         }}

@@ -19,6 +19,7 @@ import { getMe, logout } from './services/auth.api';
 import { ROLE_DETAILS, type AuthUser } from './types/auth';
 import { isMobileApp } from './mobile/platform';
 import SystemNoticeBanner from './components/SystemNoticeBanner';
+import UnverifiedToast from './components/UnverifiedToast';
 
 
 function LogoutToast() {
@@ -195,6 +196,7 @@ export default function App() {
     <BrowserRouter>
       <SystemNoticeBanner user={user} onLogout={clearUser} />
       <LogoutToast />
+      <UnverifiedToast />
       <Routes>
         <Route
           path="/"

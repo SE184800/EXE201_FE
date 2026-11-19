@@ -6,11 +6,46 @@ import { PRODUCT_CATEGORIES, type CatalogProduct } from '../services/catalog.api
 import { getApiError, isUnauthenticated } from '../services/api';
 import { getCatalog, getCatalogSuppliers, type CatalogPage } from '../services/catalog.api';
 import type { SupplierProfile } from '../services/supplier.api';
+import { showUnverifiedNotice } from '../components/UnverifiedToast';
+import { api } from '../services/api';
 import './catalog.css';
 
-export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
+export default function StoreCatalog({
+  onLogout,
+  isVerified = true,
+}: {
+  onLogout: () => void;
+  isVerified?: boolean;
+}) {
   const [data, setData] = useState<CatalogPage>({ products: [], page: 1, hasMore: false });
   const [suppliers, setSuppliers] = useState<SupplierProfile[]>([]);
+  const [accountVerified, setAccountVerified] = useState<boolean>(isVerified);
+
+  useEffect(() => {
+    setAccountVerified(isVerified);
+  }, [isVerified]);
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get<{ profile?: { storeProfile?: { verificationStatus?: string } } }>('/profile')
+      .then(({ data }) => {
+        if (active && data?.profile?.storeProfile) {
+          setAccountVerified(data.profile.storeProfile.verificationStatus === 'APPROVED');
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!accountVerified) {
+      setSelectedProducts([]);
+      setCheckoutProducts(null);
+    }
+  }, [accountVerified]);
   const [selectedProducts, setSelectedProducts] = useState<CatalogProduct[]>(() => {
     try {
       const saved = localStorage.getItem('supplymind_catalog_selected_products');
@@ -51,6 +86,10 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
   }, [selectedProducts]);
 
   function toggleSelect(product: CatalogProduct) {
+    if (!accountVerified) {
+      showUnverifiedNotice();
+      return;
+    }
     setSelectedProducts((prev) => {
       const exists = prev.some((p) => p.id === product.id);
       if (exists) {
@@ -268,6 +307,16 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
                 className={`catalog-card ${isSelected ? 'is-selected' : ''}`}
                 key={product.id}
                 aria-label={product.name}
+                onClick={(e) => {
+                  if (!accountVerified) {
+                    const target = e.target as HTMLElement;
+                    if (!target.closest('a')) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      showUnverifiedNotice();
+                    }
+                  }
+                }}
               >
                 <div className="catalog-card-header-row">
                   <label className="catalog-select-label">
@@ -378,7 +427,14 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
               <button
                 className="primary-button"
                 disabled={product.stockQty < product.moq}
-                onClick={() => setCheckoutProducts([product])}
+                onClick={(e) => {
+                  if (!accountVerified) {
+                    e.stopPropagation();
+                    showUnverifiedNotice();
+                    return;
+                  }
+                  setCheckoutProducts([product]);
+                }}
               >
                 Đặt hàng từ vựa
               </button>
@@ -436,7 +492,13 @@ export default function StoreCatalog({ onLogout }: { onLogout: () => void }) {
             <button
               type="button"
               className="primary-button"
-              onClick={() => setCheckoutProducts(selectedProducts)}
+              onClick={() => {
+                if (!accountVerified) {
+                  showUnverifiedNotice();
+                  return;
+                }
+                setCheckoutProducts(selectedProducts);
+              }}
             >
               Đặt {selectedProducts.length} mặt hàng ({uniqueSupplierCount} đơn hàng) →
             </button>
