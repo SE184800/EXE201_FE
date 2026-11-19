@@ -170,3 +170,47 @@ export function AdminDialog({
     </dialog>
   );
 }
+
+export function Heading({
+  eyebrow,
+  title,
+  description,
+  action,
+}: {
+  eyebrow: string;
+  title: string;
+  description?: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="admin-heading">
+      <div>
+        <p>{eyebrow}</p>
+        <h1>{title}</h1>
+        {description && <span>{description}</span>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+export function Panel({
+  title,
+  note,
+  children,
+}: {
+  title: string;
+  note?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="admin-panel">
+      <div className="admin-panel-heading">
+        <h2>{title}</h2>
+        {note && <p>{note}</p>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
